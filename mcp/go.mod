@@ -3,7 +3,7 @@ module github.com/i2y/ringi-server/mcp
 go 1.26.0
 
 require (
-	github.com/i2y/ringi-server v0.0.0
+	github.com/i2y/ringi-server v0.1.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 )
 

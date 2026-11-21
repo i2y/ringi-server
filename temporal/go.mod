@@ -3,7 +3,7 @@ module github.com/i2y/ringi-server/temporal
 go 1.26.0
 
 require (
-	github.com/i2y/ringi-server v0.0.0
+	github.com/i2y/ringi-server v0.1.0
 	go.temporal.io/api v1.63.5
 	go.temporal.io/sdk v1.49.0
 )
