@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "updateDataModel": {
+    "surfaceId": "expense.form.f1",
+    "path": "/refused",
+    "value": {
+      "comment": false,
+      "field": "items",
+      "text": "`1_000_001JPY` は、`items[0].price` の範囲（`>=1JPY <=1_000_000JPY`）の外です"
+    }
+  }
+}

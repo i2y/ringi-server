@@ -1,0 +1,167 @@
+/* The style of the plain HTML pages of ringi's screens: readable at any width, with the system's
+   fonts, in light and dark. A server may load its own sheet after this one. */
+
+/* --line draws what only parts the page (rows, tables, groups); --edge draws the edge of what a
+   person types in or presses, and --focus the ring of what has the focus: each at least 3:1 with
+   --paper, --tint and --bad-tint (WCAG 1.4.11). The text colours are at least 4.5:1 with them.
+   The size of the text is the person's own (100 %), so that a larger one in the browser's settings
+   makes the page's text larger. */
+.ringi {
+  --ink: #1d2433;
+  --muted: #5a6478;
+  --line: #c9cfdb;
+  --edge: #767f93;
+  --paper: #ffffff;
+  --tint: #f3f5f9;
+  --accent: #1f5fbf;
+  --accent-ink: #ffffff;
+  --bad: #b3261e;
+  --bad-tint: #fdecea;
+  --focus: #b35c00;
+  color: var(--ink);
+  background: var(--paper);
+  color-scheme: light dark;
+  font: 100%/1.6 system-ui, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ringi {
+    --ink: #e6e9f0;
+    --muted: #a5adbd;
+    --line: #3d4557;
+    --edge: #737c91;
+    --paper: #141821;
+    --tint: #1d2330;
+    --accent: #6ea2f5;
+    --accent-ink: #0b1220;
+    --bad: #ff8a80;
+    --bad-tint: #3a1d1b;
+    --focus: #f0a500;
+  }
+}
+
+.ringi h1 { font-size: 1.5rem; margin: 0 0 0.5rem; }
+.ringi h2 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
+.ringi a { color: var(--accent); }
+.ringi :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* a date's year, month and day take the focus inside it, which :focus-visible does not see */
+.ringi input[type="date"]:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.ringi .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 0; }
+.ringi .facts div { display: flex; flex-wrap: wrap; gap: 0 0.5rem; min-width: 0; }
+.ringi .facts dt { color: var(--muted); }
+.ringi .facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+.ringi .summary {
+  border: 2px solid var(--bad);
+  background: var(--bad-tint);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+.ringi .summary p { margin: 0 0 0.25rem; font-weight: 600; }
+.ringi .summary ul { margin: 0; padding-left: 1.25rem; }
+.ringi .summary .details { white-space: pre-wrap; font-size: 0.9rem; color: var(--muted); }
+
+.ringi .values dl { margin: 0; }
+.ringi .value { display: grid; grid-template-columns: minmax(8rem, 1fr) 3fr; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
+.ringi .value dt { color: var(--muted); }
+.ringi .value dd { margin: 0; overflow-wrap: anywhere; }
+.ringi .value dd.long { white-space: pre-wrap; }
+
+.ringi .scroll { overflow-x: auto; }
+.ringi table { border-collapse: collapse; width: 100%; }
+.ringi th, .ringi td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ringi thead th { background: var(--tint); }
+
+.ringi .route ol, .ringi .history { padding-left: 1.5rem; }
+.ringi .route li { margin: 0.25rem 0; }
+.ringi .route li.current > .stage { font-weight: 700; }
+.ringi .route .phase, .ringi .route .state, .ringi .history .did { color: var(--muted); }
+.ringi .history li { margin: 0 0 0.75rem; }
+.ringi .history p { margin: 0; }
+.ringi .history .comment { white-space: pre-wrap; border-left: 3px solid var(--line); padding-left: 0.5rem; }
+.ringi .empty { color: var(--muted); }
+
+.ringi form { margin-top: 1.5rem; }
+.ringi fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 1rem; padding: 0.75rem 1rem; }
+.ringi legend { font-weight: 600; padding: 0 0.25rem; }
+.ringi .field { margin: 0 0 1rem; }
+.ringi .field > label, .ringi .field.output > .label { display: block; font-weight: 600; }
+.ringi .field.check > label { display: inline; font-weight: 600; }
+.ringi .required { font-weight: 400; font-size: 0.85rem; color: var(--bad); }
+.ringi .hint { margin: 0.1rem 0 0.25rem; color: var(--muted); font-size: 0.9rem; }
+.ringi form.scripted .hint .nojs { display: none; }
+
+.ringi input[type="text"], .ringi input[type="date"], .ringi select, .ringi textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  width: 100%;
+  max-width: 32rem;
+  box-sizing: border-box;
+}
+.ringi textarea { min-height: 6rem; }
+.ringi .amount { display: flex; align-items: center; gap: 0.5rem; max-width: 20rem; }
+.ringi .amount input { text-align: right; }
+.ringi [aria-invalid="true"] { border-color: var(--bad); border-width: 2px; }
+.ringi output { display: block; font-weight: 600; }
+
+.ringi .checks { list-style: none; margin: 0.25rem 0 0; padding: 0; color: var(--bad); font-size: 0.95rem; }
+.ringi .checks li::before { content: "! "; font-weight: 700; }
+.ringi .checks li[hidden] { display: none; }
+
+.ringi .row-list { list-style: none; margin: 0; padding: 0; }
+.ringi .find-box { display: flex; align-items: center; gap: 0.5rem; max-width: 32rem; }
+.ringi .find-box input { flex: 1; min-width: 0; }
+.ringi .named { margin: 0.25rem 0 0; font-weight: 600; }
+.ringi .named[hidden] { display: none; }
+.ringi .found p { margin: 0.25rem 0; }
+.ringi .found .status:empty { margin: 0; }
+.ringi .found ul { list-style: none; margin: 0.25rem 0; padding: 0; max-width: 32rem; }
+.ringi .found li { margin: 0.25rem 0; }
+.ringi .found li button { width: 100%; text-align: start; }
+.ringi .kept, .ringi .remove { margin: 0 0 0.25rem; }
+
+.ringi .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+.ringi .parts { list-style: none; padding: 0; }
+.ringi .parts li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.25rem 0; }
+.ringi button { font: inherit; border-radius: 4px; padding: 0.45rem 1rem; cursor: pointer; }
+.ringi button.primary { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+.ringi button.plain { background: var(--tint); color: var(--ink); border: 1px solid var(--edge); }
+.ringi button.stay { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+
+/* A whole page a server shows: its body takes the colours of the screen (in its main part), and a
+   bar at the top. */
+body:has(> .ringi), body:has(> main > .ringi) { margin: 0; background: #ffffff; }
+@media (prefers-color-scheme: dark) { body:has(> .ringi), body:has(> main > .ringi) { background: #141821; } }
+.ringi.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--line); }
+.ringi.bar .home { font-weight: 600; margin-right: auto; }
+.ringi.bar .person { color: var(--muted); }
+.ringi.bar .languages { display: flex; gap: 0.75rem; }
+.ringi.bar form { margin: 0; }
+.ringi.bar button { padding: 0.2rem 0.75rem; }
+
+.ringi .entries ul { padding-left: 1.25rem; }
+.ringi .entries li { margin: 0.25rem 0; }
+.ringi .entries .count { color: var(--muted); }
+.ringi .notice, .ringi .more { margin: 1rem 0; }
+
+/* The administration's pages: a version's form, the record's lines. */
+.ringi .choice { margin: 0.25rem 0; }
+.ringi .choice + .field { margin: 0.25rem 0 0.5rem 1.75rem; }
+.ringi .note { color: var(--muted); font-size: 0.9rem; }
+.ringi .records ul { margin: 0; padding-left: 1.25rem; }
+.ringi .records p { margin: 0.25rem 0 0; }
+.ringi .records td, .ringi .records code { overflow-wrap: anywhere; }
+
+@media (max-width: 30rem) {
+  .ringi .value { grid-template-columns: 1fr; gap: 0; }
+  .ringi .buttons button { flex: 1 1 100%; }
+}

@@ -1,0 +1,241 @@
+[
+  {
+    "action": {
+      "version": "1.0",
+      "action": {
+        "name": "submit_leave",
+        "surfaceId": "leave.form.f1",
+        "sourceComponentId": "button.submit",
+        "timestamp": "2026-11-16T09:00:00.120Z",
+        "context": {
+          "requester": "e1201",
+          "form": {
+            "kind": "paid",
+            "first_day": "2026-12-21",
+            "days": 3,
+            "reason": "A family visit"
+          },
+          "comment": null
+        }
+      }
+    },
+    "operation": {
+      "id": "submit_leave",
+      "method": "POST",
+      "path": "/requests/leave/tickets",
+      "ticket": "",
+      "body": {
+        "requester": "e1201",
+        "form": {
+          "kind": "paid",
+          "first_day": "2026-12-21",
+          "days": 3,
+          "reason": "A family visit"
+        },
+        "comment": null
+      },
+      "key": "screen-1ff193117fbb666eb739aba38eed72242bae55c103b44bdc1f8378c2f6730cf4"
+    }
+  },
+  {
+    "action": {
+      "version": "1.0",
+      "action": {
+        "name": "approve",
+        "surfaceId": "expense.card.T-1",
+        "sourceComponentId": "button.approve",
+        "timestamp": "2026-11-16T09:05:00.000Z",
+        "context": {
+          "ticket": "T-1",
+          "revision": {
+            "round": 1,
+            "stage": 0,
+            "edits": 0
+          },
+          "comment": "Fine."
+        }
+      }
+    },
+    "operation": {
+      "id": "approve",
+      "method": "POST",
+      "path": "/tickets/T-1/approve",
+      "ticket": "T-1",
+      "body": {
+        "revision": {
+          "round": 1,
+          "stage": 0,
+          "edits": 0
+        },
+        "comment": "Fine."
+      },
+      "key": "screen-8d0467a0aadff7e480af24d481d53aa2e36df49c83ecfc2172995b9eeded1a9b"
+    }
+  },
+  {
+    "action": {
+      "version": "1.0",
+      "action": {
+        "name": "send_back",
+        "surfaceId": "purchase.card.T-1",
+        "sourceComponentId": "button.send_back",
+        "timestamp": "2026-11-16T09:06:00.000Z",
+        "context": {
+          "ticket": "T-1",
+          "revision": {
+            "round": 1,
+            "stage": 2,
+            "edits": 0
+          },
+          "to": "first",
+          "comment": "Please ask the manager again."
+        }
+      }
+    },
+    "operation": {
+      "id": "send_back",
+      "method": "POST",
+      "path": "/tickets/T-1/send_back",
+      "ticket": "T-1",
+      "body": {
+        "revision": {
+          "round": 1,
+          "stage": 2,
+          "edits": 0
+        },
+        "to": "first",
+        "comment": "Please ask the manager again."
+      },
+      "key": "screen-3ff2e752373f3ba401e2583dd350710afbcd5ef8c700ad28854c4d44046c8f5d"
+    }
+  },
+  {
+    "action": {
+      "version": "1.0",
+      "action": {
+        "name": "add_approver",
+        "surfaceId": "leave.card.T-1",
+        "sourceComponentId": "button.add_approver",
+        "timestamp": "2026-11-16T09:07:00.000Z",
+        "context": {
+          "ticket": "T-1",
+          "revision": {
+            "round": 1,
+            "stage": 0,
+            "edits": 0
+          },
+          "approver": "e0001",
+          "part": "dept_head",
+          "comment": null
+        }
+      }
+    },
+    "operation": {
+      "id": "add_approver",
+      "method": "POST",
+      "path": "/tickets/T-1/add_approver",
+      "ticket": "T-1",
+      "body": {
+        "revision": {
+          "round": 1,
+          "stage": 0,
+          "edits": 0
+        },
+        "approver": "e0001",
+        "part": "dept_head",
+        "comment": null
+      },
+      "key": "screen-6a8ea93b17fff5d0f0a9e50835f8f7e378e2d7d4110458798781928cb13eb73e"
+    }
+  },
+  {
+    "action": {
+      "version": "1.0",
+      "action": {
+        "name": "edit_purchase",
+        "surfaceId": "purchase.card.T-1",
+        "sourceComponentId": "button.edit",
+        "timestamp": "2026-11-16T09:08:00.000Z",
+        "context": {
+          "ticket": "T-1",
+          "revision": {
+            "round": 1,
+            "stage": 1,
+            "edits": 0
+          },
+          "fields": {
+            "reviewer": "e9001"
+          },
+          "clear": [],
+          "comment": null
+        }
+      }
+    },
+    "operation": {
+      "id": "edit_purchase",
+      "method": "POST",
+      "path": "/requests/purchase/tickets/T-1/edit",
+      "ticket": "T-1",
+      "body": {
+        "revision": {
+          "round": 1,
+          "stage": 1,
+          "edits": 0
+        },
+        "fields": {
+          "reviewer": "e9001"
+        },
+        "clear": [],
+        "comment": null
+      },
+      "key": "screen-2816102fb28667a978985c022027cf6dc6b0690f2d67d58ce2b1814c2dc56a46"
+    }
+  },
+  {
+    "action": {
+      "version": "1.0",
+      "action": {
+        "name": "comment",
+        "surfaceId": "leave.card.T-1",
+        "sourceComponentId": "button.comment",
+        "timestamp": "2026-11-16T09:09:00.000Z",
+        "context": {
+          "ticket": "T-1",
+          "comment": "Who covers on the 22nd?"
+        }
+      }
+    },
+    "operation": {
+      "id": "comment",
+      "method": "POST",
+      "path": "/tickets/T-1/comment",
+      "ticket": "T-1",
+      "body": {
+        "comment": "Who covers on the 22nd?"
+      },
+      "key": "screen-c4501bc1072aea8ef1f4946c6f945318886b39a78d11a1b883f7923ee99f6867"
+    }
+  },
+  {
+    "action": {
+      "version": "1.0",
+      "action": {
+        "name": "get_ticket",
+        "surfaceId": "leave.list.mine",
+        "sourceComponentId": "line.open",
+        "timestamp": "2026-11-16T09:10:00.000Z",
+        "context": {
+          "ticket": "T-1"
+        }
+      }
+    },
+    "operation": {
+      "id": "get_ticket",
+      "method": "GET",
+      "path": "/tickets/T-1",
+      "ticket": "T-1",
+      "body": null,
+      "key": ""
+    }
+  }
+]

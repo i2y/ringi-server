@@ -1,0 +1,311 @@
+{
+  "surfaceId": "purchase.list",
+  "messages": [
+    {
+      "version": "1.0",
+      "createSurface": {
+        "catalogId": "https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json",
+        "surfaceId": "purchase.list"
+      }
+    },
+    {
+      "version": "1.0",
+      "updateDataModel": {
+        "surfaceId": "purchase.list",
+        "value": {
+          "masters": {
+            "vendor": {
+              "V-0031": "company_masters/vendors:V-0031 (ja)"
+            }
+          },
+          "more": false,
+          "people": {
+            "e1201": "e1201 (ja)"
+          },
+          "tickets": [
+            {
+              "form": {
+                "advance": 4,
+                "kind": "capex",
+                "reviewer": null,
+                "vendor": "V-0031"
+              },
+              "id": "T-1",
+              "requester": "e1201",
+              "stage": "first",
+              "status": "in_progress"
+            },
+            {
+              "form": {
+                "advance": 4,
+                "kind": "capex",
+                "reviewer": null,
+                "vendor": "V-0031"
+              },
+              "id": "T-1",
+              "requester": "e1201",
+              "stage": "finance",
+              "status": "in_progress"
+            },
+            {
+              "form": {
+                "advance": 4,
+                "kind": "capex",
+                "reviewer": null,
+                "vendor": "V-0031"
+              },
+              "id": "T-1",
+              "requester": "e1201",
+              "stage": "board",
+              "status": "in_progress"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "version": "1.0",
+      "updateComponents": {
+        "surfaceId": "purchase.list",
+        "components": [
+          {
+            "id": "title",
+            "component": "Text",
+            "text": "購買の稟議"
+          },
+          {
+            "id": "line.id",
+            "component": "Text",
+            "text": {
+              "@path": "id"
+            }
+          },
+          {
+            "id": "line.status",
+            "component": "Text",
+            "text": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "status"
+                },
+                "table": {
+                  "in_progress": "進行中",
+                  "paused": "保留中",
+                  "with_requester": "申請者に戻っています",
+                  "approved": "承認されました",
+                  "rejected": "却下されました",
+                  "withdrawn": "取り下げられました",
+                  "expired": "期限が切れました"
+                }
+              }
+            }
+          },
+          {
+            "id": "line.stage",
+            "component": "Text",
+            "text": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "stage"
+                },
+                "table": {
+                  "first": "一次",
+                  "technical": "技術",
+                  "finance": "財務",
+                  "board": "取締役会",
+                  "decide": "決裁",
+                  "inform": "回覧"
+                }
+              }
+            }
+          },
+          {
+            "id": "line.requester",
+            "component": "Text",
+            "text": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "requester"
+                },
+                "table": {
+                  "@path": "/people"
+                }
+              }
+            }
+          },
+          {
+            "id": "line.kind",
+            "component": "Text",
+            "text": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "form/kind"
+                },
+                "table": {
+                  "goods": "物品・サービス",
+                  "capex": "設備投資",
+                  "software": "ソフトウェア"
+                }
+              }
+            }
+          },
+          {
+            "id": "line.vendor",
+            "component": "Text",
+            "text": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "form/vendor"
+                },
+                "table": {
+                  "@path": "/masters/vendor"
+                }
+              }
+            }
+          },
+          {
+            "id": "line.advance",
+            "component": "Text",
+            "text": {
+              "@call": "formatSteps",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "form/advance"
+                },
+                "decimals": 0,
+                "step": 5,
+                "unit": "%"
+              }
+            }
+          },
+          {
+            "id": "line.advance.shown",
+            "component": "Show",
+            "@catalogId": "https://forms.example.test/a2ui/catalog.json",
+            "when": {
+              "@path": "form/advance"
+            },
+            "child": "line.advance"
+          },
+          {
+            "id": "line.reviewer",
+            "component": "Text",
+            "text": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "form/reviewer"
+                },
+                "table": {
+                  "@path": "/people"
+                }
+              }
+            }
+          },
+          {
+            "id": "line.open.text",
+            "component": "Text",
+            "text": "開く"
+          },
+          {
+            "id": "line.open",
+            "component": "Button",
+            "child": "line.open.text",
+            "variant": "borderless",
+            "action": {
+              "event": {
+                "name": "get_ticket",
+                "context": {
+                  "ticket": {
+                    "@path": "id"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "line",
+            "component": "Row",
+            "children": [
+              "line.id",
+              "line.status",
+              "line.stage",
+              "line.requester",
+              "line.kind",
+              "line.vendor",
+              "line.advance.shown",
+              "line.reviewer",
+              "line.open"
+            ]
+          },
+          {
+            "id": "tickets",
+            "component": "List",
+            "children": {
+              "componentId": "line",
+              "path": "/tickets"
+            }
+          },
+          {
+            "id": "more.text",
+            "component": "Text",
+            "text": "次のページ"
+          },
+          {
+            "id": "more",
+            "component": "Button",
+            "child": "more.text",
+            "variant": "default",
+            "action": {
+              "event": {
+                "name": "list_waiting",
+                "context": {
+                  "before": {
+                    "@call": "lastOf",
+                    "catalogId": "https://forms.example.test/a2ui/catalog.json",
+                    "args": {
+                      "values": {
+                        "@path": "/tickets"
+                      },
+                      "key": "id"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "more.shown",
+            "component": "Show",
+            "@catalogId": "https://forms.example.test/a2ui/catalog.json",
+            "when": {
+              "@path": "/more"
+            },
+            "child": "more"
+          },
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "title",
+              "tickets",
+              "more.shown"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

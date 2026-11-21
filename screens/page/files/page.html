@@ -1,0 +1,263 @@
+{{define "head"}}<link rel="stylesheet" href="{{.Assets}}page.css" />
+<script type="module" src="{{.Assets}}page.js"></script>
+{{end}}
+
+{{define "body"}}<section class="ringi {{.Screen}}" lang="{{.Lang}}" aria-labelledby="ringi-title">
+<header class="head">
+<h1 id="ringi-title">{{template "phrase" .Heading}}</h1>
+{{- if .Facts}}
+<dl class="facts">{{range .Facts}}<div><dt>{{.Label}}</dt><dd>{{template "text" .Value}}</dd></div>{{end}}</dl>
+{{- end}}
+{{- if and .Link (ne .Screen "notice")}}
+<p class="link"><a href="{{.Link}}">{{if .LinkText}}{{.LinkText}}{{else}}{{.W.History}}{{end}}</a></p>
+{{- end}}
+</header>
+{{- with .Summary}}
+<div class="summary" id="summary" role="alert" tabindex="-1" autofocus="autofocus">
+<p>{{.Words}}</p>
+{{- if .Items}}
+<ul>{{range .Items}}<li>{{if .Target}}<a href="#{{.Target}}">{{template "phrase" .Words}}</a>{{else}}{{template "phrase" .Words}}{{end}}</li>{{end}}</ul>
+{{- end}}
+{{- if .Details}}
+<details><summary>{{$.W.Details}}</summary><p class="details">{{.Details}}</p></details>
+{{- end}}
+</div>
+{{- end}}
+{{- if .Values}}
+<section class="values" aria-labelledby="values-title">
+<h2 id="values-title">{{.W.Form}}</h2>
+<dl>
+{{- range .Values}}
+<div class="value"><dt>{{template "text" .Label}}</dt><dd{{if .Long}} class="long"{{end}}>
+{{- if .Rows}}<div class="scroll"><table><thead><tr>{{range .Columns}}<th scope="col">{{template "text" .}}</th>{{end}}</tr></thead><tbody>{{range .Rows}}<tr>{{range .}}<td>{{template "text" .}}</td>{{end}}</tr>{{end}}</tbody></table></div>
+{{- else}}{{template "text" .Text}}{{end}}
+{{- if .URL}} <a href="{{.URL}}">{{$.W.OpenFile}}</a>{{end -}}
+</dd></div>
+{{- end}}
+</dl>
+</section>
+{{- end}}
+{{- if .Route}}
+<section class="route" aria-labelledby="route-title">
+<h2 id="route-title">{{.W.Route}}</h2>
+<ol>
+{{- range .Route}}
+<li{{if .Current}} class="current" aria-current="step"{{end}}><span class="stage">{{template "text" .Label}}</span> <span class="phase">{{.Phase}}</span>
+{{- if .Parts}}
+<ul>{{range .Parts}}<li><span class="way">{{template "text" .Way}}</span> <span class="state">{{.State}}</span>{{if .Approvers}} <span class="who">{{.Approvers}}</span>{{end}}{{if .Answers}}<ul class="answers">{{range .Answers}}<li>{{.}}</li>{{end}}</ul>{{end}}</li>{{end}}</ul>
+{{- end}}
+</li>
+{{- end}}
+</ol>
+</section>
+{{- end}}
+{{- with .List}}
+<div class="scroll"><table class="list">
+<thead><tr>{{range .Columns}}<th scope="col">{{template "text" .}}</th>{{end}}</tr></thead>
+<tbody>
+{{- range .Rows}}
+<tr><th scope="row">{{if .Link}}<a href="{{.Link}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</th>{{range .Cells}}<td>{{template "text" .}}</td>{{end}}</tr>
+{{- end}}
+</tbody>
+</table></div>
+{{- if not .Rows}}
+<p class="empty">{{$.W.NoRequests}}</p>
+{{- end}}
+{{- if .More}}
+<p class="more"><a href="{{.More}}">{{$.W.Older}}</a></p>
+{{- end}}
+{{- end}}
+{{- with .Notice}}
+<p class="notice">{{.}}</p>
+{{- end}}
+{{- if and .Link (eq .Screen "notice")}}
+<p class="link"><a href="{{.Link}}">{{.LinkText}}</a></p>
+{{- end}}
+{{- with .Home}}
+<section class="entries waiting" aria-labelledby="waiting-title">
+<h2 id="waiting-title">{{$.W.WaitingForYou}}</h2>
+{{- if .Waiting}}
+<ul>{{range .Waiting}}<li><a href="{{.URL}}"{{if .Lang}} lang="{{.Lang}}"{{end}}>{{.Title}}</a> <span class="count">{{.Count}}</span></li>{{end}}</ul>
+{{- else}}
+<p class="empty">{{$.W.NothingWaits}}</p>
+{{- end}}
+</section>
+<section class="entries new" aria-labelledby="new-title">
+<h2 id="new-title">{{$.W.MakeRequest}}</h2>
+{{- if .New}}
+<ul>{{range .New}}<li>{{if .URL}}<a href="{{.URL}}"{{if .Lang}} lang="{{.Lang}}"{{end}}>{{.Title}}</a>{{else}}<span{{if .Lang}} lang="{{.Lang}}"{{end}}>{{.Title}}</span>{{end}}{{with .From}}{{if ne $.Lang "ja"}} {{end}}<span class="from">{{.}}</span>{{end}}</li>{{end}}</ul>
+{{- else}}
+<p class="empty">{{$.W.NoKinds}}</p>
+{{- end}}
+</section>
+<section class="entries mine" aria-labelledby="mine-title">
+<h2 id="mine-title">{{$.W.YourRequests}}</h2>
+{{- if .Mine}}
+<ul>{{range .Mine}}<li><a href="{{.URL}}"{{if .Lang}} lang="{{.Lang}}"{{end}}>{{.Title}}</a></li>{{end}}</ul>
+{{- else}}
+<p class="empty">{{$.W.NoneYet}}</p>
+{{- end}}
+</section>
+{{- if .Admin}}
+<p class="link admin"><a href="{{.Admin}}">{{$.W.AdminLink}}</a></p>
+{{- end}}
+{{- end}}
+{{- if eq .Screen "history"}}
+<ol class="history">
+{{- range .History}}
+<li><p class="what"><time>{{.At}}</time> <span class="did">{{.Did}}</span>{{if .Stage.Text}} <span class="stage">{{template "text" .Stage}}</span>{{end}}{{if .By}} <span class="by">{{.By}}</span>{{end}}</p>
+{{- if .ProxyOf}}<p class="proxy">{{.ProxyOf}}</p>{{end}}
+{{- if .Comment}}<p class="comment">{{.Comment}}</p>{{end}}
+{{- if .Cleared}}<p class="cleared"><span>{{$.W.NowEmpty}}</span> {{template "phrase" .Cleared}}</p>{{end}}
+{{- if .Note}}<p class="note">{{.Note}}</p>{{end -}}
+</li>
+{{- end}}
+</ol>
+{{- if not .History}}
+<p class="empty">{{.W.NoLines}}</p>
+{{- end}}
+{{- end}}
+{{- with .Form}}
+{{- if eq $.Screen "card"}}
+<h2 id="actions-title">{{$.W.Actions}}</h2>
+{{- end}}
+<form class="form" method="post" action="{{.Action}}"{{if eq $.Screen "card"}} aria-labelledby="actions-title"{{end}} novalidate="novalidate"{{if .Multipart}} enctype="multipart/form-data"{{end}} data-kind="{{$.Kind}}" data-screen="{{$.Screen}}"{{if .Before}} data-before="{{.Before}}"{{end}}{{if .MaySubmit}} data-may-submit="{{.MaySubmit}}"{{end}}{{if .FindWords}} data-find-words="{{.FindWords}}"{{end}}>
+{{- if .Token}}
+<input type="hidden" name="_csrf" value="{{.Token}}" />
+{{- end}}
+<input type="hidden" name="_surface" value="{{.Surface}}" />
+<input type="hidden" name="_at" value="{{.At}}" />
+{{- if .Revision}}
+<input type="hidden" name="_revision" value="{{.Revision}}" />
+{{- end}}
+<button type="submit" name="_do" value="stay" class="stay" tabindex="-1" aria-hidden="true"></button>
+{{- with .Requester}}{{template "part" (part $ .)}}{{end}}
+{{- range .Fields}}{{template "part" (part $ .)}}{{end}}
+{{- if .Edit}}
+<fieldset class="edit" data-edit="true"><legend>{{$.W.Edit}}</legend>
+{{- range .Edit}}{{template "part" (part $ .)}}{{end}}
+{{- with .EditRest}}
+<div class="field rest" id="field-{{.ID}}"><ul class="checks" id="checks-{{.ID}}" aria-live="polite">{{range .Checks}}<li data-check="{{.Code}}"{{if not .Failed}} hidden="hidden"{{end}}>{{template "phrase" .Words}}</li>{{end}}</ul></div>
+{{- end}}
+<div class="buttons">{{with .EditButton}}{{template "button" .}}{{end}}</div>
+</fieldset>
+{{- end}}
+{{- with .Comment}}{{template "part" (part $ .)}}{{end}}
+{{- with .SendBack}}{{template "part" (part $ .)}}{{end}}
+{{- if .Approver}}
+<fieldset class="add-approver"><legend>{{$.W.AddApprover}}</legend>
+{{- template "part" (part $ .Approver)}}
+<ul class="parts">{{range $i, $p := .Parts}}<li><span class="way" id="approver-part-{{$i}}">{{template "text" $p.Label}}</span> {{template "partbutton" (described $p.Button (printf "approver-part-%d" $i))}}</li>{{end}}</ul>
+</fieldset>
+{{- end}}
+{{- if .HandOf}}
+<fieldset class="hand-over"><legend>{{$.W.HandOver}}</legend>
+{{- template "part" (part $ .HandOf)}}
+{{- template "part" (part $ .HandTo)}}
+</fieldset>
+{{- end}}
+<div class="buttons">{{range .Buttons}}{{template "button" .}}{{end}}</div>
+</form>
+{{- end}}
+</section>
+{{end}}
+
+{{define "bar"}}<nav class="ringi bar" lang="{{.Language}}">
+{{- if .Home}}<a class="home" href="{{.Home}}">{{.W.HomeLink}}</a>{{end}}
+{{- if .Person}}<span class="person">{{.W.SignedInAs .Person}}</span>{{end}}
+{{- if .Languages}}<span class="languages">{{range .Languages}}<a href="{{.URL}}" lang="{{.Lang}}" hreflang="{{.Lang}}">{{.Text}}</a>{{end}}</span>{{end}}
+{{- if .SignOut}}<form class="sign-out" method="post" action="{{.SignOut}}">{{if .Token}}<input type="hidden" name="_csrf" value="{{.Token}}" />{{end}}<button type="submit" class="plain">{{.W.SignOut}}</button></form>{{end -}}
+</nav>
+{{end}}
+
+{{define "text"}}{{if .Lang}}<span lang="{{.Lang}}">{{.Text}}</span>{{else if .Row}}<span class="row-n">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}
+
+{{define "phrase"}}{{range .}}{{template "text" .}}{{end}}{{end}}
+
+{{define "button"}}<button type="submit" name="_do" value="{{.Value}}" class="{{if .Primary}}primary{{else}}plain{{end}}" data-scope="{{.Scope}}">{{.Text}}</button>{{end}}
+
+{{define "partbutton"}}<button type="submit" name="_do" value="{{.B.Value}}" class="plain" data-scope="{{.B.Scope}}" aria-describedby="{{.By}}">{{.B.Text}}</button>{{end}}
+
+{{define "hints"}}{{if .Hints}}<p class="hint" id="hint-{{.ID}}">{{range $i, $h := .Hints}}{{if $i}} {{end}}<span{{if $h.NoJS}} class="nojs"{{end}}>{{$h.Text}}</span>{{end}}</p>{{end}}{{end}}
+
+{{define "checks"}}<ul class="checks" id="checks-{{.ID}}">{{range .Checks}}<li{{if .Code}} data-check="{{.Code}}"{{end}}{{if .Read}} data-read="{{.Read}}"{{end}}{{if .Other}} data-other="{{.Other}}"{{end}}{{if not .Failed}} hidden="hidden"{{end}}>{{template "phrase" .Words}}</li>{{end}}</ul>{{end}}
+
+{{define "attrs"}} id="field-{{.ID}}"{{if .Field}} data-field="{{.Field}}"{{end}} data-type="{{.Type}}"{{if .Shown}} data-shown="{{.Shown}}"{{end}}{{if .Worked}} data-worked="{{.Worked}}"{{end}}{{if eq .Type "number"}} data-num="{{.Num}}" data-den="{{.Den}}" data-decimals="{{.Decimals}}" data-format="{{.Format}}" data-code="{{.Code}}"{{if .Yen}} data-yen="true"{{end}}{{end}}{{if .Required}} data-required="true"{{end}}{{if .RequiredWhen}} data-required-when="{{.RequiredWhen}}"{{end}}{{if .FindAt}} data-find="{{.FindAt}}"{{end}}{{if .Hidden}} hidden="hidden"{{end}}{{end}}
+
+{{define "part"}}{{$in := .In}}{{$v := .V}}
+{{- if eq $in.Kind "rows"}}
+<fieldset class="field rows"{{template "attrs" $in}} data-rows="{{$in.RowsName}}" aria-describedby="{{$in.Described}}">
+<legend id="{{$in.ID}}" tabindex="-1"{{if eq $in.Focus "input"}} autofocus="autofocus"{{end}}>{{template "text" $in.Label}}</legend>
+<input type="hidden" name="s.{{$in.Path}}" value="1"{{template "off" $in}} />
+{{- template "hints" $in}}
+<ol class="row-list">{{range $in.Rows}}<li>{{template "row" (rowpart $v $in .)}}</li>{{end}}</ol>
+<template class="row-template"><li>{{template "row" (rowpart $v $in $in.Template)}}</li></template>
+<button type="submit" name="_do" value="{{$in.AddValue}}" class="plain add-row"{{template "off" $in}}>{{$v.W.AddRow}}</button>
+{{template "checks" $in}}
+</fieldset>
+{{- else if eq $in.Kind "output"}}
+<div class="field output"{{template "attrs" $in}}>
+<span class="label" id="label-{{$in.ID}}">{{template "text" $in.Label}}</span>
+<output id="{{$in.ID}}" aria-labelledby="label-{{$in.ID}}" aria-describedby="{{$in.Described}}">{{$in.Value}}</output>
+{{- template "hints" $in}}
+{{template "checks" $in}}
+</div>
+{{- else if eq $in.Kind "checkbox"}}
+<div class="field check"{{template "attrs" $in}}>
+{{- if $in.Marker}}<input type="hidden" name="s.{{$in.Path}}" value="1"{{template "off" $in}} />{{end}}
+<input type="checkbox" id="{{$in.ID}}" name="{{$in.Name}}" value="true"{{if $in.Checked}} checked="checked"{{end}} aria-describedby="{{$in.Described}}"{{if $in.Invalid}} aria-invalid="true"{{end}}{{if eq $in.Focus "input"}} autofocus="autofocus"{{end}}{{template "off" $in}} />
+<label for="{{$in.ID}}">{{template "text" $in.Label}}</label>
+{{- template "hints" $in}}
+{{template "checks" $in}}
+</div>
+{{- else}}
+<div class="field {{$in.Kind}}"{{template "attrs" $in}}>
+{{- if $in.Marker}}<input type="hidden" name="s.{{$in.Path}}" value="1"{{template "off" $in}} />{{end}}
+<label for="{{$in.ID}}">{{template "text" $in.Label}}{{if or $in.Required $in.RequiredWhen}} <span class="required"{{if not $in.Required}} hidden="hidden"{{end}}>{{$v.W.Required}}</span>{{end}}</label>
+{{- template "hints" $in}}
+{{- if eq $in.Kind "text"}}
+<input type="text" id="{{$in.ID}}" name="{{$in.Name}}" value="{{$in.Value}}"{{template "aria" $in}} />
+{{- else if eq $in.Kind "typed"}}
+<input type="text" id="{{$in.ID}}" name="{{$in.Name}}" value="{{$in.Value}}" autocomplete="off" spellcheck="false"{{template "aria" $in}} />
+{{- else if eq $in.Kind "find"}}
+<span class="find-box"><input type="text" id="{{$in.ID}}" name="{{$in.Name}}" value="{{$in.Value}}" autocomplete="off" spellcheck="false"{{template "aria" $in}} /><button type="submit" name="_do" value="{{$in.FindValue}}" class="plain find"{{template "off" $in}}>{{$v.W.Search}}</button></span>
+<p class="named" id="named-{{$in.ID}}"{{if not $in.Named}} hidden="hidden"{{end}}>{{$in.Named}}</p>
+<div class="found" id="found-{{$in.ID}}">
+<p class="status" id="status-{{$in.ID}}" role="status"{{if eq $in.Focus "status"}} tabindex="-1" autofocus="autofocus"{{end}}>
+{{- if $in.Searched}}{{if $in.Found}}{{$v.W.FoundBy $in.Value}}{{else}}{{$v.W.NoneFound $in.Value}}{{end}}{{if $in.More}}{{if ne $v.Lang "ja"}} {{end}}{{$v.W.MoreFound}}{{end}}{{end -}}
+</p>
+{{- if and $in.Searched $in.Found}}
+<ul>{{range $in.Found}}<li><button type="submit" name="_do" value="{{.Do}}" class="plain" data-value="{{.Value}}" data-name="{{.Name}}"{{template "off" $in}}>{{.Label}}</button></li>{{end}}</ul>
+{{- end}}
+</div>
+{{- else if eq $in.Kind "longtext"}}
+<textarea id="{{$in.ID}}" name="{{$in.Name}}" rows="4"{{template "aria" $in}}>
+{{$in.Value}}</textarea>
+{{- else if eq $in.Kind "number"}}
+<span class="amount"><input type="text" inputmode="decimal" autocomplete="off" id="{{$in.ID}}" name="{{$in.Name}}" value="{{$in.Value}}"{{template "aria" $in}} />{{if $in.Unit}} <span class="unit">{{$in.Unit}}</span>{{end}}</span>
+{{- else if eq $in.Kind "date"}}
+<input type="date" id="{{$in.ID}}" name="{{$in.Name}}" value="{{$in.Value}}"{{if $in.Min}} min="{{$in.Min}}"{{end}}{{if $in.Max}} max="{{$in.Max}}"{{end}}{{template "aria" $in}} />
+{{- else if eq $in.Kind "select"}}
+<select id="{{$in.ID}}" name="{{$in.Name}}"{{template "aria" $in}}>{{range $in.Options}}<option value="{{.Value}}"{{if .Label.Lang}} lang="{{.Label.Lang}}"{{end}}{{if .Selected}} selected="selected"{{end}}>{{.Label.Text}}</option>{{end}}</select>
+{{- else if eq $in.Kind "file"}}
+{{- if $in.Kept}}
+<p class="kept">{{$v.W.Attached}} {{if $in.KeptURL}}<a href="{{$in.KeptURL}}">{{$in.Kept}}</a>{{else}}<span>{{$in.Kept}}</span>{{end}}</p>
+<input type="hidden" name="a.{{$in.Path}}" value="{{$in.Kept}}"{{template "off" $in}} />
+<p class="remove"><input type="checkbox" id="rm-{{$in.ID}}" name="d.{{$in.Path}}" value="1"{{if $in.Remove}} checked="checked"{{end}}{{template "off" $in}} /> <label for="rm-{{$in.ID}}">{{$v.W.RemoveFile}}</label></p>
+{{- end}}
+<input type="file" id="{{$in.ID}}" name="{{$in.Name}}"{{template "aria" $in}} />
+{{- end}}
+{{template "checks" $in}}
+</div>
+{{- end}}
+{{- end}}
+
+{{define "aria"}} aria-describedby="{{.Described}}"{{if .Required}} aria-required="true"{{end}}{{if .Invalid}} aria-invalid="true"{{end}}{{if eq .Focus "input"}} autofocus="autofocus"{{end}}{{template "off" .}}{{end}}
+
+{{define "off"}}{{if .Off}} disabled="disabled"{{end}}{{end}}
+
+{{define "row"}}<fieldset class="row" data-row="{{.R.N}}"><legend>{{template "phrase" .R.Legend}}</legend>
+<input type="hidden" name="r.{{.In.RowsName}}" value="{{.R.N}}"{{template "off" .R}} />
+{{- range .R.Fields}}{{template "part" (part $.V .)}}{{end}}
+<button type="submit" name="_do" value="{{.R.RemoveValue}}" class="plain remove-row"{{template "off" .R}}>{{.V.W.RemoveRow}}</button>
+</fieldset>{{end}}

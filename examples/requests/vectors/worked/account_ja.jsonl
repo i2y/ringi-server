@@ -1,0 +1,17 @@
+{"from":"scenario 管理者の権限の申請, line 59","input":{"form":{"person":"e1203","system":"crm","level":"admin","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 上長がセキュリティで一度だけ答える, line 71","input":{"form":{"person":"e7102","system":"wiki","level":"admin","until":"2027-03-31","reason":"情報セキュリティ課のページを管理するため"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, after line 60: made on the revision before","input":{"form":{"person":"e1203","system":"crm","level":"admin","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため"},"edited":{}},"answer":{"fields":{}}}
+{"from":"a form with nothing filled in","input":{"form":{},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `person` left empty","input":{"form":{"system":"crm","level":"admin","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `system` left empty","input":{"form":{"person":"e1203","level":"admin","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `level` left empty","input":{"form":{"person":"e1203","system":"crm","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `level` `read`","input":{"form":{"person":"e1203","system":"crm","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため","level":"read"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `level` `write`","input":{"form":{"person":"e1203","system":"crm","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため","level":"write"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `level` a value that is none of its values","input":{"form":{"person":"e1203","system":"crm","until":"2027-03-31","reason":"課の新しいメンバーのアカウントを作るため","level":"none_of_them"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `until` left empty","input":{"form":{"person":"e1203","system":"crm","level":"admin","reason":"課の新しいメンバーのアカウントを作るため"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `until` at its first day","input":{"form":{"person":"e1203","system":"crm","level":"admin","reason":"課の新しいメンバーのアカウントを作るため","until":"2026-01-01"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `until` the day before its range","input":{"form":{"person":"e1203","system":"crm","level":"admin","reason":"課の新しいメンバーのアカウントを作るため","until":"2025-12-31"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `until` at its last day","input":{"form":{"person":"e1203","system":"crm","level":"admin","reason":"課の新しいメンバーのアカウントを作るため","until":"2028-12-31"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `until` the day after its range","input":{"form":{"person":"e1203","system":"crm","level":"admin","reason":"課の新しいメンバーのアカウントを作るため","until":"2029-01-01"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `reason` left empty","input":{"form":{"person":"e1203","system":"crm","level":"admin","until":"2027-03-31"},"edited":null},"answer":{"fields":{}}}
+{"from":"scenario 管理者の権限の申請, line 59; `reason` of spaces alone","input":{"form":{"person":"e1203","system":"crm","level":"admin","until":"2027-03-31","reason":"   "},"edited":null},"answer":{"fields":{}}}
