@@ -250,8 +250,9 @@ And the rest of `*Server`:
 - `Current(kind, at)` answers the version of a kind a new request takes at a time (2.1).
 - `Waiting(ctx, person, query)` and `Mine(ctx, person, query)` answer the tickets that wait for a
   person (10.2) and a person's own requests (10.4), a page at a time, as `list_waiting` and
-  `list_mine` do. `CountWaiting(ctx, person)` answers how many tickets wait for a person, by kind,
-  for the start page of the pages (10.2).
+  `list_mine` do. `CountWaiting(ctx, person)` answers how many tickets wait for a person, by kind
+  (10.2), and `CountMine(ctx, person)` how many requests of their own there are, by kind and by state
+  (10.4), for the start page of the pages.
 - `People(ctx)` and `Teams(ctx)` answer the people and the teams of the version of the organization
   in effect today (9.1).
 - `Zone(kind, version)` answers the UTC offset a kind reads its days in (9.3), and `Now()` the time
@@ -907,6 +908,13 @@ pages counts with it (10.2); with a store that is not one, the server reads the 
 them. The PostgreSQL and memory stores are. The conformance test `WaitingCounts` (12) checks the
 count against `Waiting`.
 
+It may count a person's own requests too, as a `server.MineCounter`: `CountMine(ctx, person)` answers,
+by kind, how many of the tickets `Mine` reads for the person are in each status (`MineCount.Status`),
+and how many of those back with their requester were sent back (`MineCount.SentBack`: the ticket says
+by whom in `sent_back_by`, and the requester's side took back the others with `withdraw`). The start
+page counts with it too (10.4), and with a store that is not one the server reads the tickets to count
+them. The PostgreSQL and memory stores are. The conformance test `MineOrder` (12) checks the count.
+
 ### 4.2 The tables (PostgreSQL)
 
 In a schema of their own (`requests` unless `postgres.New` is given another):
@@ -1517,9 +1525,17 @@ the person as such, and tickets of the same time by ID, from the highest. It pag
 does (`limit`, `before`, and `more` in the answer), and `kind` keeps one kind (400 for a kind the
 server does not serve). A
 person may always see their own requests. `Server.Mine` answers the same with a `MineQuery` (`Kind`,
-`Before`, `Limit`), for the pages and the screens (`web`). The store reads one page (`Store.Mine`);
-PostgreSQL reads it by the index `people_mine` (`person`, the time, the ticket, of the rows that are
-the person's own).
+`Status`, `Before`, `Limit`), for the pages and the screens (`web`). The store reads one page
+(`Store.Mine`); PostgreSQL reads it by the index `people_mine` (`person`, the time, the ticket, of the
+rows that are the person's own).
+
+The start page of the pages says how many of a person's own requests of each kind are in each state
+(`Server.CountMine`): the tickets `Server.Mine` answers with no query, counted, without reading them.
+When the store is a `MineCounter` (4.1), it counts them; with another store, the server reads them all
+and counts them. PostgreSQL counts in one query, which reads the person's own rows of `people` by the
+index `people_mine` with their tickets, and answers a row for each kind and status, and no ticket's
+JSON. Under each kind the page lists five of them: the ones back with the person first (`MineQuery`'s
+`Status`, `with_requester`), whenever they were made, then the newest.
 
 ## 11. Versions
 
@@ -1602,11 +1618,15 @@ Ten tests check a server against the contract, and all run on any store:
 - **The order of one's own** (`conformance.MineOrder`): six tickets of the vectors, of two kinds, are
   put in a store emptied for it as one person's requests, made at five times (two at one time, and
   two 400 nanoseconds apart, of one time to the microsecond, the later with the lower ID), the
-  tickets of one time put in with the lower ID first; and one of another person's. Then: (a)
-  `Store.Mine` reads the person's the newest first by when each was made, then by ID from the
-  highest (10.4), and so do its pages and `Kind`, without the other person's; (b) `Server.Mine`
-  answers them in that order, a page at a time too; (c) the API's `list_mine` answers them as
-  `list_waiting` does in (e) above.
+  tickets of one time put in with the lower ID first; and one of another person's. Three of the
+  person's are back with them (two sent back by someone who has no request of their own, one the
+  person took back), and the others are done. Then, and again after one that was sent back is
+  withdrawn: (a) `Store.Mine` reads the person's the newest first by when each was made, then by ID
+  from the highest (10.4), and so do its pages, `Kind` and `Status`, without the other person's, and
+  none for the one who sent some back; (b) `Server.Mine` answers them in that order, a page at a time
+  too; (c) the API's `list_mine` answers them as `list_waiting` does in (e) above; (d)
+  `Server.CountMine` is the counts the test says, by kind and by status, with how many were sent back,
+  and so is the store's when it is a `MineCounter`.
 - **Whether a reminder has rung** (`conformance.Reminded`): a vector of a clock that rings the
   reminder of a stage that the kind's vectors pause is given to a server (its ticket's `reminded`
   false, the one it answers true): the store keeps the ticket answered, its stage's `reminded` true.
@@ -1674,10 +1694,10 @@ they agree on all three. `WaitingOrder` puts in 9 tickets of `account` and `acco
 people, and gives one of them the comment of a vector of `account_ja` through the HTTP handler: the
 order and the times agree on the memory store and on PostgreSQL, and so do the pages of
 `list_waiting`. `MineOrder` puts in 7 tickets of `account` and `account_ja`, 6 of them one person's:
-the order and the pages of `list_mine` agree on both. `Reminded` agrees on both: the stage whose
-reminder rang keeps `reminded` through a pause and a resume. `Administration` agrees on both, on the
-examples' first kind (`account`). `Keeping` agrees on the memory store with the memory files and on
-PostgreSQL with its files.
+the order, the pages of `list_mine` and the counts agree on both, and on the store that does not
+count them. `Reminded` agrees on both: the stage whose reminder rang keeps `reminded` through a pause
+and a resume. `Administration` agrees on both, on the examples' first kind (`account`). `Keeping`
+agrees on the memory store with the memory files and on PostgreSQL with its files.
 
 The examples also make the vectors on the screens `web` serves (`examples/web_vectors_test.go`,
 which needs Node): each of the 2,022 lines a person makes on a screen is made on the screen read
@@ -2172,7 +2192,8 @@ said as a problem of the data (400), as `ImportOrganization` says it at start (2
 pages (section 3 of its DESIGN.md: the person, the refusal of what another site sends, the sizes,
 the headers), made by package `screens/page` beside the start page, with their words in English and
 in Japanese. A page asks the same operations as the API (`Do`, `Via: "pages"`), and is shown in the
-language chosen, as the other pages are (its section 9.4). The pages need no script.
+language chosen, as the other pages are (its section 9.4). Each page but the first links back to the
+first under its head. The pages need no script.
 
 | Page | What it shows, and its post |
 |---|---|

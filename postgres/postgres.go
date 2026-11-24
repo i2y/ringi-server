@@ -349,11 +349,33 @@ func (s *Store) Mine(ctx context.Context, person string, q server.MineQuery) ([]
 	if q.Limit > 0 {
 		limit = q.Limit
 	}
-	rows, err := s.q(ctx).Query(ctx, s.sql["mine"], person, q.Kind, q.Before, limit)
+	rows, err := s.q(ctx).Query(ctx, s.sql["mine"], person, q.Kind, q.Before, limit, q.Status)
 	if err != nil {
 		return nil, err
 	}
 	return collectTickets(rows)
+}
+
+// CountMine counts a person's own tickets, by kind and by state.
+func (s *Store) CountMine(ctx context.Context, person string) (map[string]server.MineCount, error) {
+	rows, err := s.q(ctx).Query(ctx, s.sql["count_mine"], person)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]server.MineCount{}
+	var kind, status string
+	var n, back int
+	_, err = pgx.ForEachRow(rows, []any{&kind, &status, &n, &back}, func() error {
+		c := out[kind]
+		if c.Status == nil {
+			c.Status = map[string]int{}
+		}
+		c.Status[status] = n
+		c.SentBack += back
+		out[kind] = c
+		return nil
+	})
+	return out, err
 }
 
 // collectTickets reads the rows of tickets with their people.

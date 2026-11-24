@@ -102,9 +102,10 @@ no inline script or style: they work under `Content-Security-Policy: default-src
 script-src 'self'; style-src 'self'; form-action 'self'`.
 
 Around the screens, `pages.Home` makes the start page (what waits for the person, the requests they
-may make, their own requests, each kind a link), `pages.Bar` the bar a server puts at the top of
-each page (the start page, who is signed in, the other languages, signing out), `pages.Notice`
-a page that says one thing in place of the page asked for ("Not found", "Not signed in", "The form
+may make, their own requests with how many are in each state: each kind a link, with a few of its
+tickets under it), `pages.Bar` the bar a server puts at the top of each page (the start page, who is
+signed in, the other languages, signing out), `pages.Notice` a page that says one thing in place of
+the page asked for ("Not found", "Not signed in", "The form
 could not be read", "Too large to send", "The server failed"), and `pages.Offered` one that says a
 kind may be requested from a day, in the words the API's `unoffered` answer and the A2UI screen use
 (`screens.OfferedWords`). On the start page, an entry of `Home.New` whose kind has no version in

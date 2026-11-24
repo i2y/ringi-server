@@ -45,6 +45,9 @@ func (h *Handler) routeAdmin() {
 func (h *Handler) adminShow(w http.ResponseWriter, r *http.Request, p server.Person, lang string, status int, in page.Admin) {
 	ps := h.newestPages()
 	in.Language = lang
+	if in.What != page.AdminHomePage {
+		in.Back = keepLang(r, adminPath)
+	}
 	if in.Now.IsZero() {
 		in.Now = h.srv.Now()
 	}

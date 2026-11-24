@@ -35,11 +35,14 @@ type Admin struct {
 	MoreProblems int
 	Stopped      bool
 	Now          time.Time // when the page is shown: a post's key reads it
-	Home         *AdminParts
-	Kinds        []AdminKind
-	Org          *AdminOrg
-	Draft        *AdminDraft
-	Records      *AdminRecords
+	// Back is the address of the administration's start page: a link under the head leads back to
+	// it on a page that is not it; "" shows none.
+	Back    string
+	Home    *AdminParts
+	Kinds   []AdminKind
+	Org     *AdminOrg
+	Draft   *AdminDraft
+	Records *AdminRecords
 }
 
 // AdminParts are the parts of the administration the person may use, each by its address ("" for

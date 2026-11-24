@@ -356,6 +356,25 @@ type WaitingCounter interface {
 	CountWaiting(ctx context.Context, person string) (map[string]int, error)
 }
 
+// MineCounter is a store that counts a person's own requests without reading them: Server.CountMine
+// asks it. memstore and postgres have it. With a store that does not, CountMine reads the person's
+// own requests, as Mine does, to count them.
+type MineCounter interface {
+	// CountMine answers how many tickets are the person's own, by kind (TicketRecord.Kind): the
+	// tickets Mine reads for the person, counted. A kind with none is left out.
+	CountMine(ctx context.Context, person string) (map[string]MineCount, error)
+}
+
+// MineCount is how many of a person's own requests of a kind there are.
+type MineCount struct {
+	// Status is how many are in each status ("in_progress", "with_requester", "approved", …); a
+	// status none are in is left out.
+	Status map[string]int
+	// SentBack is how many of those back with their requester ("with_requester") were sent back: the
+	// ticket says by whom (sent_back_by). The others the requester's side took back (withdraw).
+	SentBack int
+}
+
 // TicketRecord is a ticket as the store keeps it.
 type TicketRecord struct {
 	ID      string
@@ -381,6 +400,9 @@ type TicketRecord struct {
 type MineQuery struct {
 	// Kind keeps the tickets of one kind of request; "" keeps all.
 	Kind string
+	// Status keeps the tickets of one status ("with_requester", those back with their requester); ""
+	// keeps all.
+	Status string
 	// Before keeps the tickets older than this one (the last of the page before); "" starts from the
 	// newest. A ticket that is not the person's own keeps none.
 	Before string

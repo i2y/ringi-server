@@ -3,6 +3,7 @@ package examples
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/memstore"
@@ -566,6 +568,376 @@ func TestPagesRequest(t *testing.T) {
 	for _, e := range es {
 		if e.Person != "" && e.Via != "pages" {
 			t.Errorf("an entry not made on the pages: %+v", e)
+		}
+	}
+}
+
+// TestPagesSentBack checks the notice a card shows of a request back with its requester, and the way
+// it links to the form the request is made again in: they are for a request back with its requester
+// alone (never just after the request was made, nor once it is decided) and for the requester's side
+// alone, so an approver who may see the ticket reads neither, though the gate lets any of the staff
+// make a request (resubmit asks the gate's submit). The notice says that the request was sent back,
+// or, of one the requester withdrew, that it is back with them.
+func TestPagesSentBack(t *testing.T) {
+	s := firstSubmit(t, "leave")
+	s.form["days"] = 3 // a short leave: the manager alone answers it
+	srv, h := newWeb(t, webSetup{Store: memstore.New(), At: s.at, Gate: &Gate{}})
+	id, w := submitAPI(t, h, "leave", s.requester, "sent-back", s.form)
+	if w.code != http.StatusOK {
+		t.Fatalf("the request: %d %s", w.code, w.body)
+	}
+	card := "/pages/tickets/" + id + "?lang=en"
+	form := "/pages/tickets/" + id + "/form?lang=en"
+	// noBanner is why a card must not say the request was sent back, nor link to its form.
+	noBanner := func(what string, w *httptest.ResponseRecorder) {
+		t.Helper()
+		text := pageText(t, w.Body.Bytes())
+		links := pageLinks(t, w.Body.Bytes())
+		if w.Code != http.StatusOK || strings.Contains(text, "This request has been sent back.") || strings.Contains(text, "This request has been withdrawn") || slices.Contains(links, form) {
+			t.Errorf("%s: %d %s %v", what, w.Code, text, links)
+		}
+	}
+	// back is what the requester reads on the card of a request back with them: how it came back,
+	// alone, and the way to the form it is made again in.
+	back := func(what string, en, ja string) {
+		t.Helper()
+		for lang, says := range map[string]string{"en": en, "ja": ja} {
+			w := browse(h, "GET", "/pages/tickets/"+id+"?lang="+lang, s.requester, nil)
+			text := pageText(t, w.Body.Bytes())
+			others := []string{"This request has been sent back.", "This request has been withdrawn, and is back with its requester.", "この申請は差し戻されています。", "この申請は取り下げられ、申請者に戻っています。"}
+			said := slices.DeleteFunc(others, func(x string) bool { return !strings.Contains(text, x) })
+			if w.Code != http.StatusOK || !slices.Equal(said, []string{says}) || !slices.Contains(pageLinks(t, w.Body.Bytes()), "/pages/tickets/"+id+"/form?lang="+lang) {
+				t.Errorf("the requester's card of %s (%s): %d %s %v", what, lang, w.Code, text, pageLinks(t, w.Body.Bytes()))
+			}
+		}
+	}
+	// just made: neither the requester nor the approver reads of a send-back
+	noBanner("the requester's card of a request just made", browse(h, "GET", card, s.requester, nil))
+	noBanner("the approver's card of a request just made", browse(h, "GET", card, s.approver, nil))
+	// sent back: the requester reads of it and finds the form it is made again in
+	rev := func() json.RawMessage { return ticketOf(t, srv, s.requester, id).Revision }
+	no, _ := json.Marshal(map[string]any{"revision": rev(), "comment": "Write who covers, please."})
+	if w := send(h, "POST", "/tickets/"+id+"/send_back", s.approver, no, "Content-Type", "application/json", "Idempotency-Key", "back"); w.Code != http.StatusOK {
+		t.Fatalf("the send-back: %d %s", w.Code, w.Body.String())
+	}
+	back("a request sent back", "This request has been sent back.", "この申請は差し戻されています。")
+	// the approver who sent it back, and so may see it, is not of the requester's side
+	noBanner("the approver's card of a request sent back", browse(h, "GET", card, s.approver, nil))
+	// made again, then decided: the notice is gone
+	again, _ := json.Marshal(map[string]any{"revision": rev(), "form": map[string]any{"reason": "A family visit; e1201 covers"}, "comment": "e1201 covers."})
+	if w := send(h, "POST", "/requests/leave/tickets/"+id+"/resubmit", s.requester, again, "Content-Type", "application/json", "Idempotency-Key", "again"); w.Code != http.StatusOK {
+		t.Fatalf("the request made again: %d %s", w.Code, w.Body.String())
+	}
+	noBanner("the requester's card of a request made again", browse(h, "GET", card, s.requester, nil))
+	// withdrawn by the requester, and made again: no one sent it back
+	mine, _ := json.Marshal(map[string]any{"revision": rev(), "comment": "One more change."})
+	if w := send(h, "POST", "/tickets/"+id+"/withdraw", s.requester, mine, "Content-Type", "application/json", "Idempotency-Key", "withdraw"); w.Code != http.StatusOK {
+		t.Fatalf("the withdrawal: %d %s", w.Code, w.Body.String())
+	}
+	if tk := ticketOf(t, srv, s.requester, id); tk.Status != "with_requester" {
+		t.Fatalf("the state of a request withdrawn: %s", tk.Status)
+	}
+	back("a request withdrawn", "This request has been withdrawn, and is back with its requester.", "この申請は取り下げられ、申請者に戻っています。")
+	noBanner("the approver's card of a request withdrawn", browse(h, "GET", card, s.approver, nil))
+	again, _ = json.Marshal(map[string]any{"revision": rev(), "form": map[string]any{"reason": "A family visit; e1202 covers"}, "comment": "e1202 covers."})
+	if w := send(h, "POST", "/requests/leave/tickets/"+id+"/resubmit", s.requester, again, "Content-Type", "application/json", "Idempotency-Key", "again-2"); w.Code != http.StatusOK {
+		t.Fatalf("the request made again after it was withdrawn: %d %s", w.Code, w.Body.String())
+	}
+	noBanner("the requester's card of a request made again after it was withdrawn", browse(h, "GET", card, s.requester, nil))
+	yes, _ := json.Marshal(map[string]any{"revision": rev(), "comment": "Have a good trip."})
+	if w := send(h, "POST", "/tickets/"+id+"/approve", s.approver, yes, "Content-Type", "application/json", "Idempotency-Key", "yes"); w.Code != http.StatusOK {
+		t.Fatalf("the approval: %d %s", w.Code, w.Body.String())
+	}
+	if tk := ticketOf(t, srv, s.requester, id); tk.Status != "approved" {
+		t.Fatalf("the request's state: %s", tk.Status)
+	}
+	noBanner("the requester's card of a request approved", browse(h, "GET", card, s.requester, nil))
+	noBanner("the approver's card of a request approved", browse(h, "GET", card, s.approver, nil))
+}
+
+// startPage is a section of the start page as a person reads it: each kind's title, what the section
+// says after it, and the tickets it lists, each by its ID, its state, its stage, who it names and its
+// short line.
+type startPage struct {
+	title, summary, count string
+	tickets               [][]string // ID, data-status, state, stage, who
+	hrefs                 []string
+}
+
+// startPageOf reads a section ("waiting", "new", "mine") of the start page.
+func startPageOf(t *testing.T, b []byte, section string) []startPage {
+	t.Helper()
+	root, err := readPage(b)
+	if err != nil {
+		t.Fatalf("the page is not well-formed: %v", err)
+	}
+	has := func(class string) func(n *pageNode) bool {
+		return func(n *pageNode) bool { return slices.Contains(strings.Fields(n.attr["class"]), class) }
+	}
+	text := func(ns []*pageNode) string {
+		if len(ns) == 0 {
+			return ""
+		}
+		return strings.Join(strings.Fields(ns[0].content()), " ")
+	}
+	var out []startPage
+	for _, sec := range root.all(func(n *pageNode) bool { return has("entries")(n) && has(section)(n) }) {
+		for _, li := range sec.all(func(n *pageNode) bool {
+			return n.name == "li" && !has("entry-tickets")(n.parent)
+		}) {
+			e := startPage{
+				title: text(li.all(func(n *pageNode) bool { return n.name == "a" })), summary: text(li.all(has("summary-line"))), count: text(li.all(has("count"))),
+			}
+			for _, ul := range li.all(has("entry-tickets")) {
+				for _, tk := range ul.all(func(n *pageNode) bool { return n.name == "li" }) {
+					a := tk.all(func(n *pageNode) bool { return n.name == "a" })
+					st := tk.all(has("status"))
+					if len(a) != 1 || len(st) != 1 {
+						t.Fatalf("a ticket of the start page has %d links and %d states", len(a), len(st))
+					}
+					e.tickets = append(e.tickets, []string{text(a), st[0].attr["data-status"], text(st), text(tk.all(has("stage"))), text(tk.all(has("who")))})
+					e.hrefs = append(e.hrefs, a[0].attr["href"])
+				}
+			}
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// TestPagesStartPage checks what the start page lists of a person's requests and of what waits for
+// them: all of them counted, by their states, and five listed, the ones back with the person first
+// (one sent back, one they withdrew) whenever they were made, then the newest; the tickets that wait,
+// the newest first. Each line names someone other than the person: the requester of one that waits,
+// who made a request for them, or whom they made it for. The pages it leads to link back to it, and
+// those of a ticket to the ticket's.
+func TestPagesStartPage(t *testing.T) {
+	s := firstSubmit(t, "leave")
+	s.form["days"] = 3 // a short leave: the manager alone answers it
+	clock := servertest.NewClock(s.at)
+	made := 0
+	srv, h := newWeb(t, webSetup{Store: memstore.New(), Clock: clock, Gate: &Gate{}, Config: func(c *server.Config) {
+		c.NewTicketID = func() string { made++; return fmt.Sprintf("S-%d", made) }
+	}})
+	var ids []string
+	for i := range 7 {
+		id, w := submitAPI(t, h, "leave", s.requester, fmt.Sprintf("start-%d", i), s.form)
+		if w.code != http.StatusOK {
+			t.Fatalf("request %d: %d %s", i, w.code, w.body)
+		}
+		ids = append(ids, id)
+		clock.Add(time.Minute)
+	}
+	do := func(person, id, op, comment string) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"revision": ticketOf(t, srv, s.requester, id).Revision, "comment": comment})
+		if w := send(h, "POST", "/tickets/"+id+"/"+op, person, body, "Content-Type", "application/json", "Idempotency-Key", op); w.Code != http.StatusOK {
+			t.Fatalf("%s of %s: %d %s", op, id, w.Code, w.Body.String())
+		}
+		clock.Add(time.Minute)
+	}
+	do(s.approver, ids[0], "send_back", "Write who covers, please.")
+	do(s.approver, ids[1], "approve", "Have a good trip.")
+	do(s.requester, ids[2], "withdraw", "Another day, perhaps.")
+
+	home := func(person, lang string) []byte {
+		t.Helper()
+		w := browse(h, "GET", "/pages/?lang="+lang, person, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("the start page of %s: %d %.300s", person, w.Code, w.Body.String())
+		}
+		pageHeadersOK(t, "the start page of "+person, w)
+		return w.Body.Bytes()
+	}
+	idsOf := func(e startPage) []string {
+		var out []string
+		for _, x := range e.tickets {
+			out = append(out, x[0])
+		}
+		return out
+	}
+	for _, c := range []struct{ lang, summary, back, taken, waiting, count, two string }{
+		{"en", "1 sent back, 1 to be resubmitted, 4 waiting, 1 approved", "Sent back", "To be resubmitted", "Waiting", "(4)", "(2)"},
+		{"ja", "差し戻し 1・再申請待ち 1・承認待ち 4・承認 1", "差し戻し", "再申請待ち", "承認待ち", "4件", "2件"},
+	} {
+		b := home(s.requester, c.lang)
+		mine := startPageOf(t, b, "mine")
+		if len(mine) != 1 || mine[0].summary != c.summary || !slices.Equal(idsOf(mine[0]), []string{ids[2], ids[0], ids[6], ids[5], ids[4]}) {
+			t.Fatalf("%s: the requester's own: %+v; want %q and the two back with them, then the newest three", c.lang, mine, c.summary)
+		}
+		for i, want := range [][]string{{ids[2], "with_requester", c.taken, "", ""}, {ids[0], "with_requester", c.back, "", ""}} {
+			if x := mine[0].tickets[i]; !slices.Equal(x, want) || mine[0].hrefs[i] != "/pages/tickets/"+want[0]+"?lang="+c.lang {
+				t.Errorf("%s: one back with the requester: %q to %s; want %q", c.lang, x, mine[0].hrefs[i], want)
+			}
+		}
+		if x := mine[0].tickets[2]; x[1] != "in_progress" || x[2] != c.waiting || x[3] == "" || x[4] != "" {
+			t.Errorf("%s: one at a stage: %q", c.lang, x)
+		}
+		// the ones back with the requester wait for them too, whom their lines do not name
+		back := startPageOf(t, b, "waiting")
+		if len(back) != 1 || back[0].count != c.two || !slices.Equal(idsOf(back[0]), []string{ids[2], ids[0]}) || back[0].tickets[0][2] != c.taken || back[0].tickets[1][2] != c.back ||
+			back[0].tickets[0][4] != "" || back[0].tickets[1][4] != "" {
+			t.Errorf("%s: what waits for the requester: %+v", c.lang, back)
+		}
+		waiting := startPageOf(t, home(s.approver, c.lang), "waiting")
+		if len(waiting) != 1 || waiting[0].count != c.count || !slices.Equal(idsOf(waiting[0]), []string{ids[6], ids[5], ids[4], ids[3]}) {
+			t.Fatalf("%s: what waits for the approver: %+v", c.lang, waiting)
+		}
+		for _, x := range waiting[0].tickets {
+			if x[1] != "in_progress" || x[3] == "" || x[4] == "" || x[4] == s.requester {
+				t.Errorf("%s: one that waits for the approver: %q", c.lang, x)
+			}
+		}
+		// the pages it leads to link back to it, and a ticket's to the ticket
+		home := map[string]string{"en": "← Back to the start page", "ja": "← ホームへ戻る"}[c.lang]
+		request := map[string]string{"en": "← Back to the request", "ja": "← 申請へ戻る"}[c.lang]
+		for _, x := range [][3]string{
+			{"mine/leave", home, "/pages/?lang=" + c.lang},
+			{"waiting/leave", home, "/pages/?lang=" + c.lang},
+			{"requests/leave/new", home, "/pages/?lang=" + c.lang},
+			{"tickets/" + ids[0], home, "/pages/?lang=" + c.lang},
+			{"tickets/" + ids[0] + "/form", request, "/pages/tickets/" + ids[0] + "?lang=" + c.lang},
+			{"tickets/" + ids[0] + "/history", request, "/pages/tickets/" + ids[0] + "?lang=" + c.lang},
+		} {
+			w := browse(h, "GET", "/pages/"+x[0]+"?lang="+c.lang, s.requester, nil)
+			root, err := readPage(w.Body.Bytes())
+			if w.Code != http.StatusOK || err != nil {
+				t.Fatalf("%s: %d %v", x[0], w.Code, err)
+			}
+			var got [][2]string
+			for _, p := range root.all(func(n *pageNode) bool { return n.name == "p" && n.attr["class"] == "link back" }) {
+				for _, a := range p.all(func(n *pageNode) bool { return n.name == "a" }) {
+					got = append(got, [2]string{strings.TrimSpace(a.content()), a.attr["href"]})
+				}
+			}
+			if !slices.Equal(got, [][2]string{{x[1], x[2]}}) {
+				t.Errorf("%s: %s links back to %q; want %q", c.lang, x[0], got, x[1:])
+			}
+		}
+	}
+
+	// two made for another: one the requester made for someone, one someone made for them
+	other := "e1101"
+	if other == s.requester {
+		other = "e1201"
+	}
+	all, err := srv.Mine(t.Context(), server.Person{ID: s.requester}, server.MineQuery{Limit: 1})
+	if err != nil || len(all) != 1 {
+		t.Fatalf("the newest: %d, %v", len(all), err)
+	}
+	put := func(id, requester, madeBy string) {
+		t.Helper()
+		var m map[string]any
+		d := json.NewDecoder(bytes.NewReader(all[0]))
+		d.UseNumber()
+		if err := d.Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		m["id"], m["requester"], m["made_by"] = id, requester, madeBy
+		body, _ := json.Marshal(m)
+		if err := srv.Import(t.Context(), body); err != nil {
+			t.Fatal(err)
+		}
+		clock.Add(time.Minute)
+	}
+	put("for-them", s.requester, other)
+	put("by-them", other, s.requester)
+	mine := startPageOf(t, home(s.requester, "en"), "mine")
+	if len(mine) != 1 || mine[0].summary != "1 sent back, 1 to be resubmitted, 6 waiting, 1 approved" || !slices.Equal(idsOf(mine[0]), []string{ids[2], ids[0], "by-them", "for-them", ids[6]}) {
+		t.Fatalf("with two made for another: %+v", mine)
+	}
+	if by, for_ := mine[0].tickets[2][4], mine[0].tickets[3][4]; by == "" || by == other || by != for_ {
+		t.Errorf("the two made for another name %q and %q; want the other's name in both", by, for_)
+	}
+}
+
+// TestPagesStartPageVersions: on a server of two versions of a kind, whose stage the later one calls
+// by other words, the start page says the stage of each ticket in the words of the version the ticket
+// is of. A request back with its requester that is among the newest is listed once, first.
+func TestPagesStartPageVersions(t *testing.T) {
+	files := filesOf(t, filepath.Join("v2", "requests"))
+	var d map[string]any
+	if err := json.Unmarshal(files["types/leave.json"].Data, &d); err != nil {
+		t.Fatal(err)
+	}
+	renamed := false
+	for _, s := range d["stages"].([]any) {
+		if s := s.(map[string]any); s["name"] == "manager" {
+			s["label"], s["labels"] = "line manager", []any{map[string]any{"lang": "ja", "text": "直属の上長"}}
+			renamed = true
+		}
+	}
+	if !renamed {
+		t.Fatal("leave has no stage manager")
+	}
+	files["types/leave.json"].Data, _ = json.Marshal(d)
+	v2, err := Version2From(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := firstSubmit(t, "leave")
+	s.form["days"], s.form["first_day"] = 3, "2027-05-10"
+	clock := servertest.NewClock(time.Date(2027, 3, 31, 10, 0, 0, 0, Zone)) // the day before version 2 starts
+	srv, h := newWeb(t, webSetup{Store: memstore.New(), Clock: clock, Gate: &Gate{}, Config: func(c *server.Config) {
+		c.Packages = append(c.Packages, v2)
+	}})
+	submit := func(key string) string {
+		t.Helper()
+		id, w := submitAPI(t, h, "leave", s.requester, key, s.form)
+		if w.code != http.StatusOK {
+			t.Fatalf("the request %s: %d %s", key, w.code, w.body)
+		}
+		clock.Add(time.Minute)
+		return id
+	}
+	first, back := submit("first"), submit("back")
+	body, _ := json.Marshal(map[string]any{"revision": ticketOf(t, srv, s.requester, back).Revision, "comment": "Write who covers, please."})
+	if w := send(h, "POST", "/tickets/"+back+"/send_back", s.approver, body, "Content-Type", "application/json", "Idempotency-Key", "back"); w.Code != http.StatusOK {
+		t.Fatalf("sending one back: %d %s", w.Code, w.Body.String())
+	}
+	clock.Set(time.Date(2027, 4, 1, 10, 0, 0, 0, Zone))
+	second := submit("second")
+	// who answers the second: the organization changes on the day too
+	rep, err := srv.Do(t.Context(), server.Call{Operation: "get_ticket", Person: server.Person{ID: s.requester}, Ticket: second})
+	if err != nil || rep.Outcome != server.OK {
+		t.Fatalf("get_ticket %s: %v %s", second, err, rep.Body)
+	}
+	var at struct {
+		Ticket struct {
+			Version int `json:"version"`
+			Stages  []struct {
+				Parts []struct {
+					Approvers []string `json:"approvers"`
+				} `json:"parts"`
+			} `json:"stages"`
+		} `json:"ticket"`
+	}
+	if err := json.Unmarshal(rep.Body, &at); err != nil || at.Ticket.Version != 2 || len(at.Ticket.Stages) == 0 || len(at.Ticket.Stages[0].Parts) == 0 || len(at.Ticket.Stages[0].Parts[0].Approvers) != 1 {
+		t.Fatalf("the request of version 2: %v %s", err, rep.Body)
+	}
+	for _, c := range []struct{ lang, one, two, back string }{
+		{"en", "manager", "line manager", "Sent back"},
+		{"ja", "上長", "直属の上長", "差し戻し"},
+	} {
+		one, two := []string{first, "in_progress", "", c.one}, []string{second, "in_progress", "", c.two}
+		for _, e := range []struct {
+			person, section string
+			want            [][]string
+		}{
+			{s.requester, "mine", [][]string{{back, "with_requester", c.back, ""}, two, one}},
+			{s.approver, "waiting", [][]string{one}},
+			{at.Ticket.Stages[0].Parts[0].Approvers[0], "waiting", [][]string{two}},
+		} {
+			w := browse(h, "GET", "/pages/?lang="+c.lang, e.person, nil)
+			got := startPageOf(t, w.Body.Bytes(), e.section)
+			if w.Code != http.StatusOK || len(got) != 1 || len(got[0].tickets) != len(e.want) {
+				t.Fatalf("%s: the start page of %s: %d %+v; want %q", c.lang, e.person, w.Code, got, e.want)
+			}
+			for i, x := range got[0].tickets {
+				if y := e.want[i]; x[0] != y[0] || x[1] != y[1] || y[2] != "" && x[2] != y[2] || x[3] != y[3] {
+					t.Errorf("%s: the ticket %d of the start page of %s: %q; want %q", c.lang, i, e.person, x, y)
+				}
+			}
 		}
 	}
 }

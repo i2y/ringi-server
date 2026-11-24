@@ -421,6 +421,8 @@ func TestMine(t *testing.T) {
 		{"ann", server.MineQuery{Before: "T-3"}, ""},
 		{"ann", server.MineQuery{Kind: "trip"}, "T-4 T-2 T-1"},
 		{"ann", server.MineQuery{Kind: "other"}, ""},
+		{"ann", server.MineQuery{Status: "in_progress", Limit: 2}, "T-4 T-2"},
+		{"ann", server.MineQuery{Kind: "trip", Status: "with_requester"}, ""},
 	} {
 		if got := ids(c.person, c.q); got != c.want {
 			t.Errorf("Mine of %s, %+v: %q; want %q", c.person, c.q, got, c.want)

@@ -28,13 +28,15 @@ import (
 
 // SignIn signs people in on the computer the server runs on, for trying a server in a browser: its
 // page lists the people of the organization, and the one chosen is who sends each request from then
-// on (a cookie names them), with the roles written beside the list (another cookie: none when it is
-// left empty), for trying what the gate lets each role do. An organization of more people than a
-// picker of the pages lists (web.PicksListed) is not listed: the page finds people by a part of a
-// name or an ID, as such a picker does, with no script. It checks no one's identity, so it answers
-// only requests sent to a loopback address (localhost, 127.0.0.1, ::1) that no proxy forwarded
-// (Local); a server starts it only when it listens on one (OnLoopback), and not where the
-// environment has the provider's settings (NotWithProvider), as package serve does with -dev-login.
+// on (a cookie names them), with the roles written above the list (another cookie: none when it is
+// left empty), for trying what the gate lets each role do: a link for each role that the gate of the
+// examples declares, as the gate of a project ritsu ringi init makes does, opens the page with the
+// role written (?roles=). An organization of more people than a picker of the pages lists
+// (web.PicksListed) is not listed: the page finds people by a part of a name or an ID, as such a
+// picker does, with no script. It checks no one's identity, so it answers only requests sent to a
+// loopback address (localhost, 127.0.0.1, ::1) that no proxy forwarded (Local); a server starts it
+// only when it listens on one (OnLoopback), and not where the environment has the provider's settings
+// (NotWithProvider), as package serve does with -dev-login.
 // It is a server.Authenticator, and it gives the pages the hooks of a sign-in (web.Config's Require,
 // LoginURL and SignOut).
 type SignIn struct {
@@ -259,32 +261,40 @@ func (Header) Authenticate(r *http.Request) (server.Person, error) {
 // devWords are the words of the page of signing in, in English and in Japanese.
 var devWords = map[string]map[string]string{
 	"en": {
-		"title":     "Sign in to try the server",
-		"note":      "This sign-in is for trying the server on your own computer: it does not check who you are. Choose the person to use the server as, from the organization's data.",
-		"none":      "The organization's data has no one in effect today.",
-		"find":      "Find a person",
-		"many":      "The organization's data has %s people. Enter the ID, or a part of the name and press Search.",
-		"search":    "Search",
-		"found":     "Found by “%s”. Choose one.",
-		"nonefound": "Nothing is found by “%s”.",
-		"more":      "There are more. Add words to narrow them down.",
-		"roles":     "Roles",
-		"roleshint": "Separated by commas, such as workflow_admin, system_admin or auditor, as the gate declares them. Leave it empty to use the server as a member of the staff with no other role.",
-		"badroles":  "The roles could not be read: write at most 16, separated by commas, each of letters, digits and marks with no space.",
+		"title":           "Sign in to try the server",
+		"note":            "This sign-in is for trying the server on your own computer: it does not check who you are. Choose the person to use the server as, from the organization's data.",
+		"none":            "The organization's data has no one in effect today.",
+		"find":            "Find a person",
+		"many":            "The organization's data has %s people. Enter the ID, or a part of the name and press Search.",
+		"search":          "Search",
+		"found":           "Found by “%s”. Choose one.",
+		"nonefound":       "Nothing is found by “%s”.",
+		"more":            "There are more. Add words to narrow them down.",
+		"roles":           "Roles",
+		"roleshint":       "Separated by commas, such as workflow_admin, system_admin or auditor, as the gate declares them. Leave it empty to use the server as a member of the staff with no other role.",
+		"badroles":        "The roles could not be read: write at most 16, separated by commas, each of letters, digits and marks with no space.",
+		"preset.staff":    "A member of the staff (no role)",
+		"preset.workflow": "An administrator of their own department (workflow_admin)",
+		"preset.system":   "An administrator of everything (system_admin)",
+		"preset.audit":    "A reader of every record (auditor)",
 	},
 	"ja": {
-		"title":     "試用のログイン",
-		"note":      "このログインは、手元のコンピューターでサーバーを試すためのものです。本人の確認はしません。組織のデータの人から、使う人を選んでください。",
-		"none":      "組織のデータに、今日有効な人がいません。",
-		"find":      "人を探す",
-		"many":      "組織のデータに%s人います。ID を入力するか、名前の一部を入れて「検索」を押してください。",
-		"search":    "検索",
-		"found":     "「%s」で見つかりました。一つ選んでください。",
-		"nonefound": "「%s」では見つかりませんでした。",
-		"more":      "ほかにもあります。言葉を足して絞り込んでください。",
-		"roles":     "役割",
-		"roleshint": "gate が宣言した役割を、コンマで区切って書きます（workflow_admin、system_admin、auditor など）。空のままなら、ほかの役割の無いスタッフとして使います。",
-		"badroles":  "役割を読めませんでした。コンマで区切って16個まで、空白の無い英数字と記号で書いてください。",
+		"title":           "試用のログイン",
+		"note":            "このログインは、手元のコンピューターでサーバーを試すためのものです。本人の確認はしません。組織のデータの人から、使う人を選んでください。",
+		"none":            "組織のデータに、今日有効な人がいません。",
+		"find":            "人を探す",
+		"many":            "組織のデータに%s人います。ID を入力するか、名前の一部を入れて「検索」を押してください。",
+		"search":          "検索",
+		"found":           "「%s」で見つかりました。一つ選んでください。",
+		"nonefound":       "「%s」では見つかりませんでした。",
+		"more":            "ほかにもあります。言葉を足して絞り込んでください。",
+		"roles":           "役割",
+		"roleshint":       "gate が宣言した役割を、コンマで区切って書きます（workflow_admin、system_admin、auditor など）。空のままなら、ほかの役割の無いスタッフとして使います。",
+		"badroles":        "役割を読めませんでした。コンマで区切って16個まで、空白の無い英数字と記号で書いてください。",
+		"preset.staff":    "スタッフ（役割なし）",
+		"preset.workflow": "自分の部署を管理する人（workflow_admin）",
+		"preset.system":   "全部を管理する人（system_admin）",
+		"preset.audit":    "どの記録も読む人（auditor）",
 	},
 }
 
@@ -305,6 +315,9 @@ var devPage = template.Must(template.New("login").Parse(`<!DOCTYPE html>
 {{- if .Many}}
 <form class="find" method="get" action="{{.Action}}" role="search">
 <input type="hidden" name="return_to" value="{{.ReturnTo}}" />
+{{- if .Asked}}
+<input type="hidden" name="roles" value="{{.Roles}}" />
+{{- end}}
 <div class="field">
 <label for="dev-q">{{.W.find}}</label>
 <p class="hint" id="dev-hint">{{.Many}}</p>
@@ -319,6 +332,7 @@ var devPage = template.Must(template.New("login").Parse(`<!DOCTYPE html>
 <div class="field">
 <label for="dev-roles">{{.W.roles}}</label>
 <p class="hint" id="dev-roles-hint">{{.W.roleshint}}</p>
+<ul class="role-presets">{{range .Presets}}<li><a href="{{.URL}}"{{if .Active}} class="active" aria-current="true"{{end}}>{{.Label}}</a></li>{{end}}</ul>
 {{- if .BadRoles}}
 <p class="error" id="dev-roles-error">{{.W.badroles}}</p>
 {{- end}}
@@ -417,6 +431,33 @@ func (d *SignIn) page(w http.ResponseWriter, r *http.Request) {
 	} else if c, err := r.Cookie(RolesCookie); err == nil {
 		in["Roles"], _ = url.QueryUnescape(c.Value)
 	}
+	// the roles asked with ?roles= go before the cookie's, and a find keeps them: each link of the
+	// presets asks for its own, so that a click chooses a role without typing it
+	if r.URL.Query().Has("roles") {
+		in["Roles"], in["Asked"] = r.URL.Query().Get("roles"), true
+	}
+	type preset struct {
+		Label, URL string
+		Active     bool
+	}
+	var presets []preset
+	cur, _ := in["Roles"].(string)
+	for _, pr := range []struct{ word, roles string }{
+		{"preset.staff", ""},
+		{"preset.workflow", "workflow_admin"},
+		{"preset.system", "system_admin"},
+		{"preset.audit", "auditor"},
+	} {
+		q := url.Values{"roles": {pr.roles}}
+		if to := in["ReturnTo"].(string); to != "" {
+			q.Set("return_to", to)
+		}
+		if s := r.URL.Query().Get("q"); s != "" {
+			q.Set("q", s)
+		}
+		presets = append(presets, preset{Label: words[pr.word], URL: LoginPath + "?" + q.Encode(), Active: cur == pr.roles})
+	}
+	in["Presets"] = presets
 	w.Header().Set("Content-Security-Policy", web.PagePolicy)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	devPage.Execute(w, in)

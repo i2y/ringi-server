@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html"
 	"io/fs"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -461,13 +462,18 @@ func TestUnofferedWithoutScreen(t *testing.T) {
 // package written before the screen was part of the contract.
 func withoutOffered(t *testing.T, dir string) fstest.MapFS {
 	t.Helper()
+	files := filesOf(t, dir)
+	maps.DeleteFunc(files, func(p string, _ *fstest.MapFile) bool { return strings.HasPrefix(path.Base(p), "offered.") })
+	return files
+}
+
+// filesOf reads a package's requests directory, for a test to change.
+func filesOf(t *testing.T, dir string) fstest.MapFS {
+	t.Helper()
 	files := fstest.MapFS{}
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
-		}
-		if strings.HasPrefix(filepath.Base(p), "offered.") {
-			return nil
 		}
 		b, err := os.ReadFile(p)
 		if err != nil {

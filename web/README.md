@@ -25,10 +25,10 @@ The handler serves these routes, and passes every other request to the server's 
 | Route | What it answers |
 |---|---|
 | `GET /` | the start page (303 to `/pages/`) |
-| `GET /pages/` | the start page: what waits for the person, the requests they may make, their own requests |
+| `GET /pages/` | the start page: what waits for the person, the requests they may make, their own requests with how many are in each state, and a few tickets of each |
 | `GET`, `POST /pages/requests/{kind}/new` | the form of a new request, and its post |
 | `GET`, `POST /pages/tickets/{id}` | a ticket's approval card, and its post |
-| `GET`, `POST /pages/tickets/{id}/form` | the form to make a request sent back again, and its post |
+| `GET`, `POST /pages/tickets/{id}/form` | the form to make a request back with its requester again, and its post |
 | `GET /pages/tickets/{id}/history` | a ticket's history |
 | `GET /pages/waiting/{kind}`, `/pages/mine/{kind}` | the tickets of the kind that wait for the person; the person's own requests of the kind; the newest first, 50 a page |
 | `GET /pages/assets/{name}` | the pages' style sheet and script, and ritsu's functions |

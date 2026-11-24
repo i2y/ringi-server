@@ -318,7 +318,8 @@ func (s *Store) Mine(_ context.Context, person string, q server.MineQuery) ([]se
 	}
 	var all []mine
 	for id, ps := range s.people {
-		if x := ps[person]; x != nil && x.own && (q.Kind == "" || s.tickets[id].Kind == q.Kind) {
+		t := s.tickets[id]
+		if x := ps[person]; x != nil && x.own && (q.Kind == "" || t.Kind == q.Kind) && (q.Status == "" || t.Status == q.Status) {
 			all = append(all, mine{id, x.since})
 		}
 	}
@@ -338,6 +339,38 @@ func (s *Store) Mine(_ context.Context, person string, q server.MineQuery) ([]se
 	out := make([]server.TicketRecord, len(all))
 	for i, m := range all {
 		out[i] = s.record(s.tickets[m.id])
+	}
+	return out, nil
+}
+
+// CountMine counts a person's own tickets, by kind and by state.
+func (s *Store) CountMine(_ context.Context, person string) (map[string]server.MineCount, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]server.MineCount{}
+	for id, ps := range s.people {
+		x := ps[person]
+		if x == nil || !x.own {
+			continue
+		}
+		t := s.tickets[id]
+		c := out[t.Kind]
+		if c.Status == nil {
+			c.Status = map[string]int{}
+		}
+		c.Status[t.Status]++
+		if t.Status == "with_requester" {
+			var back struct {
+				By *string `json:"sent_back_by"`
+			}
+			if err := json.Unmarshal(t.Body, &back); err != nil {
+				return nil, err
+			}
+			if back.By != nil {
+				c.SentBack++
+			}
+		}
+		out[t.Kind] = c
 	}
 	return out, nil
 }

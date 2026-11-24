@@ -273,11 +273,18 @@ var queries = map[string]string{
 	           where excluded.own and not {s}.people.own`,
 	"mine": `select t.id, t.kind, t.version, t.status, t.number, t.body::text, t.updated, ` + peopleOf + `, t.waiting_since
 	         from {s}.people p join {s}.tickets t on t.id = p.ticket
-	         where p.person = $1 and p.own and ($2 = '' or t.kind = $2)
+	         where p.person = $1 and p.own and ($2 = '' or t.kind = $2) and ($5 = '' or t.status = $5)
 	           and ($3 = '' or (p.since, p.ticket collate "C") <
 	                (select b.since, b.ticket collate "C" from {s}.people b where b.person = $1 and b.ticket = $3 and b.own))
 	         order by p.since desc, p.ticket collate "C" desc
 	         limit $4`,
+	// The person's own are read by the index people_mine and counted by their tickets' kinds and
+	// statuses: a row comes back for each pair, with how many of those back with their requester were
+	// sent back, and no ticket's JSON.
+	"count_mine": `select t.kind, t.status, count(*),
+	                      count(*) filter (where t.status = 'with_requester' and t.body->>'sent_back_by' is not null)
+	               from {s}.people p join {s}.tickets t on t.id = p.ticket
+	               where p.person = $1 and p.own group by t.kind, t.status`,
 	"due_timers": `update {s}.timers t set lease_until = $2
 	               from (select ticket, timer, stage from {s}.timers
 	                     where try_at <= $1 and (lease_until is null or lease_until <= $1)

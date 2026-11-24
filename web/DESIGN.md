@@ -54,7 +54,7 @@ post, to `MaxBody` and `MaxFile` for each of at most 10 files (section 9.3).
 | GET | `/pages/` | the start page (section 9) |
 | GET, POST | `/pages/requests/{kind}/new` | a new request's form, and its post |
 | GET, POST | `/pages/tickets/{id}` | the ticket's approval card, and its post |
-| GET, POST | `/pages/tickets/{id}/form` | the form to make the request again (a ticket sent back), and its post |
+| GET, POST | `/pages/tickets/{id}/form` | the form to make the request again (a ticket back with its requester), and its post |
 | GET | `/pages/tickets/{id}/history` | the ticket's history |
 | GET | `/pages/waiting/{kind}` | the tickets of the kind that wait for the person, 50 a page (`?before=`) |
 | GET | `/pages/mine/{kind}` | the person's own requests of the kind, 50 a page (`?before=`) |
@@ -67,7 +67,7 @@ post, to `MaxBody` and `MaxFile` for each of at most 10 files (section 9.3).
 | GET | `/a2ui/{files}/catalog.json`, `/a2ui/{files}/functions.js` | the same files of a package other than the newest (section 2.3) |
 | GET | `/a2ui/requests/{kind}/form` | the form of a new request, under a surface of its own |
 | GET | `/a2ui/tickets/{id}/card` | the ticket's approval card |
-| GET | `/a2ui/tickets/{id}/form` | the form to make the request again (a ticket sent back) |
+| GET | `/a2ui/tickets/{id}/form` | the form to make the request again (a ticket back with its requester) |
 | GET | `/a2ui/tickets/{id}/history` | the ticket's history |
 | GET | `/a2ui/waiting/{kind}` | the list of the tickets of the kind that wait for the person, a page at a time (`?limit=`, `?before=`; section 2.1) |
 | GET | `/a2ui/mine/{kind}` | the list of the person's own requests of the kind, a page at a time (`?limit=`, `?before=`; section 2.1) |
@@ -326,11 +326,14 @@ of more people than a picker lists (`web.PicksListed`, 1,000) is not listed: the
 by a part of a name or an ID, as such a picker does, and as the API's `find_people` finds them
 (`server.FindQuery.Answer`, at most `page.FindShown`, 20), with no script. A person with no name is
 listed by their ID alone; with no version of the organization in effect today, the page says that no
-one is, and lets no one in. It checks no one, so it answers only requests sent to a loopback address
-that no proxy forwarded (none of the headers a proxy adds, such as `X-Forwarded-For` and
-`Forwarded`), and a server's command starts it only when it listens on one (`-dev-login` of package
-`serve`, which the example server takes), and not with the settings of a server that serves people
-(the root README, "Signing in").
+one is, and lets no one in. One chooses the roles to use the pages with before the person: a link for
+each role that the gate of the examples declares, as the gate of a project `ritsu ringi init` makes
+does, opens the page with the role written (`?roles=`, which a find keeps), and the field under the
+links takes any others. It checks no one, so it answers only requests sent to a loopback address that
+no proxy forwarded (none of the headers a proxy adds, such as `X-Forwarded-For` and `Forwarded`), and
+a server's command starts it only when it listens on one (`-dev-login` of package `serve`, which the
+example server takes), and not with the settings of a server that serves people (the root README,
+"Signing in").
 
 ## 4. `Can`, and who may make a request
 
@@ -529,7 +532,8 @@ routes of a sign-in are added this way (section 3.1).
 | `Server.People`, `Server.Teams` | the people and the teams of the version of the organization in effect today, for the pages' pickers (section 5) |
 | `Server.Waiting`, `server.WaitingQuery` | the tickets that wait for a person (`list_waiting`, the core's DESIGN 10.2), the newest first, a page at a time (`Kind`, `Before`, `Limit`; `Limit` 0 for all), for the lists of what waits |
 | `Server.CountWaiting` | how many tickets wait for a person, by kind: the tickets `Server.Waiting` answers with no query, counted (the core's DESIGN 10.2), for the start page |
-| `Server.Mine`, `server.MineQuery` | a person's own requests (`list_mine`, the core's DESIGN 10.4), the newest first, a page at a time as `Server.Waiting`, for the lists of one's own and the start page |
+| `Server.Mine`, `server.MineQuery` | a person's own requests (`list_mine`, the core's DESIGN 10.4), the newest first, a page at a time as `Server.Waiting`, of one status when asked (`Status`), for the lists of one's own and the start page |
+| `Server.CountMine`, `server.MineCount` | how many requests of their own a person has, by kind and by state: the tickets `Server.Mine` answers with no query, counted (the core's DESIGN 10.4), for the start page |
 | `server.DefaultPage`, `server.MaxPage` | a list's page: 50 tickets when its size is not asked, 100 at most (section 2.1) |
 | `Server.TicketFiles` | the files a ticket holds (its form now, and its history), to a person who may see it |
 | `Server.Upload` | keeps an upload as the person's, recorded as one no ticket holds yet; `*server.TooManyUploads` past the person's limit (section 6.2) |
@@ -552,13 +556,13 @@ their posts as the person.
 
 | Page | Filled with |
 |---|---|
-| start page | `page.Home`: the kinds of the tickets that wait for the person, with how many (`Server.CountWaiting`: the tickets `list_waiting` answers, counted); the kinds they may make a request of (`Server.Submitting`); the kinds they have made requests of (`Server.Mine`). Each kind by its title in the language of its pages the entry leads to (the page's when the kind has screens in it), its label in that language, else its title as written; a title in another language than the page's is marked with it (`Pages.TitleIn`, `Entry.Lang`) |
-| new request's form | as the screen's (section 2.1), with the pickers (section 5), the page's address to post to, and the time it is shown |
-| card | as the screen's, with the pickers, the zone of its times (`Server.Zone`) and a link to the history |
-| form of a ticket | as the screen's, with the pickers |
-| history | as the screen's, with the zone of its times (`Server.Zone`), the card's: the examples' `TestCardAndHistorySayOneTime` finds an approval at one time on both, in both languages |
-| lists | `page.List` of the tickets that wait for the person (`Server.Waiting`), or of their own requests (`Server.Mine`), the newest first, 50 a page, with a link to the next page only when more follow (the handler reads one ticket more than the page to know; `?before=` the page's last ticket, section 2.1); each line a link to the ticket's card, with the columns of the A2UI list (one's own requests name who made a request for its requester, `made_by`, where the others name the requester) |
-| the administration's | `Pages.AdminPage` of one of five (`page.Admin.What`: the parts, the kinds, the organization, a draft, the record), filled with the answers of the administration's operations (`Server.Do`, `Via: "pages"`): the core's DESIGN 13.7 says what each shows and what its post does. A problem a person can make with a form is said in the page's language (`page.AdminSays`) before the operation is sent. The start page links to them when `Server.Administers` says so |
+| start page | `page.Home`: the kinds of the tickets that wait for the person, with how many (`Server.CountWaiting`: the tickets `list_waiting` answers, counted); the kinds they may make a request of (`Server.Submitting`); the kinds they have made requests of, with how many are in each state (`Server.CountMine`). Each kind by its title in the language of its pages the entry leads to (the page's when the kind has screens in it), its label in that language, else its title as written; a title in another language than the page's is marked with it (`Pages.TitleIn`, `Entry.Lang`). Under a kind that waits, the newest five of its tickets (`Server.Waiting`); under a kind of the person's own, five of them: the ones back with the person first, then the newest (`Server.Mine`). Each is a link to its card, with its stage and a short line of its values as the version it is of says them, and names the requester of one that waits; of the person's own, who made it for them, or whom they made it for; never the person themselves |
+| new request's form | as the screen's (section 2.1), with the pickers (section 5), the page's address to post to, the time it is shown, and a link back to the start page |
+| card | as the screen's, with the pickers, the zone of its times (`Server.Zone`), a link to the history and a link back to the start page; to one of the requester's side who may make a request that is back with its requester again, the notice of it with a link to the form |
+| form of a ticket | as the screen's, with the pickers and a link back to the card |
+| history | as the screen's, with a link back to the card and the zone of its times (`Server.Zone`), the card's: the examples' `TestCardAndHistorySayOneTime` finds an approval at one time on both, in both languages |
+| lists | `page.List` of the tickets that wait for the person (`Server.Waiting`), or of their own requests (`Server.Mine`), the newest first, 50 a page, with a link to the next page only when more follow (the handler reads one ticket more than the page to know; `?before=` the page's last ticket, section 2.1); each line a link to the ticket's card, with the columns of the A2UI list (one's own requests name who made a request for its requester, `made_by`, where the others name the requester) and those of the values the form works out; and a link back to the start page |
+| the administration's | `Pages.AdminPage` of one of five (`page.Admin.What`: the parts, the kinds, the organization, a draft, the record), filled with the answers of the administration's operations (`Server.Do`, `Via: "pages"`): the core's DESIGN 13.7 says what each shows and what its post does. A problem a person can make with a form is said in the page's language (`page.AdminSays`) before the operation is sent. The start page links to them when `Server.Administers` says so, and each but the first links back to the first |
 
 A page of a ticket the person may not see is the notice "Not found" (404), as in the API. A new
 request's form is that notice when no version of the kind is in effect, or the person may make it

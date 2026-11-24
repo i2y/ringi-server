@@ -237,16 +237,26 @@ func (h *Handler) pageFail(w http.ResponseWriter, r *http.Request, p *server.Per
 	h.notice(w, r, p, http.StatusInternalServerError, page.NoticeFailed)
 }
 
+// homeListed is how many tickets of a kind the start page lists under its entry.
+const homeListed = 5
+
 // home serves the start page: the kinds of the tickets that wait for the person, the kinds they may
 // make a request of, the kinds they have made requests of, and the administration's pages for one
-// who may use them.
+// who may use them. A kind whose tickets wait, or that the person has made requests of, lists a few
+// of them.
 func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) {
 	ctx := r.Context()
 	lang := h.pageLanguage(w, r, nil)
-	// how many tickets wait for the person, by kind
+	// how many tickets wait for the person, by kind, and how many requests of their own there are,
+	// by kind and by status
 	counts, err := h.srv.CountWaiting(ctx, p)
 	if err != nil {
 		h.pageFail(w, r, &p, "list_waiting", err)
+		return
+	}
+	own, err := h.srv.CountMine(ctx, p)
+	if err != nil {
+		h.pageFail(w, r, &p, "list_mine", err)
 		return
 	}
 	in := page.Home{Language: lang}
@@ -259,7 +269,17 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) 
 			tl = ""
 		}
 		if n := counts[kind]; n > 0 {
-			in.Waiting = append(in.Waiting, page.Entry{Title: title, Lang: tl, Count: n, URL: keepLang(r, PagesPath+"waiting/"+url.PathEscape(kind))})
+			tickets, err := h.srv.Waiting(ctx, p, server.WaitingQuery{Kind: kind, Limit: homeListed})
+			if err != nil {
+				h.pageFail(w, r, &p, "the tickets of "+kind+" that wait", err)
+				return
+			}
+			listed, err := h.homeTickets(r, p, set, kind, lang, tickets, true)
+			if err != nil {
+				h.pageFail(w, r, &p, "the tickets of "+kind+" that wait", err)
+				return
+			}
+			in.Waiting = append(in.Waiting, page.Entry{Name: kind, Title: title, Lang: tl, Count: n, URL: keepLang(r, PagesPath+"waiting/"+url.PathEscape(kind)), Tickets: listed})
 		}
 		sub, err := h.srv.Submitting(ctx, p, kind)
 		if err != nil && !notFound(err) {
@@ -267,7 +287,7 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) 
 			return
 		}
 		if err == nil && (sub.Self || len(sub.For) > 0) && h.setOf(kind, sub.Version) != nil {
-			in.New = append(in.New, page.Entry{Title: title, Lang: tl, URL: keepLang(r, PagesPath+"requests/"+url.PathEscape(kind)+"/new")})
+			in.New = append(in.New, page.Entry{Name: kind, Title: title, Lang: tl, URL: keepLang(r, PagesPath+"requests/"+url.PathEscape(kind)+"/new")})
 		}
 		if notFound(err) {
 			// no version in effect now: the day the person may make the request from, when the gate
@@ -278,16 +298,21 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) 
 				return
 			}
 			if ok {
-				in.New = append(in.New, page.Entry{Title: title, Lang: tl, From: from})
+				in.New = append(in.New, page.Entry{Name: kind, Title: title, Lang: tl, From: from})
 			}
 		}
-		mine, err := h.srv.Mine(ctx, p, server.MineQuery{Kind: kind, Limit: 1})
-		if err != nil {
-			h.pageFail(w, r, &p, "the person's own requests", err)
-			return
-		}
-		if len(mine) > 0 {
-			in.Mine = append(in.Mine, page.Entry{Title: title, Lang: tl, URL: keepLang(r, PagesPath+"mine/"+url.PathEscape(kind))})
+		if n := own[kind]; len(n.Status) > 0 {
+			tickets, err := h.homeMine(ctx, p, kind, n.Status["with_requester"])
+			if err != nil {
+				h.pageFail(w, r, &p, "the person's own requests of "+kind, err)
+				return
+			}
+			listed, err := h.homeTickets(r, p, set, kind, lang, tickets, false)
+			if err != nil {
+				h.pageFail(w, r, &p, "the person's own requests of "+kind, err)
+				return
+			}
+			in.Mine = append(in.Mine, page.Entry{Name: kind, Title: title, Lang: tl, States: n.Status, SentBack: n.SentBack, URL: keepLang(r, PagesPath+"mine/"+url.PathEscape(kind)), Tickets: listed})
 		}
 	}
 	// A link to the administration's pages for one who may use a part of them; a gate that fails to
@@ -302,6 +327,91 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) 
 		return
 	}
 	h.show(w, r, &p, ps, lang, nil, http.StatusOK, pg)
+}
+
+// homeMine reads the few requests of the person's own of a kind that the start page lists: the ones
+// back with their requester (back of them in all), which wait for the person to act, whenever they
+// were made, then the newest of the others.
+func (h *Handler) homeMine(ctx context.Context, p server.Person, kind string, back int) ([]json.RawMessage, error) {
+	var out []json.RawMessage
+	if back > 0 {
+		var err error
+		if out, err = h.srv.Mine(ctx, p, server.MineQuery{Kind: kind, Status: "with_requester", Limit: homeListed}); err != nil || len(out) == homeListed {
+			return out, err
+		}
+	}
+	newest, err := h.srv.Mine(ctx, p, server.MineQuery{Kind: kind, Limit: homeListed})
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range newest {
+		var t struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(b, &t); err != nil {
+			return nil, err
+		}
+		if t.Status != "with_requester" && len(out) < homeListed {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}
+
+// homeTickets are tickets of a kind as the start page lists them (page.EntryTicket): each linking to
+// its page, with its status, its stage and a short line of its values in the words of the version of
+// the kind it is of, and who it names: of the tickets that wait, the requester; of the person's own,
+// the one who made the request for them or the one they made it for. The person themselves is not
+// named.
+func (h *Handler) homeTickets(r *http.Request, p server.Person, set *screenSet, kind, lang string, tickets []json.RawMessage, waiting bool) ([]page.EntryTicket, error) {
+	out := make([]page.EntryTicket, len(tickets))
+	who := make([]string, len(tickets))
+	var ids []string
+	for i, b := range tickets {
+		var t struct {
+			ID        string `json:"id"`
+			Version   int    `json:"version"`
+			Status    string `json:"status"`
+			Stage     string `json:"stage"`
+			Requester string `json:"requester"`
+			MadeBy    string `json:"made_by"`
+			SentBack  string `json:"sent_back_by"`
+		}
+		if err := json.Unmarshal(b, &t); err != nil {
+			return nil, err
+		}
+		ps := set.pages
+		if s := h.setOf(kind, t.Version); s != nil {
+			ps = s.pages
+		}
+		out[i] = page.EntryTicket{ID: t.ID, URL: keepLang(r, PagesPath+"tickets/"+url.PathEscape(t.ID)), Status: t.Status, SentBack: t.SentBack != "", Info: ps.TicketInfo(kind, lang, b)}
+		if t.Stage != "" {
+			out[i].Stage, out[i].StageLang = ps.StageIn(kind, t.Stage, lang)
+		}
+		who[i] = t.Requester
+		if !waiting && t.Requester == p.ID {
+			who[i] = t.MadeBy
+		}
+		if who[i] == p.ID {
+			who[i] = ""
+		}
+		if who[i] != "" {
+			ids = append(ids, who[i])
+		}
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	names, err := h.Lookup(r.Context(), p, "").PeopleNames(lang, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i, id := range who {
+		if out[i].Who = names[id]; out[i].Who == "" {
+			out[i].Who = id
+		}
+	}
+	return out, nil
 }
 
 // kindNames answers the names of the kinds the server serves, in the packages' order.
@@ -473,7 +583,7 @@ func (h *Handler) newRequest(w http.ResponseWriter, r *http.Request, p server.Pe
 	in := page.Form{
 		Form: screens.Form{Kind: kind, Language: lang, SubmitFor: sub.For, MaySubmit: sub.Self, Can: []string{"submit"},
 			Names: h.Lookup(ctx, p, ""), Surface: newSurface(), Serving: h.serving(nil)},
-		Action: keepLang(r, r.URL.Path), Now: h.srv.Now(), Picks: picks, Worked: h.workedFor(kind, sub.Version),
+		Action: keepLang(r, r.URL.Path), Now: h.srv.Now(), Picks: picks, Back: keepLang(r, PagesPath), Worked: h.workedFor(kind, sub.Version),
 	}
 	status := http.StatusOK
 	if r.Method == http.MethodPost {
@@ -669,7 +779,7 @@ func (h *Handler) ticketInput(ctx context.Context, r *http.Request, p server.Per
 		if err != nil {
 			return out, err
 		}
-		out.history = page.History{History: screens.History{Kind: t.kind, Language: lang, Ticket: t.ticket, Records: records, Names: names}, Zone: h.srv.Zone(t.kind, t.version)}
+		out.history = page.History{History: screens.History{Kind: t.kind, Language: lang, Ticket: t.ticket, Records: records, Names: names}, Zone: h.srv.Zone(t.kind, t.version), Back: keepLang(r, base)}
 		return out, nil
 	}
 	events, err := t.set.Actions(t.kind, screen)
@@ -679,22 +789,56 @@ func (h *Handler) ticketInput(ctx context.Context, r *http.Request, p server.Per
 	if screen == "form" {
 		events = slices.DeleteFunc(events, func(e string) bool { return e == "submit" })
 	}
-	can, err := h.srv.Can(ctx, p, t.id, events)
+	// a card also asks whether the request may be made again in its form (resubmit is the form's
+	// action), to say that it is back with its requester and link to the form
+	ask := events
+	added := screen == "card" && !slices.Contains(ask, "resubmit")
+	if added {
+		ask = append(slices.Clone(events), "resubmit")
+	}
+	can, err := h.srv.Can(ctx, p, t.id, ask)
 	if err != nil {
 		return out, err
+	}
+	resubmit := slices.Contains(can, "resubmit")
+	if added {
+		can = slices.DeleteFunc(can, func(e string) bool { return e == "resubmit" })
+	}
+	if resubmit && screen == "card" {
+		// the gate is asked of the form's resubmit its action (submit), which a gate may let a
+		// person do at any state of any ticket: the notice and the way to the form are for a
+		// request back with its requester, shown to their side alone (the requester, the one
+		// who made it for them, or one the gate lets drop or withdraw it, as a submit proxy of
+		// theirs that day)
+		var tk struct {
+			Status    string `json:"status"`
+			Requester string `json:"requester"`
+			MadeBy    string `json:"made_by"`
+		}
+		if err := json.Unmarshal(t.ticket, &tk); err != nil {
+			return out, err
+		}
+		formEvents, _ := t.set.Actions(t.kind, "form")
+		own := p.ID == tk.Requester || p.ID == tk.MadeBy ||
+			slices.Contains(can, "withdraw") || slices.Contains(can, "discard")
+		resubmit = tk.Status == "with_requester" && slices.Contains(formEvents, "resubmit") && own
 	}
 	picks, err := h.picks(ctx, p, t.set, t.kind, lang)
 	if err != nil {
 		return out, err
 	}
 	if screen == "card" {
+		again := ""
+		if resubmit {
+			again = keepLang(r, base+"/form")
+		}
 		out.card = page.Card{Card: screens.Card{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Serving: h.serving(nil)},
 			Action: keepLang(r, base), Now: h.srv.Now(), Picks: picks, Zone: h.srv.Zone(t.kind, t.version),
-			History: keepLang(r, base+"/history"), Worked: h.workedFor(t.kind, t.version)}
+			History: keepLang(r, base+"/history"), Resubmit: again, Back: keepLang(r, PagesPath), Worked: h.workedFor(t.kind, t.version)}
 		return out, nil
 	}
 	out.form = page.Form{Form: screens.Form{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Serving: h.serving(nil)},
-		Action: keepLang(r, base+"/form"), Now: h.srv.Now(), Picks: picks, Worked: h.workedFor(t.kind, t.version)}
+		Action: keepLang(r, base+"/form"), Now: h.srv.Now(), Picks: picks, Back: keepLang(r, base), Worked: h.workedFor(t.kind, t.version)}
 	return out, nil
 }
 
@@ -763,7 +907,7 @@ func (h *Handler) pageList(of string) func(http.ResponseWriter, *http.Request, s
 			tickets = []json.RawMessage{}
 		}
 		pg, err := set.pages.List(page.List{List: screens.List{Kind: kind, Language: lang, Tickets: tickets, Names: h.Lookup(ctx, p, "")},
-			Open: keepLang(r, PagesPath+"tickets/{id}"), Of: of, More: more})
+			Open: keepLang(r, PagesPath+"tickets/{id}"), Of: of, More: more, Back: keepLang(r, PagesPath)})
 		if err != nil {
 			h.pageFail(w, r, &p, "a list of "+kind, err)
 			return

@@ -205,14 +205,14 @@ An administrator switches the versions of the request types, imports new data of
 and reads the record of both with the tickets' moves: on the pages under `/pages/admin/`, or through
 the API under `/admin`. The gate says who may do which. In the examples, `workflow_admin` administers
 the request types their own department owns, `system_admin` everything, and `auditor` reads every
-record and changes nothing. With `-dev-login`, write the role in the field beside the list when you
-sign in. Choose e6001 (the head of Human Resources) as `workflow_admin`: the start page links to the
-administration, where they switch the leave requests, of which the example server serves a second
-version, usable from 2027-04-01. Choose e7001 (the head of Information Systems) as `system_admin`:
-they also check the organization's data (the files the server reads, or a zip of them uploaded),
-read what it changes day by day, and import it. Importing data that would leave the importer
-unable to import again asks to be confirmed on the page. Each change is kept with who made it, when
-and why.
+record and changes nothing. With `-dev-login`, the page of signing in has a link for each of these
+roles, which writes it in the field under them, before you choose the person. Choose e6001 (the head
+of Human Resources) as `workflow_admin`: the start page links to the administration, where they
+switch the leave requests, of which the example server serves a second version, usable from
+2027-04-01. Choose e7001 (the head of Information Systems) as `system_admin`: they also check the
+organization's data (the files the server reads, or a zip of them uploaded), read what it changes
+day by day, and import it. Importing data that would leave the importer unable to import again asks
+to be confirmed on the page. Each change is kept with who made it, when and why.
 
 Through the API, with the header, e6001 lists what they may switch, switches the second version of
 `leave` to start on 2027-05-01, and reads the record as CSV:
@@ -452,10 +452,10 @@ servers on one store, and checks what the store kept, `WaitingCounts` checks the
 tickets that wait for a person, which the start page shows, against the tickets, with proxies, on
 days before, in and after theirs, `WaitingOrder` checks the order of those tickets (the newest first
 by when each began to wait, to the microsecond, then by ID from the highest) and that a comment
-leaves a ticket's place in it, and `MineOrder` the order of a person's own requests, both also a
-page at a time through the API, each page saying whether more follow it (`more`), `Reminded` checks
-that the store keeps whether a stage's reminder has rung (`reminded`, which contract 3 gives every
-stage) through a pause and a resume, `Administration` checks what the administration keeps: a
+leaves a ticket's place in it, and `MineOrder` the order of a person's own requests and their counts
+by state, both orders also a page at a time through the API, each page saying whether more follow it
+(`more`), `Reminded` checks that the store keeps whether a stage's reminder has rung (`reminded`,
+which contract 3 gives every stage) through a pause and a resume, `Administration` checks what the administration keeps: a
 version's start switched with the number read, the record of the switches a page at a time, the
 drafts of the organization's data, an import taken once of two sent at once, the imports of a day,
 and nothing changed or read for one the gate does not allow (it needs no vectors), and `Keeping`
@@ -486,9 +486,10 @@ func TestConformance(t *testing.T) {
 }
 ```
 
-A store may count the tickets that wait for a person without reading them (`server.WaitingCounter`,
-as the memory store and PostgreSQL do), and `WaitingCounts` checks that count too. With a store
-that does not, the server reads the tickets to count them.
+A store may count the tickets that wait for a person without reading them (`server.WaitingCounter`),
+and a person's own requests by state (`server.MineCounter`), as the memory store and PostgreSQL do:
+`WaitingCounts` and `MineOrder` check those counts too. With a store that does not, the server reads
+the tickets to count them.
 
 To run the framework's own tests, and the examples' (the conformance tests on the memory store, and
 on PostgreSQL when `RINGI_TEST_DATABASE` names a database, and the tests of the module `mcp` that
@@ -509,9 +510,9 @@ a person is also tried first (`Server.Try`): the trial answers what the operatio
 keeps nothing. `WaitingCounts` puts 19 tickets in for 6 people and checks their counts at 5 times,
 on both stores and on a store that does not count them: they agree on all three. `WaitingOrder` puts
 9 tickets in for 2 people and comments on one, and `MineOrder` puts in 7, 6 of them one person's:
-the orders and the pages agree on both stores. `Reminded` rings a stage's reminder, then pauses the
-ticket and resumes it: the stage keeps `reminded` on both stores. `Keeping` agrees on both stores,
-with their files.
+the orders and the pages agree on both stores, and so do the counts of one's own, on the store that
+does not count them too. `Reminded` rings a stage's reminder, then pauses the ticket and resumes it:
+the stage keeps `reminded` on both stores. `Keeping` agrees on both stores, with their files.
 
 Each line a person makes is made again on the screens and on the pages, over HTTP. On the screens,
 its button is pressed on the screen read from the handler: the 1,940 presses that reach the server

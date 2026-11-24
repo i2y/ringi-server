@@ -56,6 +56,7 @@ func TestAdminPages(t *testing.T) {
 			for _, a := range root.all(func(n *node) bool { return n.Name == "a" }) {
 				hrefs = append(hrefs, a.Attr["href"]+" "+text(a))
 			}
+			// its own parts alone: no link back, as it is where the others' lead
 			want := []string{"/pages/admin/kinds " + w.AdminKindsLink(), "/pages/admin/records " + w.AdminRecordsLink()}
 			if !slices.Equal(hrefs, want) || pg.Title != w.adminTitle(AdminHomePage) || pg.Lang != lang {
 				t.Errorf("admin %s: %q, the title %q", lang, hrefs, pg.Title)
@@ -74,6 +75,25 @@ func TestAdminPages(t *testing.T) {
 				Action: "/pages/admin/kinds/leave/versions/2", Number: 4, Description: "2027-04-01"},
 			{Version: 3, Owner: "other", Start: "never", Number: 1},
 		}}}
+		// the link back to the administration's start page, given its address alone
+		for _, back := range []string{"", "/pages/admin/?lang=" + lang} {
+			pg, err = p.AdminPage(Admin{Language: lang, What: AdminKindsPage, Now: now, Kinds: kinds, Back: back})
+			if root := checkPage(t, "admin kinds, back to "+back, pg, err); root != nil {
+				var got []string
+				for _, n := range root.all(func(n *node) bool { return n.Name == "p" && n.Attr["class"] == "link back" }) {
+					for _, a := range n.all(func(n *node) bool { return n.Name == "a" }) {
+						got = append(got, a.Attr["href"]+" "+text(a))
+					}
+				}
+				var want []string
+				if back != "" {
+					want = []string{back + " " + w.AdminBack()}
+				}
+				if !slices.Equal(got, want) {
+					t.Errorf("admin kinds %s leads back to %q; want %q", lang, got, want)
+				}
+			}
+		}
 		pg, err = p.AdminPage(Admin{Language: lang, What: AdminKindsPage, Now: now, Kinds: kinds, Refused: evil})
 		if root := checkPage(t, "admin kinds "+lang, pg, err); root != nil {
 			isolated(t, "admin kinds "+lang, root)

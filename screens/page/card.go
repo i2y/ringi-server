@@ -1,6 +1,7 @@
 package page
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -75,13 +76,27 @@ func (p *Pages) Card(in Card) (Page, error) {
 	}
 	ticket := dm.obj("ticket")
 	v := &view{W: w, Lang: lang, Kind: kn, Screen: "card", Title: k.d.title(lang) + " " + str(ticket["id"]), Heading: phrase{k.d.titleText(lang)}, Link: in.History}
-	v.Facts = append(v.Facts, fact{w.ID(), plain(str(ticket["id"]))}, fact{w.State(), plain(from(statuses, str(ticket["status"]), lang))})
-	if st := str(ticket["stage"]); st != "" {
-		v.Facts = append(v.Facts, fact{w.Stage(), k.d.stageText(st, lang)})
+	// the notice of a request back with its requester, with the way to the form it is made again in:
+	// of one with that status alone, whatever address the card is given; it says whether the request
+	// was sent back, or taken back by its requester, as the ticket does (the card's data holds no
+	// sent_back_by)
+	if str(ticket["status"]) == "with_requester" {
+		v.Resubmit, v.Returned = in.Resubmit, w.TakenBack()
+		if sentBack(in.Ticket) {
+			v.Returned = w.SentBack()
+		}
 	}
-	v.Facts = append(v.Facts, fact{w.Requester(), plain(name(people, requester))})
+	if in.Back != "" {
+		v.Back, v.BackText = in.Back, w.BackToHome()
+	}
+	v.Facts = append(v.Facts, fact{Label: w.ID(), Value: plain(str(ticket["id"]))},
+		fact{Label: w.State(), Value: plain(from(statuses, str(ticket["status"]), lang)), Status: str(ticket["status"])})
+	if st := str(ticket["stage"]); st != "" {
+		v.Facts = append(v.Facts, fact{Label: w.Stage(), Value: k.d.stageText(st, lang)})
+	}
+	v.Facts = append(v.Facts, fact{Label: w.Requester(), Value: plain(name(people, requester))})
 	if madeBy != "" {
-		v.Facts = append(v.Facts, fact{w.MadeBy(), plain(name(people, madeBy))})
+		v.Facts = append(v.Facts, fact{Label: w.MadeBy(), Value: plain(name(people, madeBy))})
 	}
 	// the request's values, and what its form works out: a field shown on a condition is left out
 	// where the condition does not hold, and listed where it holds; where the form does not decide it
@@ -108,11 +123,11 @@ func (p *Pages) Card(in Card) (Page, error) {
 	cur := str(ticket["stage"])
 	for _, s := range asList(dm["route"]) {
 		st, _ := s.(map[string]any)
-		sv := stageView{Label: k.d.stageText(str(st["name"]), lang), Phase: from(phases, str(st["phase"]), lang)}
+		sv := stageView{Label: k.d.stageText(str(st["name"]), lang), Phase: from(phases, str(st["phase"]), lang), PhaseKey: str(st["phase"])}
 		sv.Current = str(st["phase"]) == "active" && str(st["name"]) == cur
 		for _, x := range asList(st["parts"]) {
 			part, _ := x.(map[string]any)
-			pv := partStateView{Way: k.d.wayText(str(part["way"]), lang), State: from(partStates, str(part["state"]), lang)}
+			pv := partStateView{Way: k.d.wayText(str(part["way"]), lang), State: from(partStates, str(part["state"]), lang), StateKey: str(part["state"])}
 			var names []string
 			for _, a := range asList(part["approvers"]) {
 				names = append(names, name(people, str(a)))
@@ -443,6 +458,14 @@ func (p *Pages) shown(f *field, v any, lang string, people, masters, files map[s
 
 // ── the list ──
 
+// sentBack is whether a ticket names who sent it back to its requester (sent_back_by).
+func sentBack(ticket json.RawMessage) bool {
+	var t struct {
+		By *string `json:"sent_back_by"`
+	}
+	return json.Unmarshal(ticket, &t) == nil && t.By != nil
+}
+
 // List makes the list of a kind's tickets, from the A2UI screen of the same list: the person's own
 // requests (ListMine) from the screen `mine`, whose rows name who made a request for its requester
 // (made_by, empty when the requester made it); the others from the screen `list`, whose rows name
@@ -468,32 +491,64 @@ func (p *Pages) List(in List) (Page, error) {
 	w := words{lang}
 	heading := w.listOf(in.Of, k.d.titleText(lang))
 	v := &view{W: w, Lang: lang, Kind: kn, Screen: "list", Title: heading.String(), Heading: heading}
+	if in.Back != "" {
+		v.Back, v.BackText = in.Back, w.BackToHome()
+	}
 	whoWords := w.Requester()
 	if in.Of == ListMine {
 		whoWords = w.MadeBy()
 	}
 	lv := &listView{Columns: []text{plain(w.ID()), plain(w.State()), plain(w.Stage()), plain(whoWords)}, More: in.More}
-	// the short fields, as the A2UI list shows them
+	// the short fields: the given ones, as the A2UI list shows them, and a field the form works out
+	// (the sum of a request), which the data holds the value of
 	var short []*field
 	for _, f := range k.d.Form {
-		if f.given() && f.kind != "rows" && f.kind != "longtext" && f.kind != "attachment" && f.ShownWhen == nil {
+		if (f.given() || f.Computed) && f.kind != "rows" && f.kind != "longtext" && f.kind != "attachment" && f.ShownWhen == nil {
 			short = append(short, f)
 			lv.Columns = append(lv.Columns, f.text(lang))
+		}
+	}
+	// the form of each ticket as the ticket holds it, with the values the form works out (the
+	// list's data holds the given ones alone), and whether it was sent back
+	forms, back := map[string]map[string]any{}, map[string]bool{}
+	for _, raw := range in.Tickets {
+		var tk struct {
+			ID   string         `json:"id"`
+			Form map[string]any `json:"form"`
+		}
+		d := json.NewDecoder(bytes.NewReader(raw))
+		d.UseNumber()
+		if err := d.Decode(&tk); err == nil {
+			forms[tk.ID], back[tk.ID] = tk.Form, sentBack(raw)
 		}
 	}
 	people, masters := dm.obj("people"), dm.obj("masters")
 	for _, r := range asList(dm["tickets"]) {
 		row, _ := r.(map[string]any)
 		id := str(row["id"])
-		lr := listRow{ID: id}
+		status := str(row["status"])
+		lr := listRow{ID: id, Status: status, State: plain(w.badge(status, back[id]))}
 		if in.Open != "" {
 			lr.Link = strings.ReplaceAll(in.Open, "{id}", url.PathEscape(id))
 		}
-		lr.Cells = []text{plain(from(statuses, str(row["status"]), lang)), plain(w.NotYet()), plain(name(people, str(row[who])))}
-		if st := str(row["stage"]); st != "" {
-			lr.Cells[1] = k.d.stageText(st, lang)
+		// the stage a ticket is at, "—" for one that is at none (done, or sent back: with its
+		// requester), and who made the request ("—" when the requester made it)
+		stage := plain(w.NotYet())
+		if status == "with_requester" {
+			stage = plain(w.Requester())
 		}
-		form, _ := row["form"].(map[string]any)
+		if st := str(row["stage"]); st != "" {
+			stage = k.d.stageText(st, lang)
+		}
+		who2 := plain(w.NotYet())
+		if s := name(people, str(row[who])); s != "" {
+			who2 = plain(s)
+		}
+		lr.Cells = []text{stage, who2}
+		form := forms[id]
+		if form == nil {
+			form, _ = row["form"].(map[string]any)
+		}
 		for _, f := range short {
 			s, _ := p.shown(f, form[f.Name], lang, people, masters, nil)
 			lr.Cells = append(lr.Cells, s)
@@ -525,7 +580,10 @@ func (p *Pages) History(in History) (Page, error) {
 	title := w.historyTitle(k.d.titleText(lang))
 	id := str(dm.obj("ticket")["id"])
 	v := &view{W: w, Lang: lang, Kind: kn, Screen: "history", Title: title.String() + " " + id, Heading: title}
-	v.Facts = append(v.Facts, fact{w.ID(), plain(id)})
+	if in.Back != "" {
+		v.Back, v.BackText = in.Back, w.BackToRequest()
+	}
+	v.Facts = append(v.Facts, fact{Label: w.ID(), Value: plain(id)})
 	people := dm.obj("people")
 	zone := in.Zone
 	if zone == nil {

@@ -20,10 +20,10 @@ signIn.Mount(h) // ログインのルート。同じ守りの後ろに置く
 | ルート | 返す物 |
 |---|---|
 | `GET /` | ホーム（`/pages/` への 303） |
-| `GET /pages/` | ホーム。本人を待っている物、出せる申請、自分の申請 |
+| `GET /pages/` | ホーム。本人を待っている物、出せる申請、自分の申請と状態ごとの数。待っている物と自分の申請は、何件かを並べる |
 | `GET`、`POST /pages/requests/{kind}/new` | 新しい申請のフォームと、その送信 |
 | `GET`、`POST /pages/tickets/{id}` | チケットの承認のカードと、その送信 |
-| `GET`、`POST /pages/tickets/{id}/form` | 差し戻された申請を出し直すフォームと、その送信 |
+| `GET`、`POST /pages/tickets/{id}/form` | 申請者に戻っている申請を出し直すフォームと、その送信 |
 | `GET /pages/tickets/{id}/history` | チケットの履歴 |
 | `GET /pages/waiting/{kind}`、`/pages/mine/{kind}` | その種類のチケットのうち本人を待っている物、その種類の本人の申請。新しい順に 1 ページ 50 件 |
 | `GET /pages/assets/{name}` | ページのスタイルシートとスクリプト、ritsu の関数 |

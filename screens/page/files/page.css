@@ -1,117 +1,146 @@
-/* The style of the plain HTML pages of ringi's screens: readable at any width, with the system's
-   fonts, in light and dark. A server may load its own sheet after this one. */
+/* The style of the plain HTML pages of ringi's screens: soft cards on a quiet canvas, readable at
+   any width, with the system's fonts, in light and dark. A server may load its own sheet after
+   this one. */
 
-/* --line draws what only parts the page (rows, tables, groups); --edge draws the edge of what a
-   person types in or presses, and --focus the ring of what has the focus: each at least 3:1 with
-   --paper, --tint and --bad-tint (WCAG 1.4.11). The text colours are at least 4.5:1 with them.
-   The size of the text is the person's own (100 %), so that a larger one in the browser's settings
-   makes the page's text larger. */
+/* --line draws what only parts the page (rows, tables, groups, the cards' own edges); --edge draws
+   the edge of what a person types in or presses, and --focus the ring of what has the focus: each
+   at least 3:1 with --paper, --tint and --bad-tint (WCAG 1.4.11). The text colours are at least
+   4.5:1 with them, and --accent-ink with --accent. The size of the text is the person's own
+   (100 %), so that a larger one in the browser's settings makes the page's text larger. */
 .ringi {
-  --ink: #1d2433;
-  --muted: #5a6478;
-  --line: #c9cfdb;
-  --edge: #767f93;
+  --ink: #141b2d;
+  --muted: #525d73;
+  --line: #dce2ee;
+  --edge: #6b768c;
   --paper: #ffffff;
-  --tint: #f3f5f9;
-  --accent: #1f5fbf;
+  --tint: #f1f4f9;
+  --accent: #1d4ed8;
   --accent-ink: #ffffff;
-  --bad: #b3261e;
-  --bad-tint: #fdecea;
-  --focus: #b35c00;
+  --bad: #b42318;
+  --bad-tint: #fef1f0;
+  --focus: #c25e00;
   color: var(--ink);
   background: var(--paper);
   color-scheme: light dark;
-  font: 100%/1.6 system-ui, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 1rem;
+  font: 100%/1.65 system-ui, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  max-width: 52rem;
+  margin: 1.25rem auto 2.5rem;
+  padding: 1.75rem 2rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px -8px rgba(20, 27, 45, 0.08), 0 2px 6px rgba(20, 27, 45, 0.03);
+  box-sizing: border-box;
 }
 
 @media (prefers-color-scheme: dark) {
   .ringi {
-    --ink: #e6e9f0;
-    --muted: #a5adbd;
-    --line: #3d4557;
-    --edge: #737c91;
-    --paper: #141821;
-    --tint: #1d2330;
-    --accent: #6ea2f5;
-    --accent-ink: #0b1220;
-    --bad: #ff8a80;
-    --bad-tint: #3a1d1b;
-    --focus: #f0a500;
+    --ink: #edf1f7;
+    --muted: #a8b3c7;
+    --line: #2a3447;
+    --edge: #7b869e;
+    --paper: #151b26;
+    --tint: #1d2534;
+    --accent: #7ab0ff;
+    --accent-ink: #0a1220;
+    --bad: #ff948a;
+    --bad-tint: #321a1d;
+    --focus: #f5a623;
+    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
   }
 }
 
-.ringi h1 { font-size: 1.5rem; margin: 0 0 0.5rem; }
-.ringi h2 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
-.ringi a { color: var(--accent); }
+.ringi *, .ringi *::before, .ringi *::after { box-sizing: border-box; }
+
+.ringi .head { padding-bottom: 1.1rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--line); }
+.ringi h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3; margin: 0 0 0.5rem; }
+.ringi h2 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; margin: 1.75rem 0 0.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--line); }
+.ringi h3 { font-size: 1rem; font-weight: 700; margin: 1.25rem 0 0.5rem; }
+.ringi a { color: var(--accent); text-underline-offset: 0.15em; }
 .ringi :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 /* a date's year, month and day take the focus inside it, which :focus-visible does not see */
 .ringi input[type="date"]:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
 
-.ringi .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 0; }
-.ringi .facts div { display: flex; flex-wrap: wrap; gap: 0 0.5rem; min-width: 0; }
+.ringi .facts { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; margin: 0.5rem 0 0; }
+.ringi .facts div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.5rem; min-width: 0; background: var(--tint); border: 1px solid var(--line); border-radius: 999px; padding: 0.2rem 0.8rem; font-size: 0.9rem; }
 .ringi .facts dt { color: var(--muted); }
 .ringi .facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 
 .ringi .summary {
   border: 2px solid var(--bad);
   background: var(--bad-tint);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  padding: 0.85rem 1.1rem;
   margin: 1rem 0;
 }
 .ringi .summary p { margin: 0 0 0.25rem; font-weight: 600; }
 .ringi .summary ul { margin: 0; padding-left: 1.25rem; }
+.ringi .summary li { margin: 0.2rem 0; }
+.ringi .summary details { margin-top: 0.4rem; }
+.ringi .summary summary { cursor: pointer; font-weight: 600; }
 .ringi .summary .details { white-space: pre-wrap; font-size: 0.9rem; color: var(--muted); }
 
-.ringi .values dl { margin: 0; }
-.ringi .value { display: grid; grid-template-columns: minmax(8rem, 1fr) 3fr; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
-.ringi .value dt { color: var(--muted); }
+.ringi .values dl { background: var(--tint); border: 1px solid var(--line); border-radius: 14px; padding: 0.25rem 1.15rem; margin: 0; }
+.ringi .value { display: grid; grid-template-columns: minmax(8rem, 1fr) 3fr; gap: 0.5rem; padding: 0.65rem 0; border-bottom: 1px solid var(--line); }
+.ringi .value:last-child { border-bottom: none; }
+.ringi .value dt { color: var(--muted); font-weight: 600; }
 .ringi .value dd { margin: 0; overflow-wrap: anywhere; }
 .ringi .value dd.long { white-space: pre-wrap; }
 
 .ringi .scroll { overflow-x: auto; }
 .ringi table { border-collapse: collapse; width: 100%; }
-.ringi th, .ringi td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-.ringi thead th { background: var(--tint); }
+.ringi th, .ringi td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ringi thead th { background: var(--tint); font-weight: 700; }
 
-.ringi .route ol, .ringi .history { padding-left: 1.5rem; }
-.ringi .route li { margin: 0.25rem 0; }
+/* The way a request goes, step by step, and the lines of what was done with it. */
+.ringi .route > ol { list-style: none; padding: 0; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.ringi .route > ol > li { background: var(--tint); border: 1px solid var(--line); border-radius: 12px; padding: 0.75rem 1rem; margin: 0; }
+.ringi .route > ol > li.current { background: var(--paper); border: 2px solid var(--accent); box-shadow: 0 3px 12px rgba(29, 78, 216, 0.1); }
+.ringi .route li ul { margin: 0.4rem 0 0; padding-left: 1.25rem; }
 .ringi .route li.current > .stage { font-weight: 700; }
 .ringi .route .phase, .ringi .route .state, .ringi .history .did { color: var(--muted); }
-.ringi .history li { margin: 0 0 0.75rem; }
+.ringi .history { list-style: none; padding-left: 1rem; margin: 0.75rem 0; border-left: 3px solid var(--line); }
+.ringi .history > li { background: var(--tint); border: 1px solid var(--line); border-radius: 12px; padding: 0.75rem 1rem; margin: 0 0 0.75rem; }
 .ringi .history p { margin: 0; }
+.ringi .history p + p { margin-top: 0.35rem; }
 .ringi .history .comment { white-space: pre-wrap; border-left: 3px solid var(--line); padding-left: 0.5rem; }
-.ringi .empty { color: var(--muted); }
+
+.ringi .empty { background: var(--tint); border: 1px dashed var(--edge); border-radius: 12px; padding: 0.9rem 1.15rem; margin: 0.5rem 0; color: var(--muted); }
+.ringi .notice { background: var(--tint); border: 1px solid var(--line); border-radius: 12px; padding: 0.75rem 1rem; margin: 1rem 0; }
+.ringi .more { margin: 1rem 0; }
+.ringi .link a, .ringi .more a { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.95rem; background: var(--tint); border: 1px solid var(--line); border-radius: 10px; text-decoration: none; font-weight: 600; }
 
 .ringi form { margin-top: 1.5rem; }
-.ringi fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 1rem; padding: 0.75rem 1rem; }
-.ringi legend { font-weight: 600; padding: 0 0.25rem; }
-.ringi .field { margin: 0 0 1rem; }
-.ringi .field > label, .ringi .field.output > .label { display: block; font-weight: 600; }
+.ringi fieldset { background: var(--tint); border: 1px solid var(--line); border-radius: 14px; margin: 0 0 1.25rem; padding: 1rem 1.25rem; box-sizing: border-box; }
+.ringi fieldset.row { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; margin: 0 0 0.85rem; padding: 1rem 1.15rem; box-shadow: 0 1px 4px rgba(20, 27, 45, 0.03); }
+.ringi legend { font-weight: 700; padding: 0.15rem 0.65rem; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+.ringi .field { margin: 0 0 1.2rem; }
+.ringi .field > label, .ringi .field.output > .label { display: block; font-weight: 700; margin-bottom: 0.25rem; }
 .ringi .field.check > label { display: inline; font-weight: 600; }
-.ringi .required { font-weight: 400; font-size: 0.85rem; color: var(--bad); }
-.ringi .hint { margin: 0.1rem 0 0.25rem; color: var(--muted); font-size: 0.9rem; }
+.ringi .required { display: inline-block; font-weight: 700; font-size: 0.78rem; color: var(--bad); background: var(--bad-tint); border: 1px solid var(--bad); border-radius: 999px; padding: 0.05rem 0.5rem; margin-left: 0.35rem; vertical-align: middle; }
+.ringi .hint { margin: 0.15rem 0 0.4rem; color: var(--muted); font-size: 0.9rem; }
 .ringi form.scripted .hint .nojs { display: none; }
+.ringi .error { color: var(--bad); font-weight: 600; }
 
 .ringi input[type="text"], .ringi input[type="date"], .ringi select, .ringi textarea {
   font: inherit;
   color: inherit;
   background: var(--paper);
-  border: 1px solid var(--edge);
-  border-radius: 4px;
-  padding: 0.4rem 0.5rem;
+  border: 1.5px solid var(--edge);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
   width: 100%;
   max-width: 32rem;
   box-sizing: border-box;
 }
 .ringi textarea { min-height: 6rem; }
+.ringi input[type="file"] { font: inherit; color: inherit; background: var(--tint); border: 1.5px dashed var(--edge); border-radius: 10px; padding: 0.45rem 0.6rem; max-width: 32rem; width: 100%; box-sizing: border-box; }
+.ringi input[type="file"]::file-selector-button { font: inherit; font-weight: 600; color: var(--ink); background: var(--paper); border: 1.5px solid var(--edge); border-radius: 8px; padding: 0.35rem 0.85rem; margin-right: 0.75rem; cursor: pointer; }
+.ringi input[type="checkbox"], .ringi input[type="radio"] { accent-color: var(--accent); }
 .ringi .amount { display: flex; align-items: center; gap: 0.5rem; max-width: 20rem; }
 .ringi .amount input { text-align: right; }
 .ringi [aria-invalid="true"] { border-color: var(--bad); border-width: 2px; }
-.ringi output { display: block; font-weight: 600; }
+.ringi .field.output { background: var(--tint); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 12px; padding: 0.85rem 1.15rem; max-width: 32rem; box-sizing: border-box; }
+.ringi output { display: block; font-weight: 800; font-size: 1.3rem; margin: 0.15rem 0; }
 
 .ringi .checks { list-style: none; margin: 0.25rem 0 0; padding: 0; color: var(--bad); font-size: 0.95rem; }
 .ringi .checks li::before { content: "! "; font-weight: 700; }
@@ -124,34 +153,80 @@
 .ringi .named[hidden] { display: none; }
 .ringi .found p { margin: 0.25rem 0; }
 .ringi .found .status:empty { margin: 0; }
-.ringi .found ul { list-style: none; margin: 0.25rem 0; padding: 0; max-width: 32rem; }
-.ringi .found li { margin: 0.25rem 0; }
-.ringi .found li button { width: 100%; text-align: start; }
+.ringi .found ul { list-style: none; margin: 0.25rem 0; padding: 0; max-width: 32rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.ringi .found li { margin: 0; }
+.ringi .found li button { width: 100%; display: flex; align-items: center; justify-content: space-between; text-align: start; box-sizing: border-box; overflow-wrap: anywhere; }
+.ringi .found li button::after { content: "→"; font-weight: 700; color: var(--accent); margin-left: 0.75rem; flex-shrink: 0; }
 .ringi .kept, .ringi .remove { margin: 0 0 0.25rem; }
 
 .ringi .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
-.ringi .parts { list-style: none; padding: 0; }
-.ringi .parts li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.25rem 0; }
-.ringi button { font: inherit; border-radius: 4px; padding: 0.45rem 1rem; cursor: pointer; }
-.ringi button.primary { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
-.ringi button.plain { background: var(--tint); color: var(--ink); border: 1px solid var(--edge); }
+.ringi .parts { list-style: none; padding: 0; margin: 0.5rem 0; }
+.ringi .parts li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.4rem 0; }
+.ringi button { font: inherit; font-weight: 600; border-radius: 10px; padding: 0.55rem 1.2rem; cursor: pointer; transition: border-color 0.15s ease, filter 0.15s ease; }
+.ringi button.primary { background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent); box-shadow: 0 2px 6px rgba(29, 78, 216, 0.18); }
+.ringi button.primary:hover { filter: brightness(0.92); }
+.ringi button.plain { background: var(--tint); color: var(--ink); border: 1.5px solid var(--edge); }
+.ringi button.plain:hover { border-color: var(--accent); }
 .ringi button.stay { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
 
-/* A whole page a server shows: its body takes the colours of the screen (in its main part), and a
-   bar at the top. */
-body:has(> .ringi), body:has(> main > .ringi) { margin: 0; background: #ffffff; }
-@media (prefers-color-scheme: dark) { body:has(> .ringi), body:has(> main > .ringi) { background: #141821; } }
-.ringi.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--line); }
-.ringi.bar .home { font-weight: 600; margin-right: auto; }
-.ringi.bar .person { color: var(--muted); }
-.ringi.bar .languages { display: flex; gap: 0.75rem; }
+/* A whole page a server shows: its body is a quiet canvas the cards rest on, and a bar at the
+   top. */
+body:has(> .ringi), body:has(> main > .ringi) { margin: 0; background: #f1f4f9; }
+@media (prefers-color-scheme: dark) { body:has(> .ringi), body:has(> main > .ringi) { background: #0d111a; } }
+.ringi.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 1rem auto 0; padding: 0.75rem 1.5rem; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 2px 8px rgba(20, 27, 45, 0.04); }
+.ringi.bar .home { margin-right: auto; text-decoration: none; font-weight: 700; padding: 0.3rem 0.7rem; border-radius: 8px; background: var(--tint); }
+.ringi.bar .person { color: var(--muted); background: var(--tint); padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.9rem; font-weight: 600; }
+.ringi.bar .languages { display: flex; gap: 0.5rem; }
+.ringi.bar .languages a { text-decoration: none; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 8px; background: var(--tint); }
 .ringi.bar form { margin: 0; }
-.ringi.bar button { padding: 0.2rem 0.75rem; }
+.ringi.bar button { padding: 0.3rem 0.85rem; border-radius: 8px; font-weight: 600; }
 
-.ringi .entries ul { padding-left: 1.25rem; }
-.ringi .entries li { margin: 0.25rem 0; }
-.ringi .entries .count { color: var(--muted); }
-.ringi .notice, .ringi .more { margin: 1rem 0; }
+/* The lists of the home pages, the administration's links and the trial sign-in's people: a card
+   for each, one under another (Tab walks them in the page's order). */
+.ringi .entries ul { list-style: none; padding: 0; margin: 0.65rem 0 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.ringi .entries li { margin: 0; }
+.ringi .entries > ul > li > a { display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 1.1rem; background: var(--tint); border: 1px solid var(--line); border-radius: 12px; text-decoration: none; font-weight: 600; box-sizing: border-box; overflow-wrap: anywhere; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.ringi .entries > ul > li > a::after { content: "→"; font-weight: 700; color: var(--accent); margin-left: 0.75rem; flex-shrink: 0; }
+.ringi .entries > ul > li > a:hover { border-color: var(--accent); box-shadow: 0 3px 10px rgba(29, 78, 216, 0.08); }
+.ringi .entries li > button.plain { width: 100%; text-align: start; display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.1rem; border-radius: 10px; font-weight: 600; box-sizing: border-box; overflow-wrap: anywhere; }
+.ringi .entries li > button.plain::after { content: "→"; font-weight: 700; color: var(--accent); margin-left: 0.75rem; flex-shrink: 0; }
+.ringi .entries .count, .ringi .entries .from, .ringi .entries .summary-line, .ringi .entries .kind-name { color: var(--muted); font-size: 0.9rem; }
+.ringi .entries .kind-name { font-weight: 400; }
+
+/* The tickets an entry of the start page lists, one line each (Tab walks them in the page's
+   order): the number as a link, the state's badge, the stage, who it names and its short line. */
+.ringi .entries ul.entry-tickets { margin: 0.45rem 0 0; gap: 0.2rem; }
+.ringi .entry-tickets > li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.6rem; padding: 0.35rem 0.6rem; overflow-wrap: anywhere; }
+.ringi .entry-tickets > li > a { font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
+.ringi .entry-tickets .stage, .ringi .entry-tickets .who, .ringi .entry-tickets .info { color: var(--muted); font-size: 0.9rem; }
+.ringi .entry-tickets .who { font-weight: 600; }
+
+/* The status of a ticket as a small badge, told apart by its colour: the text colours are the
+   page's own, at least 4.5:1 on each badge's ground. */
+.ringi .status[data-status] { display: inline-block; padding: 0.05rem 0.6rem; border-radius: 999px; border: 1.5px solid var(--edge); font-weight: 700; font-size: 0.85em; }
+.ringi .status[data-status="with_requester"], .ringi .status[data-status="rejected"] { background: var(--bad-tint); color: var(--bad); border-color: var(--bad); }
+.ringi .status[data-status="in_progress"], .ringi .status[data-status="paused"] { background: var(--tint); color: var(--accent); border-color: var(--accent); }
+.ringi .status[data-status="approved"] { background: var(--tint); color: var(--ink); border: 2px solid var(--accent); }
+.ringi .status[data-status="withdrawn"], .ringi .status[data-status="expired"] { background: var(--tint); color: var(--muted); border: 1px solid var(--edge); }
+/* a fact's own pill is the ground: the state it holds keeps only the colour */
+.ringi .facts dd.status[data-status] { display: inline; padding: 0; border: none; border-radius: 0; font-size: inherit; background: none; }
+
+/* Where a request goes, step by step: the stage and the part an answer is waited for. */
+.ringi .route .phase[data-phase="active"], .ringi .route .state[data-state="active"], .ringi .route .state[data-state="agent"] { color: var(--accent); font-weight: 600; }
+
+/* A card's notice of a request sent back to its requester, with the link to the form it is made
+   again in. */
+.ringi .sent-back { border: 2px solid var(--bad); background: var(--bad-tint); border-radius: 12px; padding: 0.85rem 1.1rem; margin: 1rem 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1.25rem; }
+.ringi .sent-back p { margin: 0; font-weight: 600; }
+.ringi .sent-back p:first-child { color: var(--bad); }
+.ringi .sent-back a.primary { display: inline-flex; align-items: center; padding: 0.5rem 1.1rem; background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent); border-radius: 10px; text-decoration: none; font-weight: 700; }
+.ringi .sent-back a.primary:hover { filter: brightness(0.92); }
+
+/* The roles the trial sign-in offers, one under another; the one chosen has the accent's edge. */
+.ringi .role-presets { list-style: none; margin: 0.35rem 0 0.7rem; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; max-width: 32rem; }
+.ringi .role-presets a { display: block; padding: 0.4rem 0.8rem; background: var(--tint); border: 1.5px solid var(--line); border-radius: 10px; text-decoration: none; font-weight: 600; box-sizing: border-box; }
+.ringi .role-presets a:hover { border-color: var(--accent); }
+.ringi .role-presets a.active { border: 2px solid var(--accent); font-weight: 700; }
 
 /* The administration's pages: a version's form, the record's lines. */
 .ringi .choice { margin: 0.25rem 0; }
@@ -160,6 +235,12 @@ body:has(> .ringi), body:has(> main > .ringi) { margin: 0; background: #ffffff; 
 .ringi .records ul { margin: 0; padding-left: 1.25rem; }
 .ringi .records p { margin: 0.25rem 0 0; }
 .ringi .records td, .ringi .records code { overflow-wrap: anywhere; }
+.ringi .records code { background: var(--tint); padding: 0.05rem 0.3rem; border-radius: 4px; }
+
+@media (max-width: 36rem) {
+  .ringi { margin: 0.5rem; padding: 1.1rem 1rem; border-radius: 12px; }
+  .ringi.bar { margin: 0.5rem 0.5rem 0; padding: 0.6rem 0.85rem; }
+}
 
 @media (max-width: 30rem) {
   .ringi .value { grid-template-columns: 1fr; gap: 0; }

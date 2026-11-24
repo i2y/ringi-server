@@ -166,6 +166,16 @@ func TestAdminPagesWithoutScript(t *testing.T) {
 			t.Errorf("the administration does not link to %s: %d", part, w.Code)
 		}
 	}
+	// each of the three links back to it, and it has no link to itself
+	const back = `<p class="link back"><a href="/pages/admin/?lang=en">← Back to the administration</a></p>`
+	if strings.Contains(w.Body.String(), `class="link back"`) {
+		t.Errorf("the administration's start page links back")
+	}
+	for _, part := range []string{"kinds", "organization", "records"} {
+		if w := whole.get("/pages/admin/" + part + "?lang=en"); w.Code != 200 || strings.Count(w.Body.String(), back) != 1 {
+			t.Errorf("the administration's page of %s has no link back: %d", part, w.Code)
+		}
+	}
 
 	// switches of version 2 of leave
 	const v2 = "/pages/admin/kinds/leave/versions/2"
@@ -245,7 +255,7 @@ func TestAdminPagesWithoutScript(t *testing.T) {
 	})
 	uploaded, _ := whole.upload("/pages/admin/organization?lang=en", values.Get("_at"), renamed)
 	to, w = whole.follow(uploaded)
-	if !strings.HasPrefix(to, "/pages/admin/organization/drafts/") || w.Code != 200 || !strings.Contains(w.Body.String(), "e1201") {
+	if !strings.HasPrefix(to, "/pages/admin/organization/drafts/") || w.Code != 200 || !strings.Contains(w.Body.String(), "e1201") || strings.Count(w.Body.String(), back) != 1 {
 		t.Fatalf("the draft of the data uploaded: %s %d %.500s", to, w.Code, w.Body.String())
 	}
 	action, values = formOn(t, w.Body.String(), "import", "/pages/admin/organization/drafts/")

@@ -534,6 +534,42 @@ func (s *Server) Mine(ctx context.Context, p Person, q MineQuery) ([]json.RawMes
 	return out, nil
 }
 
+// CountMine answers how many of a person's own requests there are, by kind and by state: the
+// tickets Mine answers with no query, counted (the start page of the pages says them). A kind with
+// none is left out. With a store that is a MineCounter, the store counts them; with another store,
+// it reads the tickets Mine answers, and counts them.
+func (s *Server) CountMine(ctx context.Context, p Person) (map[string]MineCount, error) {
+	if p.ID == "" {
+		return nil, errors.New("a list with no person")
+	}
+	if c, ok := s.cfg.Store.(MineCounter); ok {
+		return c.CountMine(ctx, p.ID)
+	}
+	recs, err := s.cfg.Store.Mine(ctx, p.ID, MineQuery{})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]MineCount{}
+	for _, rec := range recs {
+		c := out[rec.Kind]
+		if c.Status == nil {
+			c.Status = map[string]int{}
+		}
+		c.Status[rec.Status]++
+		if rec.Status == "with_requester" {
+			var t ticketView
+			if err := json.Unmarshal(rec.Body, &t); err != nil {
+				return nil, err
+			}
+			if t.SentBackBy != nil {
+				c.SentBack++
+			}
+		}
+		out[rec.Kind] = c
+	}
+	return out, nil
+}
+
 // utcDay is the day for the parts of a list that no kind's offset decides.
 func utcDay(t time.Time) string { return t.UTC().Format(time.DateOnly) }
 

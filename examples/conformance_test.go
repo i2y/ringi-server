@@ -218,6 +218,14 @@ func TestMineOrderPostgres(t *testing.T) {
 	conformance.MineOrder(t, s)
 }
 
+// TestMineOrderByReading runs MineOrder on a store that does not count a person's own requests: the
+// server reads them to count them.
+func TestMineOrderByReading(t *testing.T) {
+	s := setup(t)
+	s.Store = func(testing.TB) server.Store { return storeAlone{memstore.New()} }
+	conformance.MineOrder(t, s)
+}
+
 // TestListRequests checks what the list of the kinds a person may submit leans on: the generated
 // `start` checks the day's data and `submitted by` before the values of the form, so an empty form
 // is refused as `form` exactly when the person may submit, and as `submit` or `data` when they may

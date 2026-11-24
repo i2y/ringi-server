@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,7 +31,7 @@ func (countOrg) Read(ctx context.Context, l server.OrgLayout) (*server.OrgData, 
 }
 
 // storeAlone is a store with the methods of server.Store alone: one that does not count the tickets
-// that wait for a person (server.WaitingCounter).
+// that wait for a person (server.WaitingCounter), nor their own requests (server.MineCounter).
 type storeAlone struct{ server.Store }
 
 // tripWaiting is a trip at its stage that waits for the people.
@@ -95,6 +96,93 @@ func TestCountWaiting(t *testing.T) {
 			if !maps.Equal(got, read) || !maps.Equal(got, want) {
 				t.Errorf("%s, %s: CountWaiting of %s answers %v; Waiting answers %v, and %v is wanted", st.name, c.at, c.person, got, read, want)
 			}
+		}
+	}
+}
+
+// TestCountMine checks Server.CountMine, the counts of a person's own requests the start page says,
+// on each store and on a store that does not count them, whose tickets the server reads to count
+// them: how many there are by kind and by status, as Mine answers them, and how many of those back
+// with their requester were sent back. A request ann made for bob is both's own; one that was decided
+// is counted by what it is now; the approver has none.
+func TestCountMine(t *testing.T) {
+	ctx := context.Background()
+	for _, st := range append(stores(t, "ringi_root_count_mine"), namedStore{"a store that does not count", storeAlone{memstore.New()}}) {
+		n := 0
+		w := newWorld(t, func(c *server.Config) {
+			c.Store = st.store
+			c.NewTicketID = func() string { n++; return fmt.Sprintf("M-%d", n) }
+		})
+		submit := func(by, body string) {
+			t.Helper()
+			r, err := w.srv.Do(ctx, server.Call{Operation: "submit_trip", Person: server.Person{ID: by}, Key: fmt.Sprint(n), Body: []byte(body)})
+			if err != nil || r.Outcome != server.OK {
+				t.Fatalf("%s: submit: %v %s", st.name, err, r.Body)
+			}
+			w.clock.Add(time.Minute)
+		}
+		submit("ann", `{"form":{"amount":1,"to":"Kobe"}}`)
+		submit("ann", `{"form":{"amount":2,"to":"Nara"},"requester":"bob"}`)
+		submit("bob", `{"form":{"amount":3,"to":"Otsu"}}`)
+		submit("ann", `{"form":{"amount":4,"to":"Kyoto"}}`)
+		check := func(when, person string, want map[string]int, sentBack int) {
+			t.Helper()
+			got, err := w.srv.CountMine(ctx, server.Person{ID: person})
+			if err != nil {
+				t.Fatalf("%s: CountMine of %s: %v", st.name, person, err)
+			}
+			tickets, err := w.srv.Mine(ctx, server.Person{ID: person}, server.MineQuery{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			read := map[string]int{}
+			for _, b := range tickets {
+				var x struct{ Request, Status string }
+				json.Unmarshal(b, &x)
+				read[x.Status]++
+			}
+			all := map[string]server.MineCount{}
+			if len(want) > 0 {
+				all["trip"] = server.MineCount{Status: want, SentBack: sentBack}
+			}
+			same := func(x, y server.MineCount) bool { return x.SentBack == y.SentBack && maps.Equal(x.Status, y.Status) }
+			if !maps.EqualFunc(got, all, same) || !maps.Equal(read, want) {
+				t.Errorf("%s, %s: CountMine of %s answers %v; Mine answers %v, and %v is wanted", st.name, when, person, got, read, all)
+			}
+		}
+		check("as they were made", "ann", map[string]int{"in_progress": 3}, 0)
+		check("as they were made", "bob", map[string]int{"in_progress": 2}, 0)
+		check("as they were made", "boss", map[string]int{}, 0)
+		// ann's first and the one made for bob are approved, and two of ann's are back with ann: one
+		// the boss sent back, one ann took back
+		for _, id := range []string{"M-1", "M-2"} {
+			_, b := w.call("GET", "/tickets/"+id, "boss", "", nil)
+			var tk struct{ Ticket ticket }
+			if err := json.Unmarshal(b, &tk); err != nil {
+				t.Fatal(err)
+			}
+			if code, b := w.call("POST", "/tickets/"+id+"/approve", "boss", id, map[string]any{"revision": tk.Ticket.Revision}); code != 200 {
+				t.Fatalf("%s: approve: %d %s", st.name, code, b)
+			}
+		}
+		boss := "boss"
+		for id, by := range map[string]*string{"M-8": nil, "M-9": &boss} {
+			back, _ := json.Marshal(ticket{ID: id, Request: "trip", Version: 1, Requester: "ann", SentBackBy: by, Status: "with_requester", Round: 1, Attempt: "a-" + id,
+				Revision: rev{Round: 1}, Form: map[string]any{"amount": 1, "to": "Kobe"}})
+			if err := w.srv.Import(ctx, back); err != nil {
+				t.Fatalf("%s: %v", st.name, err)
+			}
+		}
+		check("after two were approved", "ann", map[string]int{"in_progress": 1, "approved": 2, "with_requester": 2}, 1)
+		check("after two were approved", "bob", map[string]int{"in_progress": 1, "approved": 1}, 0)
+		check("after two were approved", "boss", map[string]int{}, 0)
+		if _, err := w.srv.CountMine(ctx, server.Person{}); err == nil {
+			t.Errorf("%s: CountMine answered a person with no ID", st.name)
+		}
+		// Mine narrows to a status
+		got, err := w.srv.Mine(ctx, server.Person{ID: "ann"}, server.MineQuery{Kind: "trip", Status: "with_requester"})
+		if err != nil || len(got) != 2 || !bytes.Contains(got[0], []byte(`"M-9"`)) || !bytes.Contains(got[1], []byte(`"M-8"`)) {
+			t.Errorf("%s: Mine of ann's that are back with ann: %s, %v", st.name, got, err)
 		}
 	}
 }

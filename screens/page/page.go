@@ -200,7 +200,10 @@ type Form struct {
 	Token  string    // the CSRF token, put in the hidden field _csrf
 	Now    time.Time // when the page is shown; the operation's key reads it (required)
 	Picks  Picks
-	Again  *Reading // a post read, shown again with what was typed in it and what was wrong
+	// Back is the address of the page the form leads from: the ticket's page for a request made
+	// again, the start page for a new one. A link under the head leads back to it; "" shows none.
+	Back  string
+	Again *Reading // a post read, shown again with what was typed in it and what was wrong
 	// Worked asks what the form works out, as the page shows it (nil: the page shows each field as
 	// it would before the form is filled in). A field whose condition does not hold is in the page
 	// hidden, with nothing of it sent; one whose condition holds is shown, and asked for; a computed
@@ -217,7 +220,12 @@ type Card struct {
 	Picks   Picks
 	Zone    *time.Location // the zone the card shows times in; nil is UTC
 	History string         // the address of the ticket's history, for a link; "" for none
-	Again   *Reading
+	// Resubmit is the address of the form a request that is back with its requester is made again in,
+	// where they may make it again: the card says so, and links to it; "" shows none.
+	Resubmit string
+	// Back is the address of the start page: a link under the head leads back to it; "" shows none.
+	Back  string
+	Again *Reading
 	// Worked asks what the ticket's form works out (nil, as a Form's): the card's values leave out a
 	// field hidden on its condition and show the values the form works out, and the fields approvers
 	// edit are shown as the form after the edits decides them.
@@ -233,6 +241,8 @@ type List struct {
 	Of string
 	// More is the address of the list's next page (the older tickets); "" for none.
 	More string
+	// Back is the address of the start page: a link under the head leads back to it; "" shows none.
+	Back string
 }
 
 // The lists a List can be Of.
@@ -245,6 +255,9 @@ const (
 type History struct {
 	screens.History
 	Zone *time.Location // the zone the history shows times in, as the card does; nil is UTC
+	// Back is the address of the ticket's page: a link under the head leads back to it; "" shows
+	// none.
+	Back string
 }
 
 // Home is what the start page is made of: what waits for the person, the requests they may make,
@@ -263,12 +276,45 @@ type Home struct {
 type Entry struct {
 	Title string
 	Lang  string // the language of Title when it is not the page's ("" when it is)
-	Count int    // how many tickets wait (Home.Waiting); not shown elsewhere
-	URL   string
+	// Name is the kind's name ("expense", "expense_ja"). Where a section holds two entries of one
+	// title, it is shown after the title so that the kinds are told apart; "" shows none.
+	Name  string
+	Count int // how many tickets wait (Home.Waiting); not shown elsewhere
+	// States is how many of the person's own requests of the kind are in each state
+	// ("in_progress": 3), and SentBack how many of those back with their requester
+	// ("with_requester") were sent back, the others being taken back. They are said after the title,
+	// the ones that wait for the person first ("差し戻し 1・承認待ち 3"; Home.Mine); not shown
+	// elsewhere.
+	States   map[string]int
+	SentBack int
+	URL      string
+	// Tickets are a few of the kind's tickets (of those that wait, in Home.Waiting; of the person's
+	// own, in Home.Mine), each a link to its page under the entry.
+	Tickets []EntryTicket
 	// From is, for a kind no version of which is in effect now (Home.New), the day the person may
 	// make a request of it from (YYYY-MM-DD, as Server.Offered answers it): the line says the day,
 	// and has no link (URL is not shown), since the kind has no form to show yet.
 	From string
+}
+
+// EntryTicket is a ticket an Entry lists: its ID, the address of its page, and what tells it and its
+// state apart.
+type EntryTicket struct {
+	ID     string
+	URL    string // the address of its page
+	Status string // "in_progress", "with_requester", "approved", …: its words are shown as a badge
+	// SentBack is, of a ticket back with its requester (with_requester), whether it was sent back
+	// (its sent_back_by names by whom): one its requester took back was not.
+	SentBack bool
+	// Stage is the stage the ticket is at, in words ("Manager", as Pages.StageIn answers it); "" for
+	// none. StageLang is their language when it is not the page's ("" when it is).
+	Stage, StageLang string
+	// Who is who the line names: the requester of a ticket that waits for the person; of the person's
+	// own, who made the request for them, or whom they made it for. "" for none.
+	Who string
+	// Info is a short line of the request's values that tells it apart (the sum it works out, a
+	// day); "" for none.
+	Info string
 }
 
 // Bar is the bar a server puts at the top of each page it shows (the page's Bar): the way back to

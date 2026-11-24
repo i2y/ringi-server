@@ -2,6 +2,7 @@ package page
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -107,6 +108,32 @@ var statuses = map[string][2]string{
 	"rejected":       {"Rejected", "却下されました"},
 	"withdrawn":      {"Withdrawn", "取り下げられました"},
 	"expired":        {"Expired", "期限が切れました"},
+}
+
+// The states of a ticket as a badge says them, in short words where statuses' are whole sentences. A
+// ticket back with its requester was sent back, or taken back by them (stateSentBack): either waits
+// for them to make it again.
+var badgeStates = map[string][2]string{
+	stateSentBack:    {"Sent back", "差し戻し"},
+	"with_requester": {"To be resubmitted", "再申請待ち"},
+	"in_progress":    {"Waiting", "承認待ち"},
+	"paused":         {"On hold", "保留"},
+	"approved":       {"Approved", "承認"},
+	"rejected":       {"Rejected", "却下"},
+	"withdrawn":      {"Withdrawn", "取り下げ"},
+	"expired":        {"Expired", "期限切れ"},
+}
+
+// stateSentBack is, among the badges' words, a ticket back with its requester that someone sent back.
+const stateSentBack = "sent_back"
+
+// badge is the short words of a ticket's state; sentBack is whether one back with its requester was
+// sent back.
+func (w words) badge(status string, sentBack bool) string {
+	if status == "with_requester" && sentBack {
+		status = stateSentBack
+	}
+	return from(badgeStates, status, w.lang)
 }
 
 // What a line of a history says was done.
@@ -607,6 +634,36 @@ func (w words) Count(n int) string {
 	return w.t("("+group(strconv.Itoa(n))+")", group(strconv.Itoa(n))+"件")
 }
 
+// statesCounted says how many of a person's own requests of a kind are in each state, after the
+// kind's title on the start page: "1 sent back, 3 waiting" / "差し戻し 1・承認待ち 3". sentBack is how
+// many of those back with their requester were sent back. The ones that wait for the person to make
+// them again go first, then the other open ones, then the ones that are done.
+func (w words) statesCounted(n map[string]int, sentBack int) string {
+	if sentBack > 0 {
+		n = maps.Clone(n)
+		n["with_requester"] -= sentBack
+		n[stateSentBack] = sentBack
+	}
+	order := []string{stateSentBack, "with_requester", "in_progress", "paused", "approved", "rejected", "withdrawn", "expired"}
+	place := func(s string) int {
+		if i := slices.Index(order, s); i >= 0 {
+			return i
+		}
+		return len(order)
+	}
+	states := slices.Sorted(maps.Keys(n))
+	slices.SortStableFunc(states, func(a, b string) int { return place(a) - place(b) })
+	var parts []string
+	for _, s := range states {
+		if n[s] <= 0 {
+			continue
+		}
+		word, many := from(badgeStates, s, w.lang), group(strconv.Itoa(n[s]))
+		parts = append(parts, w.t(many+" "+strings.ToLower(word), word+" "+many))
+	}
+	return strings.Join(parts, w.t(", ", "・"))
+}
+
 // listOf is the heading of a list: the kind's title, and whose tickets it shows.
 func (w words) listOf(of string, title text) phrase {
 	switch of {
@@ -620,6 +677,29 @@ func (w words) listOf(of string, title text) phrase {
 
 func (w words) HomeLink() string { return w.t("Home", "ホーム") }
 func (w words) SignOut() string  { return w.t("Sign out", "ログアウト") }
+
+// The links under a screen's head that lead back to the page it is of.
+func (w words) BackToRequest() string {
+	return w.t("← Back to the request", "← 申請へ戻る")
+}
+func (w words) BackToHome() string {
+	return w.t("← Back to the start page", "← ホームへ戻る")
+}
+func (w words) AdminBack() string {
+	return w.t("← Back to the administration", "← 管理へ戻る")
+}
+
+// The words of a card's notice of a request back with its requester, sent back or taken back by
+// them, and its link to the form it is made again in.
+func (w words) SentBack() string {
+	return w.t("This request has been sent back.", "この申請は差し戻されています。")
+}
+func (w words) TakenBack() string {
+	return w.t("This request has been withdrawn, and is back with its requester.", "この申請は取り下げられ、申請者に戻っています。")
+}
+func (w words) EditAndResubmit() string {
+	return w.t("Edit it and submit again", "内容を修正して再申請する")
+}
 
 // SignedInAs says who is signed in.
 func (w words) SignedInAs(name string) string {

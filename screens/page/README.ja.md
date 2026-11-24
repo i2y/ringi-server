@@ -63,7 +63,7 @@ POST /requests/expense/tickets
 
 ページは `page.css`、`page.js`、一式の `functions.js` を `Options.Assets` から読み込み、インラインのスクリプトもスタイルも持ちません。`Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; form-action 'self'` のもとで動きます。
 
-画面のまわりのページも作ります。`pages.Home` はホーム（本人を待っている物、出せる申請、自分の申請。どの種類もリンク）、`pages.Bar` はサーバーが各ページの上に置く帯（ホーム、ログインしている人、ほかの言語、ログアウト）、`pages.Notice` は求められたページの代わりに一つのことを言うページ（「見つかりません」「ログインしていません」「送った内容を読めませんでした」「送った内容が大きすぎます」「サーバーのエラー」）、`pages.Offered` は「いつから出せるか」を言うページです（API の `unoffered` の答えや A2UI の画面と同じ言葉で。`screens.OfferedWords`）。ホームでは、今効いている版の無い種類の行（`Home.New` の `Entry`）は、その日を言い（`Entry.From`。`Server.Offered` が答えるとおり）、まだ見せるフォームが無いのでリンクを持ちません。DESIGN.ja.md の 3.4 にあります。
+画面のまわりのページも作ります。`pages.Home` はホーム（本人を待っている物、出せる申請、自分の申請と状態ごとの数。どの種類もリンクで、その下にチケットを何件か並べる）、`pages.Bar` はサーバーが各ページの上に置く帯（ホーム、ログインしている人、ほかの言語、ログアウト）、`pages.Notice` は求められたページの代わりに一つのことを言うページ（「見つかりません」「ログインしていません」「送った内容を読めませんでした」「送った内容が大きすぎます」「サーバーのエラー」）、`pages.Offered` は「いつから出せるか」を言うページです（API の `unoffered` の答えや A2UI の画面と同じ言葉で。`screens.OfferedWords`）。ホームでは、今効いている版の無い種類の行（`Home.New` の `Entry`）は、その日を言い（`Entry.From`。`Server.Offered` が答えるとおり）、まだ見せるフォームが無いのでリンクを持ちません。DESIGN.ja.md の 3.4 にあります。
 
 ## 試験
 

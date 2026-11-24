@@ -176,39 +176,16 @@ func WaitingCounts(t *testing.T, s Setup) {
 	checkServer("as they were put in", other, kinds(1, 2), "")
 
 	// The two move on: one to wait for another person, one to wait for no one.
-	moveOn := func(id string, body json.RawMessage, status string, waiting []string) {
-		t.Helper()
-		rec, err := store.Ticket(ctx, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var own struct {
-			Requester string  `json:"requester"`
-			MadeBy    *string `json:"made_by"`
-		}
-		json.Unmarshal(body, &own)
-		mine := []string{own.Requester}
-		if own.MadeBy != nil {
-			mine = append(mine, *own.MadeBy)
-		}
-		effects, _ := json.Marshal(map[string]json.RawMessage{"ticket": body})
-		m := &server.Move{Ticket: id, Kind: rec.Kind, Version: rec.Version, Number: rec.Number, Body: body, Status: status,
-			At: clock.Now(), Event: json.RawMessage("null"), Effects: effects, Waiting: waiting, Since: clock.Now(),
-			People: named(body), Own: mine}
-		if err := store.Save(ctx, m); err != nil {
-			t.Fatalf("saving a second move of %s: %v", id, err)
-		}
-	}
 	n := len(cases)
 	body, err := rewritten(cases[n-2].kind.body, ids[n-2], "", []string{other})
 	if err != nil {
 		t.Fatal(err)
 	}
-	moveOn(ids[n-2], body, "in_progress", []string{other})
+	moveOn(t, store, clock.Now(), ids[n-2], body, "in_progress", []string{other})
 	if body, err = rewritten(cases[n-1].kind.body, ids[n-1], "approved", cases[n-1].waits); err != nil {
 		t.Fatal(err)
 	}
-	moveOn(ids[n-1], body, "approved", nil)
+	moveOn(t, store, clock.Now(), ids[n-1], body, "approved", nil)
 
 	// The days. The two in the proxies' days at their ends are in the first kind's own day (the
 	// day a proxy is read in): the case says the count of that kind there.

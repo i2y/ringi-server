@@ -2,11 +2,13 @@ package page
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/i2y/ringi-server/screens"
@@ -37,6 +39,21 @@ func (p *Pages) TitleIn(kind, lang string) (title, in string) {
 	return t.Text, t.Lang
 }
 
+// StageIn answers the words of a stage of a kind as a page of lang shows them, and the language they
+// are in, as TitleIn does a kind's title: the stage's name as it is for a kind or a stage the set does
+// not have.
+func (p *Pages) StageIn(kind, stage, lang string) (words, in string) {
+	k, ok := p.kinds[kind]
+	if !ok {
+		return stage, lang
+	}
+	t := k.d.stageText(stage, lang)
+	if t.Lang == "" {
+		return t.Text, lang
+	}
+	return t.Text, t.Lang
+}
+
 // homeView is what the template writes of the start page.
 type homeView struct {
 	Waiting, New, Mine []entryView
@@ -46,6 +63,17 @@ type homeView struct {
 type entryView struct {
 	Title, Lang, URL, Count string
 	From                    string // the words of the day the kind may be requested from (Entry.From)
+	// Name is the kind's name, shown after the title where a section holds two of one title.
+	Name    string
+	Summary string // how many are in each state (Entry.States and SentBack), in words
+	Tickets []entryTicketView
+}
+
+// entryTicketView is a ticket an entry lists: its ID as a link, its state as a badge, its stage, who
+// it names, and its short line.
+type entryTicketView struct {
+	ID, URL, Status, State, Who, Info string
+	Stage                             text
 }
 
 // Home makes the start page.
@@ -54,27 +82,86 @@ func (p *Pages) Home(in Home) (Page, error) {
 	w := words{lang}
 	v := &view{W: w, Lang: lang, Screen: "home", Title: w.HomeTitle(), Heading: phrase{plain(w.HomeTitle())}}
 	hv := &homeView{}
-	entries := func(es []Entry, count bool) []entryView {
+	entries := func(es []Entry) []entryView {
 		var out []entryView
+		// a kind's name after its title where another entry of the section has the title
+		titles := map[string]int{}
+		for _, e := range es {
+			titles[e.Title]++
+		}
 		for _, e := range es {
 			ev := entryView{Title: e.Title, Lang: e.Lang, URL: e.URL}
 			if ev.Lang == lang {
 				ev.Lang = ""
 			}
+			if titles[e.Title] > 1 {
+				ev.Name = e.Name
+			}
 			if e.From != "" {
 				ev.URL, ev.From = "", w.MayBeMadeFrom(e.From)
 			}
-			if count {
-				ev.Count = w.Count(e.Count)
+			for _, et := range e.Tickets {
+				tv := entryTicketView{ID: et.ID, URL: et.URL, Status: et.Status, State: w.badge(et.Status, et.SentBack),
+					Stage: text{Text: et.Stage, Lang: et.StageLang}, Who: et.Who, Info: et.Info}
+				if tv.Stage.Lang == lang {
+					tv.Stage.Lang = ""
+				}
+				ev.Tickets = append(ev.Tickets, tv)
 			}
 			out = append(out, ev)
 		}
 		return out
 	}
-	hv.Waiting, hv.New, hv.Mine = entries(in.Waiting, true), entries(in.New, false), entries(in.Mine, false)
+	hv.Waiting, hv.New, hv.Mine = entries(in.Waiting), entries(in.New), entries(in.Mine)
+	for i, e := range in.Waiting {
+		hv.Waiting[i].Count = w.Count(e.Count)
+	}
+	for i, e := range in.Mine {
+		hv.Mine[i].Summary = w.statesCounted(e.States, e.SentBack)
+	}
 	hv.Admin = in.Admin
 	v.Home = hv
 	return p.render(v)
+}
+
+// TicketInfo is a ticket's short line, as an entry of the start page shows it (EntryTicket.Info):
+// the values that tell it apart, a number its form works out (a request's sum) and a day it is of,
+// each as a page shows it, at most two of them ("1,200,000円・2026-11-16"). "" for none.
+func (p *Pages) TicketInfo(kind, lang string, ticket json.RawMessage) string {
+	k, ok := p.kinds[kind]
+	if !ok {
+		return ""
+	}
+	var tk struct {
+		Form map[string]any `json:"form"`
+	}
+	d := json.NewDecoder(bytes.NewReader(ticket))
+	d.UseNumber()
+	if err := d.Decode(&tk); err != nil {
+		return ""
+	}
+	var parts, days []string
+	for _, f := range k.d.Form {
+		v := tk.Form[f.Name]
+		if v == nil || v == "" {
+			continue
+		}
+		s, _ := p.shown(f, v, lang, nil, nil, nil)
+		if s.Text == "" {
+			continue
+		}
+		switch {
+		case f.Computed && f.kind == "number":
+			parts = append(parts, s.Text)
+		case f.kind == "date":
+			days = append(days, s.Text)
+		}
+	}
+	parts = append(parts, days...)
+	if len(parts) > 2 {
+		parts = parts[:2]
+	}
+	return strings.Join(parts, t(lang, " · ", "・"))
 }
 
 // barView is what the template writes of the bar.

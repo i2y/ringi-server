@@ -1,6 +1,9 @@
 {{define "admin"}}<section class="ringi {{.What}}" lang="{{.Lang}}" aria-labelledby="ringi-title">
 <header class="head">
 <h1 id="ringi-title">{{.Title}}</h1>
+{{- if .Back}}
+<p class="link back"><a href="{{.Back}}">{{.W.AdminBack}}</a></p>
+{{- end}}
 </header>
 {{- if or .Done .Refused .Problem .Problems}}
 <div class="summary" id="summary" role="alert" tabindex="-1" autofocus="autofocus">

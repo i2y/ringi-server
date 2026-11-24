@@ -47,6 +47,8 @@ func (p *Pages) Bar(b Bar) (template.HTML, error)              // to put before 
 func (p *Pages) Notice(lang, what, link string) (Page, error) // what: one of the Notice… constants
 func (p *Pages) Title(kind, lang string) string               // a kind's title, as the pages say it
 func (p *Pages) TitleIn(kind, lang string) (title, in string) // the same, and the language it is in
+func (p *Pages) StageIn(kind, stage, lang string) (words, in string) // a stage's words, and the language they are in
+func (p *Pages) TicketInfo(kind, lang string, ticket json.RawMessage) string // a ticket's short line (section 3.4)
 func (p *Pages) Masters(kind string) []string                 // the masters a kind's fields choose rows from
 
 // The administration's pages (section 3.7), and what a page says of a problem of their posts.
@@ -63,6 +65,7 @@ type Form struct {
 	Token  string          // put in a hidden field _csrf when not empty
 	Now    time.Time       // when the page is shown (required): the key of what it sends reads it
 	Picks  Picks           // what the pickers offer
+	Back   string          // the page it leads from: the ticket's, or for a new request the start page; "" for no link
 	Again  *Reading        // a post read, shown again
 	Worked WorkedFunc      // what the form works out (section 3.1); nil: as before it is filled in
 }
@@ -74,6 +77,8 @@ type Card struct {
 	Picks   Picks
 	Zone    *time.Location // the zone of the times the route shows; nil is UTC
 	History string         // the address of the ticket's history, for a link; "" for none
+	Resubmit string        // the address of the form a request back with its requester is made again in (section 3.2); "" for none
+	Back    string         // the address of the start page, for a link; "" for none
 	Again   *Reading
 	Worked  WorkedFunc     // what the ticket's form works out (section 3.2); nil, as a Form's
 }
@@ -87,11 +92,13 @@ type List struct {
 	Open string // the address of a ticket's page, with {id}: "/tickets/{id}"; "" for no link
 	Of   string // whose tickets, for the heading: ListWaiting, ListMine, or "" for the kind's title alone
 	More string // the address of the list's next page, the older tickets; "" for none
+	Back string // the address of the start page, for a link; "" for none
 }
 
 type History struct {
 	screens.History
 	Zone *time.Location // the zone of the times its lines show, as a card's; nil is UTC
+	Back string         // the address of the ticket's card, for a link; "" for none
 }
 
 type Picks struct {
@@ -106,14 +113,27 @@ type Picks struct {
 type Option struct{ Value, Label, Name string } // Name: the name alone, "" for none
 
 type Home struct {
-	Language          string
+	Language           string
 	Waiting, New, Mine []Entry // the kinds that wait for the person, they may make, they have made
+	Admin              string  // the address of the administration's pages, for a link; "" for none
 }
 type Entry struct {
-	Title string
-	Count int    // how many wait (Home.Waiting alone)
-	URL   string
-	From  string // Home.New: the day a kind with no version in effect may be requested from; no link
+	Title, Lang string         // the kind's title, and its language where it is not the page's
+	Name        string         // the kind's name, shown where the part holds another kind of the title
+	Count       int            // how many wait (Home.Waiting alone)
+	States      map[string]int // how many of the person's own are in each state (Home.Mine alone)
+	SentBack    int            // how many of those back with their requester were sent back
+	URL         string
+	Tickets     []EntryTicket  // a few of its tickets, each a link (Home.Waiting and Home.Mine)
+	From        string         // Home.New: the day a kind with no version in effect may be requested from; no link
+}
+type EntryTicket struct {
+	ID, URL          string
+	Status           string // "in_progress", "with_requester"…: said as a badge
+	SentBack         bool   // of one back with its requester: sent back (its sent_back_by says by whom)
+	Stage, StageLang string // the stage it is at, in words (StageIn), and their language where it is not the page's
+	Who              string // the person the line names; "" for none
+	Info             string // a short line of its values (TicketInfo); "" for none
 }
 
 type Bar struct {
@@ -257,6 +277,11 @@ card template that does not show them) the page asks the `Lookup` for itself. A 
 `/upload` nor `/refused`: its form posts its files itself (section 4.3), and a refusal comes to it
 in the reading shown again (section 4.4).
 
+Given the address (`Back`), each has a link under its head to the page it leads from: a card, a list
+and a new request's form to the start page ("← Back to the start page", 「← ホームへ戻る」), a history
+and the form a request is made again in to the ticket's card ("← Back to the request",
+「← 申請へ戻る」).
+
 ### 3.1 The request form
 
 One `<form method="post" novalidate>` with:
@@ -394,6 +419,15 @@ part that waits, `_do` = `button.add_approver:<part>`), the places handed over (
 people are not listed (section 3.1.1). The card shows what the A2UI card shows, so a person who
 approves in a browser reads the same request.
 
+Given the address of the form a request is made again in (`Resubmit`), the card of a ticket that is
+back with its requester says so under its head, with a link to the form ("Edit it and submit again",
+「内容を修正して再申請する」): that it has been sent back ("This request has been sent back.",
+「この申請は差し戻されています。」) when the ticket says by whom (`sent_back_by`), else that it has been
+withdrawn ("This request has been withdrawn, and is back with its requester.",
+「この申請は取り下げられ、申請者に戻っています。」): both are the same state (`with_requester`). The
+server gives the address to a person who may make the request again; the card of a ticket in another
+state says nothing of it, whatever address it is given.
+
 With `Worked`, the card's values are decided by the ticket's form (`edited` null): a field whose
 condition does not hold is left out, one whose condition holds is shown even with no value ("—"),
 and a computed value (a row's subtotal too, which the ticket does not keep) is the answer's. The
@@ -413,16 +447,19 @@ the edit's own part (`edit-rest`), under the fields, where the script says the o
 
 ### 3.3 The list and the history
 
-The list is a `<table>`: the ID (a link to `Open`), the state, the stage, the requester or the one
-who made the request (below), and the short fields (the ones the A2UI list shows: those the
-requester fills in that are not rows, long text or a file, and are not shown on a condition). A
-list of the person's own requests (`Of` = `ListMine`) is made from the core's `mine` screen
-(`Set.Mine`), and its fourth column is the one who made a request for them ("Made by", empty where
-the requester made it), as that screen shows; any other list is made from the `list` screen
-(`Set.List`), and its fourth column is the requester. Its heading is the kind's title, and says
-whose tickets they are when `Of` does ("Expense request: waiting for you", "Expense request: your
-requests"). With `More`, a link under the table goes on to the older tickets ("Show older
-requests"); a list of no ticket says "No requests." The history is an ordered list of its lines:
+The list is a `<table>`: the ID (a link to `Open`), the state as a badge (section 3.5), the stage,
+the requester or the one who made the request (below), and the short fields. Those are the fields of
+the form that are not rows, long text or a file and are not shown on a condition: the ones the
+requester fills in, as the A2UI list shows, and the ones the form works out (the sum of a request),
+as the ticket holds them, which the A2UI list does not show. A ticket at no stage has the requester
+in the column of the stage while it is back with them ("Requester"), else "—". A list of the person's
+own requests (`Of` = `ListMine`) is made from the core's `mine` screen (`Set.Mine`), and its fourth
+column is the one who made a request for them ("Made by", "—" where the requester made it), as that
+screen shows; any other list is made from the `list` screen (`Set.List`), and its fourth column is
+the requester. Its heading is the kind's title, and says whose tickets they are when `Of` does
+("Expense request: waiting for you", "Expense request: your requests"). With `More`, a link under
+the table goes on to the older tickets ("Show older requests"); a list of no ticket says "No
+requests." The history is an ordered list of its lines:
 when, what was done, the stage, who, for whom, the comment, the fields made empty, the note. Its
 times are in `History.Zone`, as a card's answers are in `Card.Zone`: the server gives both the
 kind's zone, so that the card and the history say one time of an approval alike.
@@ -431,19 +468,34 @@ kind's zone, so that the card and the history say one time of an approval alike.
 
 The start page (`Home`) has three parts, each a list of kinds by their titles, each a link: the
 kinds of the tickets that wait for the person, with how many ("(3)", "3件"); the kinds they may make
-a request of; the kinds they have made requests of. A kind no version of which is in effect now,
-which the person may request from a day (`Entry.From`), is a line with no link that says the day:
-"Leave request (may be made from 2027-04-01)", 「休暇の申請（2027-04-01から出せます）」. `Offered`
-is the page of such a kind's new request: its title, the sentence of the day
-(`screens.OfferedWords`, as the A2UI form and the agents' tools say it), and a link to go on. A part with no kind says so ("Nothing is
-waiting for you.", "There is no request you can make.", "You have made no requests yet."). The
-server chooses the kinds and the addresses; `Title` answers a kind's title in a language as the
+a request of; the kinds they have made requests of, with how many are in each state (`Entry.States`
+and `Entry.SentBack`: "1 sent back, 1 to be resubmitted, 3 waiting",
+「差し戻し 1・再申請待ち 1・承認待ち 3」; the ones back with the person, which wait for them, first, then
+the other open ones, then the ones that are done; a state of none left out). A part that has two kinds
+of one title says their names after it ("経費の申請 (expense_ja)"; `Entry.Name`), and a part with no
+kind says so ("Nothing is waiting for you.", "There is no request you can make.", "You have made no
+requests yet."). With `Home.Admin`, a link at the end goes to the administration's pages.
+
+A kind of the first part or the third may list a few of its tickets under it (`Entry.Tickets`), each a
+line: the ID, a link to the ticket's card; its state as a badge (section 3.5); its stage in words; the
+person it names; and a short line of its values (`TicketInfo`: the numbers its form works out, then its
+days, as a page shows them, two at most; "1,200,000 JPY · 2026-11-16"). The server chooses the tickets
+and whom a line names. `StageIn` answers a stage's words as the pages say them, and the language they
+are in; a stage that is not in the page's language says its language in `EntryTicket.StageLang`.
+
+A kind no version of which is in effect now, which the person may request from a day (`Entry.From`),
+is a line with no link that says the day: "Leave request (may be made from 2027-04-01)",
+「休暇の申請（2027-04-01から出せます）」. `Offered` is the page of such a kind's new request: its title,
+the sentence of the day (`screens.OfferedWords`, as the A2UI form and the agents' tools say it), and a
+link to go on.
+
+The server chooses the kinds and the addresses; `Title` answers a kind's title in a language as the
 pages say it (the kind's label in that language, else its title as written), `TitleIn` the same and
-the language it is in (the kind's own where it has no label in the one asked for), and `Masters`
-the masters a kind's fields choose rows from, the ones `Picks.Masters` may offer rows of. An entry
-whose title is not in the page's language (a kind whose screens are written in another, or one with
-no label in the page's language) says its language in `Entry.Lang`, which its link carries in
-`lang`, so that a screen reader says the title as it is written.
+the language it is in (the kind's own where it has no label in the one asked for), and `Masters` the
+masters a kind's fields choose rows from, the ones `Picks.Masters` may offer rows of. An entry whose
+title is not in the page's language (a kind whose screens are written in another, or one with no label
+in the page's language) says its language in `Entry.Lang`, which its link carries in `lang`, so that a
+screen reader says the title as it is written.
 
 The bar (`Bar`) is one `<nav>` in the page's language, with no name of its own (a screen reader
 names it by its role), made apart from the page so that the server
@@ -501,6 +553,15 @@ when a row is added or removed; no attribute holds a name (an attribute takes no
 cannot be marked: the page's `<title>`, which takes text alone, so that the title says the heading's
 words with no mark.
 
+A ticket's state is said in the A2UI screens' words in the head of a card ("In progress", 「進行中」),
+and in short words as a badge where many tickets are shown, on the lists and the start page:
+"Waiting", "On hold", "Approved", "Rejected", "Withdrawn", "Expired", 「承認待ち」「保留」「承認」
+「却下」「取り下げ」「期限切れ」, and for one back with its requester "Sent back", 「差し戻し」 when the
+ticket says by whom (`sent_back_by`), else "To be resubmitted", 「再申請待ち」: its requester took it
+back. Both carry the status itself (`data-status`), which the style sheet colours them by; the words
+say it too, so that no one needs the colour. The phase of a stage and the state of a part of a card's
+route carry theirs (`data-phase`, `data-state`).
+
 A value is shown from its type and unit (section 5), never from the A2UI templates' formats: a rate
 of 12.5% is `12.5%`. A number of five digits or more has a comma between each three digits, and one
 of four or fewer has none, as ritsu writes a number in a check: `2000`, `20,000`, `1,000,000 JPY`.
@@ -545,7 +606,9 @@ check the source's and a file to upload (`AdminOrgPage`), a draft's difference b
 reason and the button to import it (`AdminDraftPage`), and the record with its filters, a page of
 lines and the link to the same lines as CSV (`AdminRecordsPage`). The server fills each from the
 answers of the administration's operations, and chooses the addresses. Each page works with no
-script, its forms too, in English or in Japanese, with the bar and the head the other pages have;
+script, its forms too, in English or in Japanese, with the bar and the head the other pages have,
+and, given the address (`Admin.Back`), a link under its head to the administration's start page
+("← Back to the administration", 「← 管理へ戻る」);
 what was done (`Done`), the refusal of a post (`Refused`), a problem (`Problem`) and the problems
 of the organization's data, each at its file and line (`Problems`), are said at its head, each
 within an element of its own direction (`<bdi>`), as every name of the data and every value of a
@@ -805,8 +868,11 @@ button posts what a browser posts, as `multipart/form-data` when the form has a 
 | `TestFindNameAsItsValue` | A value whose name is the value itself (section 3.1.1): held, it has no name said under it; found, its button gives the script no name (`data-name` empty); a value with a name of its own is named. |
 | `TestKeys` | The keys of section 4.5: the same card posted twice makes one key; shown again a second later, or with another comment, another. A new request's key is of its surface and body: the same at another time, another under another surface. |
 | `TestNotAPost` | Another surface, no surface, no time or one that does not read, no button or one of no screen, a revision that does not read: `ErrPost`. A button the viewer may not press now, and the comment button with no comment, show the page again. The same button from a page of an older revision is the refusal `stale`, not sent: the card shown again says so and keeps the comment; offered now, it is sent with the page's revision, for the server to answer. A comment not offered is not sent. A card the viewer acts on is not shown without `Now`. |
-| `TestAdminPages`, `TestAdminSays` | The administration's five pages in both languages: the parts the person may use, and none; each version's start and who decided it, the form to switch a version the person may switch and none for another, the date field's first and last days; the organization's versions and counts, the button of the source shown only with one; a draft's days, counts and button, and a draft of the latest's own data with no button; the record's filters, lines, older lines and CSV link. A name or a value with markup is shown as text, and one with a character that turns the order of what follows it is kept within its `<bdi>`. `AdminSays` says each problem in both languages, with what it names in its place (a version's first day alone, its last alone, both; a minute and minutes). Each page reads back as `TestPagesOfEveryTicket` reads one. |
+| `TestAdminPages`, `TestAdminSays` | The administration's five pages in both languages: the parts the person may use, and none; the link back to them, given its address; each version's start and who decided it, the form to switch a version the person may switch and none for another, the date field's first and last days; the organization's versions and counts, the button of the source shown only with one; a draft's days, counts and button, and a draft of the latest's own data with no button; the record's filters, lines, older lines and CSV link. A name or a value with markup is shown as text, and one with a character that turns the order of what follows it is kept within its `<bdi>`. `AdminSays` says each problem in both languages, with what it names in its place (a version's first day alone, its last alone, both; a minute and minutes). Each page reads back as `TestPagesOfEveryTicket` reads one. |
 | `TestHomeListsBarAndNotices` | In both languages: the start page with an entry in each part (a title with markup shown as text, an address escaped, a count of five digits grouped, no count but the waiting ones') and with none (each part says so); a list's three headings, its link to older tickets, and its column of who (the one who made a request for the person on their own requests, the requester on the others); a title in another language marked with it; the bar (one navigation with no name of its own, a name with markup, the other language's link with `lang` and `hreflang`, the sign-out form with its token) and the bar of no one; each notice with its link and without, what it says before its link, and a notice of nothing refused. Each page reads back as `TestPagesOfEveryTicket` reads one. `Title` and `Masters`. |
+| `TestHomeTicketsAndNames`, `TestStageIn`, `TestTicketInfo` | The start page's entries that list tickets, in both languages: each ticket's link, its badge (one back with its requester says whether it was sent back or is to be resubmitted), its stage, marked where it is in another language, whom the line names and its short line; an entry of the person's own that says how many are in each state, however few it lists; the names of two kinds of one title, and none of a title alone. A stage's words and their language (the one the kind is written in, for a stage with no words in the page's), the name as it is for a stage or a kind the set does not have; a ticket's short line: the numbers the form works out, then the days, two at most, and none of the other values. |
+| `TestListComputedStageAndWho` | The lists of a kind whose form works out a field, in both languages: the column of the field, with each ticket's value; a stage, the requester of one back with them, "—" for one done; the one who made a request for its requester, "—" for one they made; a badge for each state, marked with the status. |
+| `TestCardSentBackAndBack`, `TestBackFromHistoryFormAndList` | The card of a request sent back, and of one its requester withdrew: how it came back and the link to its form, the link back to the start page, the state in its head marked with the status, and none of it without the addresses or in another state. The links back of a history and of a form made again to the card, of a list and of a new request's form to the start page, and none without the address. |
 | `TestNumberTypes`, `TestReadNumbers`, `TestNumbersBothWays`, `TestNumberFieldsOfADescription` | Seventeen number types (money in yen, its hundredths, dollars and cents, rates of 0.01% to 2.5%, quantities, a count with a name): their steps, how 125 steps and one step are shown in both languages; 39 typed values read or refused with the reason; every value shown four ways and read back; the parts of rate and cent fields made from a description of the test's (no example has one), and `New` refusing a rate without its step and an unknown currency (`ErrDescription`). |
 | `TestStepsAsTheScreensShowThem` | The request `steps` of `testdata/steps`, generated from ritsu's machine test of rates in steps of 0.25%, 2.5%, 0.1%, 0.5% and 1% and of money in cents and in sen (`regen.sh` there makes it again): for each of the 32 numbers its form, card and list show with `formatSteps` in both languages, and each of its 22 `AmountField`s, the page's unit has the same decimals, step and unit (or currency), and the page says each check of the field in the screen's words. Then `functions.js` in Node (without `node` the rest is skipped) shows 374 values with those arguments and with those of the seventeen number types, each as the page shows it. |
 | `TestScriptAndServerAlike` | In Node (`node` on `PATH`; without it the test is skipped): page.js reads 1,790 typed numbers, writes 476 and reads 27 typed days as the Go reading does, the odd ones too (every white space, full-width digits, past 2^53). For each computed field a form shows (the amounts of the expense and purchase requests), over each ticket's form without its computed fields (996), the value `functions.js` works out is the one the kind worked out on the ticket, and page.js shows it as the server does, with the function, unit and format read from the page. Then 1,208 forms (the vectors' forms, and each ticket's form with one field emptied or changed) are typed into their pages and posted: 96 new requests, 908 made again and 204 edits (of tickets an approver waits on). Each body the page sends is the one `functions.js` sends (`<kind>.given`; `.changes` and `.cleared`; `.edits` and `.edits_cleared`), with the fields hidden that `functions.js` hides (100 forms hide one); each post the page's checks stop (196) fails the same checks in `functions.js`. The page sends 12 that `functions.js` stops: what the page leaves to `next` (section 4.2), each a request made again with a field left empty that the form asks for on a condition (`trip_to` while it is shown, 8; `receipt` while its `required when` holds, 4). Each of the 12 is run through the kind as the server runs it, and `next` refuses it as `form` at the place of the check `functions.js` fails (`at`). |
@@ -822,7 +888,12 @@ request made again sent with a revision other than the one the page showed (`Tes
 (`TestRowsAreNeverCleared`); the time the page was shown not read, so that every key has no time
 (`TestKeys`); a computed value shown by page.js without its unit (`TestScriptAndServerAlike`); the
 start page's counts left out, the notices' links left out, the language links without their language
-(`TestHomeListsBarAndNotices`); a word of another language left unmarked, by the description, by
+(`TestHomeListsBarAndNotices`); one's own requests counted without telling the ones sent back, their
+states in another order, two kinds of one title told apart by nothing (`TestHomeTicketsAndNames`);
+every request back with its requester said to be sent back, the notice of one shown in another state
+(`TestCardSentBackAndBack`); a list without the values its form works out
+(`TestListComputedStageAndWho`); a page that does not lead back (`TestBackFromHistoryFormAndList`,
+`TestAdminPages`); a word of another language left unmarked, by the description, by
 the template, on a choice, a stage, a way, a field's label, a value's label, a column or a heading
 (`TestOtherLanguageMarked`); a name in a check's words, a refusal's, a row's legend or the head of a
 page shown again said as text, with no mark (`TestNamesInSentencesMarked`); the head the script writes

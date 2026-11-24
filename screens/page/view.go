@@ -34,13 +34,22 @@ type view struct {
 	Link    string // a link under the head (the card's history, a notice's way on)
 	// LinkText is the link's words; "" for the history's.
 	LinkText string
-	Assets   string
+	// Back is a link under the head to the page the screen leads from: a ticket's card from its
+	// history and the form it is made again in, the start page from a card, a list and a new
+	// request's form; "" for none, and BackText its words.
+	Back, BackText string
+	// Resubmit is the address of the form a request back with its requester is made again in, which a
+	// card says, with how it came back (Returned), and links to; "" for none.
+	Resubmit, Returned string
+	Assets             string
 }
 
-// fact is a line of a screen's head: a label and its value.
+// fact is a line of a screen's head: a label and its value. Status is the ticket's status where
+// the value says it, which the value is marked with (data-status) and coloured by; "" for none.
 type fact struct {
-	Label string
-	Value text
+	Label  string
+	Value  text
+	Status string
 }
 
 // text is words a page shows, and the language they are in where it is not the page's: the words
@@ -352,15 +361,17 @@ type valueView struct {
 }
 
 type stageView struct {
-	Label   text
-	Phase   string
-	Current bool
-	Parts   []partStateView
+	Label    text
+	Phase    string // its words
+	PhaseKey string // the phase as the ticket holds it ("active"), which the words are marked with
+	Current  bool
+	Parts    []partStateView
 }
 
 type partStateView struct {
 	Way       text
-	State     string
+	State     string // its words
+	StateKey  string // the state as the ticket holds it, marked as PhaseKey is
 	Approvers string
 	Answers   []string
 }
@@ -373,7 +384,11 @@ type listView struct {
 
 type listRow struct {
 	ID, Link string
-	Cells    []text
+	// Status is the ticket's status as it holds it, which its words (State) are marked with
+	// (data-status) and coloured by.
+	Status string
+	State  text
+	Cells  []text
 }
 
 type lineView struct {
@@ -539,11 +554,18 @@ func (p *Pages) Form(in Form) (Page, error) {
 	}
 	ticket := dm.obj("ticket")
 	people := dm.obj("people")
-	if id := str(ticket["id"]); id != "" {
-		v.Facts = append(v.Facts, fact{w.ID(), plain(id)})
+	id := str(ticket["id"])
+	if id != "" {
+		v.Facts = append(v.Facts, fact{Label: w.ID(), Value: plain(id)})
+	}
+	if in.Back != "" {
+		v.Back, v.BackText = in.Back, w.BackToHome()
+		if id != "" {
+			v.BackText = w.BackToRequest()
+		}
 	}
 	if by := str(ticket["sent_back_by"]); by != "" {
-		v.Facts = append(v.Facts, fact{w.SentBackBy(), plain(name(people, by))})
+		v.Facts = append(v.Facts, fact{Label: w.SentBackBy(), Value: plain(name(people, by))})
 	}
 	fv := &formView{Action: in.Action, Token: in.Token, Surface: sc.SurfaceID, At: in.Now.UTC().Format(time.RFC3339Nano)}
 	if rev, ok := ticket["revision"]; ok && rev != nil {
