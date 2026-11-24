@@ -365,14 +365,14 @@ that imported the examples would make every project with the tools need the exam
 which is not published. `go test ./...` in this directory runs the two that need no examples: the
 choice of the version and the call a tool's arguments make.
 
-- `tools/list` over the SDK's in-memory transports is the examples' `tools.json` (46 tools of the
+- `tools/list` over the SDK's in-memory transports is the examples' `tools.json` (66 tools of the
   ten kinds, English and Japanese, five of them finds), and `check_operation`.
 - Every vector of the examples whose event is a person's (`submit`, `resubmit`, `edit`, `approve`,
   `send_back`, `reject`, `withdraw`, `discard`, `retract`, `comment`) is sent as a tool's call on a
   server of its own, which names the try of a submit or a resubmit as the vector does
   (`Config.NewAttempt`; `attempt` is no argument): the refusal is the vector's, of the same kind and
   at the same place (`at`), or the ticket the tool answers and the store keeps is the vector's, kept
-  as the person's move with the key `mcp:vector`. Of the 2,964 vectors, 2,032 go through the tools
+  as the person's move with the key `mcp:vector`. Of the 2,990 vectors, 2,058 go through the tools
   and all agree, 10 of them answered invalid (events with no revision, a body the API answers 400
   before the kind's code). The others are no tool's: 626 timers, 82 answers of flows and
   agents, 220 events of managing a ticket, and 4 `edit` events of kinds that have no `edit_` tool.

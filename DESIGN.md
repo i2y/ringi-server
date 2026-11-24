@@ -1324,7 +1324,7 @@ organization is read by its people only, and x9999 is not in the version in effe
 
 ritsu cuts the part down to what one ticket needs; the framework does not, because which people and
 teams a route names is not in the kinds' descriptions. A whole version answers the same: each of the
-2,964 vectors of the examples answers the same with the whole version as with the part it was written
+2,990 vectors of the examples answers the same with the whole version as with the part it was written
 with (the conformance test gives every vector the whole version). The part a ticket needs could be
 cut later, for a large organization, without changing any answer. A part is made once for a kind, a
 version of it and a day, and kept with the snapshot.
@@ -1676,12 +1676,12 @@ Ten tests check a server against the contract, and all run on any store:
   `ForgetOperations` with a limit of two forgets the older one first, then those of the one time by
   person, then by key, as Go compares strings, and answers 4, 4, 4, 2 and 0.
 
-On the examples, every vector agrees, on the memory store and on PostgreSQL: 2,964 of 2,964, 2,140
+On the examples, every vector agrees, on the memory store and on PostgreSQL: 2,990 of 2,990, 2,166
 through the HTTP handler, and through `Deliver` 626 timers, 102 operations that name no person (the
 administrators' `add_approver` and `hand_over`), 82 answers of agents and flows, 10 bodies the API
 answers 400 (an event with no revision, which the schema requires), and 4 events the API has no
-operation for (an `edit` of a kind that has no edit). The 2,140 answers of the HTTP handler are all
-of the contract's shapes. The 2,150 operations of a person (the 2,140 and the 10 bodies) are tried,
+operation for (an `edit` of a kind that has no edit). The 2,166 answers of the HTTP handler are all
+of the contract's shapes. The 2,176 operations of a person (the 2,166 and the 10 bodies) are tried,
 and every trial agrees with the operation, on both stores. The answers of the reads, which no
 vector makes, are held to the contract by the examples' `TestAnswersAsTheContract`: the kinds each
 of the 24 people may make, the tickets that wait for them and their own, a ticket and the answer to
@@ -1700,11 +1700,11 @@ and a resume. `Administration` agrees on both, on the examples' first kind (`acc
 agrees on the memory store with the memory files and on PostgreSQL with its files.
 
 The examples also make the vectors on the screens `web` serves (`examples/web_vectors_test.go`,
-which needs Node): each of the 2,022 lines a person makes on a screen is made on the screen read
+which needs Node): each of the 2,048 lines a person makes on a screen is made on the screen read
 over HTTP, its button pressed in Node as a renderer presses it, and the message it sends posted back
-(a discard of a ticket sent back, from its card and from its form: 2,110 presses). On both stores,
-the 1,940 presses that reach the server are answered as the vectors answer them (1,654 taken, 286
-refused); the other 170 are of lines the vectors refuse, which the screens stop first (156 by the
+(a discard of a ticket sent back, from its card and from its form: 2,136 presses). On both stores,
+the 1,946 presses that reach the server are answered as the vectors answer them (1,664 taken, 282
+refused); the other 190 are of lines the vectors refuse, which the screens stop first (176 by the
 button's own checks, 12 by a screen the person may not open) or do not send as the line has it (2,
 below). The 130 lines no screen sends (an event with no revision, a button the kind's screen does
 not have, a field its form does not have, …) are each refused in the vectors (`stale`, `event` or
@@ -1722,12 +1722,12 @@ shown only when `kind is not nda`, to a non-disclosure agreement. The screens mo
 They make the same lines on the plain HTML pages (`examples/pages_test.go`, which needs no Node):
 each line is made on the page read over HTTP, its form posted as a browser posts it, with the values
 of the line typed in, rows added and removed with the page's buttons (450 presses), and files
-chosen. Of the 2,116 posts of the 2,028 lines, the 1,946 that reach the server are answered as the
-vectors answer them, on both stores: 1,654 taken (303), 292 refused, the page shown again with what
-was typed. The pages stop the other 170 first, which the vectors refuse: 140 by their own checks, 12
-on a page the person may not open, and 18 with a value the page does not offer (someone the form
+chosen. Of the 2,142 posts of the 2,054 lines, the 1,950 that reach the server are answered as the
+vectors answer them, on both stores: 1,664 taken (303), 286 refused, the page shown again with what
+was typed. The pages stop the other 192 first, which the vectors refuse: 160 by their own checks, 12
+on a page the person may not open, and 20 with a value the page does not offer (someone the form
 does not offer to make the request for, a stage to send back to on a card that sends back to the
-requester alone). Each line no page sends is refused in the vectors too.
+requester alone, a field the page holds hidden). Each line no page sends is refused in the vectors too.
 
 To check your own store, write a test that calls the nine with a function that gives an empty
 store, and your generated package (see the README).

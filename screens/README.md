@@ -129,12 +129,12 @@ go test .            # about 6 seconds; ./... adds the pages (page/), about 9 se
 go test -race .      # about 65 seconds; ./... about 95
 ```
 
-The tests read ritsu's examples as generated into `testdata/` (100 templates of ten kinds, their
+The tests read ritsu's examples as generated into `testdata/` (120 templates of ten kinds, their
 vectors, and the Go package ritsu generates from them), and read the screens in Node 24 as a
 renderer does, through `testdata/driver.mjs`; without Node those tests say `SKIP:` and pass. They
-fill 5,530 screens from the vectors, press each of the 296 buttons, and make the vectors' events on
-their screens in 2,204 presses and give what the screens send to the generated code: each of the
-2,046 sent is answered as the vector answers, and the kind refuses each of the 156 the screens'
+fill 5,542 screens from the vectors, press each of the 336 buttons, and make the vectors' events on
+their screens in 2,230 presses and give what the screens send to the generated code: each of the
+2,052 sent is answered as the vector answers, and the kind refuses each of the 176 the screens'
 checks stop, each of the 2 that give a field the screen hides (which it leaves out of what it
 sends), and each of the 138 lines that ask what no screen sends. DESIGN.md, 7, lists them.
 

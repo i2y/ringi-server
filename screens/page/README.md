@@ -119,11 +119,11 @@ go test ./...        # in screens/: about 9 seconds
 go test -race ./...  # about 95 seconds
 ```
 
-The tests read the test set of `screens` (`../testdata/`): they make 9,492 pages from the tickets of
+The tests read the test set of `screens` (`../testdata/`): they make 9,516 pages from the tickets of
 the vectors and the start page, the lists' headings and columns, the bar and each notice in both
-languages, post each person's event of the 2,964 lines on its page as a browser without the script
-does (2,218 posts, and 454 that add or remove a row) and give what the page sends to the code ritsu
-generates: each of the 2,064 sent is answered as the vector answers, and the kind refuses each post
+languages, post each person's event of the 2,990 lines on its page as a browser without the script
+does (2,244 posts, and 454 that add or remove a row) and give what the page sends to the code ritsu
+generates: each of the 2,070 sent is answered as the vector answers, and the kind refuses each post
 the page's checks stop and each line that asks what no page sends; and, in Node when there is one,
 hold page.js to the Go reading, the amounts it works out (996) to the kinds', and 1,208 posted forms
 to what `functions.js` sends; the kind refuses each of the 12 the page sends and `functions.js`

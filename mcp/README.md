@@ -191,9 +191,9 @@ tests here need no examples: the choice of the version a kind's tools come from,
 tool's arguments make.
 
 The tests of the examples' module use the framework's memory store and the examples' packages and
-organization; no database. They check that `tools/list` is the examples' `tools.json` (46 tools of the ten kinds, five of
+organization; no database. They check that `tools/list` is the examples' `tools.json` (66 tools of the ten kinds, five of
 them finds) and `check_operation`; that every vector whose event is a person's goes through the tools as the
-API takes it (2,032 of the examples' 2,964 vectors, all agreeing, the refusals at the same place;
+API takes it (2,058 of the examples' 2,990 vectors, all agreeing, the refusals at the same place;
 10 of them answered invalid, as the API answers them 400); that the read tools answer what the API
 answers; the lists in pages; the keys the contract takes; who may see a ticket; the refusals as
 tool errors, in English and Japanese; streamable HTTP with and without a token; the tools at `/mcp`
