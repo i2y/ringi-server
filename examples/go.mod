@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/cedar-policy/cedar-go v1.8.0
-	github.com/i2y/ringi-server v0.0.0
+	github.com/i2y/ringi-server v0.1.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 )
