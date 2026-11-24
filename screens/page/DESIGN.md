@@ -419,6 +419,19 @@ part that waits, `_do` = `button.add_approver:<part>`), the places handed over (
 people are not listed (section 3.1.1). The card shows what the A2UI card shows, so a person who
 approves in a browser reads the same request.
 
+The route is said with the ticket's state, for a ticket keeps the phases and the states it had when it
+stopped. Of a request in progress, a stage that is asked says "Waiting for answers" and a part of it
+"Waiting". Of another, the stage it stopped at says the ticket's state, in the words of the card's head
+("On hold", "With the requester", "Rejected"), and a part that was waited for says "Not settled yet"
+while the request may go on (on hold, or back with its requester) and "Ended before it was settled"
+once it has ended; of a request rejected, the part that can come to no approval any more says
+"Rejected". A stage that an ended request did not reach says "Not reached". A stage that waited for a
+later one (`same approver approves once, at the last stage`) and came again, as a second stage of its
+name (ringi's DESIGN 7.1), says "Moved to the same stage below", and the second says how it stands.
+The part of a summary's step says "Asked the agent" once the step is done. The current stage
+(`aria-current="step"`) is the one a request in progress or on hold is at, which the style sheet sets
+apart with its parts that are not settled.
+
 Given the address of the form a request is made again in (`Resubmit`), the card of a ticket that is
 back with its requester says so under its head, with a link to the form ("Edit it and submit again",
 「内容を修正して再申請する」): that it has been sent back ("This request has been sent back.",
@@ -873,6 +886,7 @@ button posts what a browser posts, as `multipart/form-data` when the form has a 
 | `TestHomeTicketsAndNames`, `TestStageIn`, `TestTicketInfo` | The start page's entries that list tickets, in both languages: each ticket's link, its badge (one back with its requester says whether it was sent back or is to be resubmitted), its stage, marked where it is in another language, whom the line names and its short line; an entry of the person's own that says how many are in each state, however few it lists; the names of two kinds of one title, and none of a title alone. A stage's words and their language (the one the kind is written in, for a stage with no words in the page's), the name as it is for a stage or a kind the set does not have; a ticket's short line: the numbers the form works out, then the days, two at most, and none of the other values. |
 | `TestListComputedStageAndWho` | The lists of a kind whose form works out a field, in both languages: the column of the field, with each ticket's value; a stage, the requester of one back with them, "—" for one done; the one who made a request for its requester, "—" for one they made; a badge for each state, marked with the status. |
 | `TestCardSentBackAndBack`, `TestBackFromHistoryFormAndList` | The card of a request sent back, and of one its requester withdrew: how it came back and the link to its form, the link back to the start page, the state in its head marked with the status, and none of it without the addresses or in another state. The links back of a history and of a form made again to the card, of a list and of a new request's form to the start page, and none without the address. |
+| `TestRouteWords`, `TestPartRefused`, `TestRouteOfEveryTicket` | What a card's route says (section 3.2): a stage in each phase and a part in each state, of a ticket in each state, in both languages; when a part can come to no approval; and the route of the card of each ticket of the kinds with English names, with the words, the marks of the phase and the state the ticket holds, the stage that is the current one, the one part of a request rejected that says it refused it, and nothing of a request approved that is waited for. |
 | `TestNumberTypes`, `TestReadNumbers`, `TestNumbersBothWays`, `TestNumberFieldsOfADescription` | Seventeen number types (money in yen, its hundredths, dollars and cents, rates of 0.01% to 2.5%, quantities, a count with a name): their steps, how 125 steps and one step are shown in both languages; 39 typed values read or refused with the reason; every value shown four ways and read back; the parts of rate and cent fields made from a description of the test's (no example has one), and `New` refusing a rate without its step and an unknown currency (`ErrDescription`). |
 | `TestStepsAsTheScreensShowThem` | The request `steps` of `testdata/steps`, generated from ritsu's machine test of rates in steps of 0.25%, 2.5%, 0.1%, 0.5% and 1% and of money in cents and in sen (`regen.sh` there makes it again): for each of the 32 numbers its form, card and list show with `formatSteps` in both languages, and each of its 22 `AmountField`s, the page's unit has the same decimals, step and unit (or currency), and the page says each check of the field in the screen's words. Then `functions.js` in Node (without `node` the rest is skipped) shows 374 values with those arguments and with those of the seventeen number types, each as the page shows it. |
 | `TestScriptAndServerAlike` | In Node (`node` on `PATH`; without it the test is skipped): page.js reads 1,790 typed numbers, writes 476 and reads 27 typed days as the Go reading does, the odd ones too (every white space, full-width digits, past 2^53). For each computed field a form shows (the amounts of the expense and purchase requests), over each ticket's form without its computed fields (996), the value `functions.js` works out is the one the kind worked out on the ticket, and page.js shows it as the server does, with the function, unit and format read from the page. Then 1,208 forms (the vectors' forms, and each ticket's form with one field emptied or changed) are typed into their pages and posted: 96 new requests, 908 made again and 204 edits (of tickets an approver waits on). Each body the page sends is the one `functions.js` sends (`<kind>.given`; `.changes` and `.cleared`; `.edits` and `.edits_cleared`), with the fields hidden that `functions.js` hides (124 forms hide one); each post the page's checks stop (196) fails the same checks in `functions.js`. The page sends 12 that `functions.js` stops: what the page leaves to `next` (section 4.2), each a request made again with a field left empty that the form asks for on a condition (`trip_to` while it is shown, 8; `receipt` while its `required when` holds, 4). Each of the 12 is run through the kind as the server runs it, and `next` refuses it as `form` at the place of the check `functions.js` fails (`at`). |
@@ -891,7 +905,10 @@ start page's counts left out, the notices' links left out, the language links wi
 (`TestHomeListsBarAndNotices`); one's own requests counted without telling the ones sent back, their
 states in another order, two kinds of one title told apart by nothing (`TestHomeTicketsAndNames`);
 every request back with its requester said to be sent back, the notice of one shown in another state
-(`TestCardSentBackAndBack`); a list without the values its form works out
+(`TestCardSentBackAndBack`); the route of a request that has stopped said as of one in progress, a
+stage that came again not told from one that waits, a part with one refusal of three said to have
+refused the request (`TestRouteWords`, `TestPartRefused`, `TestRouteOfEveryTicket`); a list without the
+values its form works out
 (`TestListComputedStageAndWho`); a page that does not lead back (`TestBackFromHistoryFormAndList`,
 `TestAdminPages`); a word of another language left unmarked, by the description, by
 the template, on a choice, a stage, a way, a field's label, a value's label, a column or a heading

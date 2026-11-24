@@ -211,8 +211,8 @@ body:has(> .ringi), body:has(> main > .ringi) { margin: 0; background: #f1f4f9; 
 /* a fact's own pill is the ground: the state it holds keeps only the colour */
 .ringi .facts dd.status[data-status] { display: inline; padding: 0; border: none; border-radius: 0; font-size: inherit; background: none; }
 
-/* Where a request goes, step by step: the stage and the part an answer is waited for. */
-.ringi .route .phase[data-phase="active"], .ringi .route .state[data-state="active"], .ringi .route .state[data-state="agent"] { color: var(--accent); font-weight: 600; }
+/* Where a request goes, step by step: the stage it is at, and the parts of it that are not settled. */
+.ringi .route .current > .phase, .ringi .route .current .state[data-state="active"], .ringi .route .current .state[data-state="agent"] { color: var(--accent); font-weight: 600; }
 
 /* A card's notice of a request sent back to its requester, with the link to the form it is made
    again in. */

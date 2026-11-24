@@ -120,14 +120,21 @@ func (p *Pages) Card(in Card) (Page, error) {
 		v.Values = append(v.Values, p.value(k, f, val, lang, people, masters, filesTable, worked))
 	}
 	// the route
-	cur := str(ticket["stage"])
-	for _, s := range asList(dm["route"]) {
+	cur, status, route := str(ticket["stage"]), str(ticket["status"]), asList(dm["route"])
+	last := map[string]int{} // where a stage of the name comes last
+	for i, s := range route {
 		st, _ := s.(map[string]any)
-		sv := stageView{Label: k.d.stageText(str(st["name"]), lang), Phase: from(phases, str(st["phase"]), lang), PhaseKey: str(st["phase"])}
-		sv.Current = str(st["phase"]) == "active" && str(st["name"]) == cur
+		last[str(st["name"])] = i
+	}
+	for i, s := range route {
+		st, _ := s.(map[string]any)
+		phase, moved := str(st["phase"]), last[str(st["name"])] > i
+		sv := stageView{Label: k.d.stageText(str(st["name"]), lang), Phase: w.phase(status, phase, moved), PhaseKey: phase}
+		sv.Current = phase == "active" && str(st["name"]) == cur
 		for _, x := range asList(st["parts"]) {
 			part, _ := x.(map[string]any)
-			pv := partStateView{Way: k.d.wayText(str(part["way"]), lang), State: from(partStates, str(part["state"]), lang), StateKey: str(part["state"])}
+			state := str(part["state"])
+			pv := partStateView{Way: k.d.wayText(str(part["way"]), lang), State: w.partState(status, phase, state, partRefused(part), moved), StateKey: state}
 			var names []string
 			for _, a := range asList(part["approvers"]) {
 				names = append(names, name(people, str(a)))
@@ -343,6 +350,20 @@ func (b *builder) person(place, label, start, required string) *input {
 func asList(v any) []any {
 	l, _ := v.([]any)
 	return l
+}
+
+// partRefused is whether a part of a stage can come to no approval: its approvers, less those who
+// refused it, are fewer than the approvals it needs, which rejects the ticket (ringi's DESIGN 7.3).
+func partRefused(part map[string]any) bool {
+	left := len(asList(part["approvers"]))
+	for _, a := range asList(part["answers"]) {
+		ans, _ := a.(map[string]any)
+		if yes, _ := ans["yes"].(bool); !yes {
+			left--
+		}
+	}
+	needed, ok := steps(part["needed"])
+	return ok && int64(left) < needed
 }
 
 // wireForm is a ticket's form as the script holds it: as the API writes it, a choice as a list of

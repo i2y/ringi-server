@@ -173,7 +173,8 @@ var dids = map[string][2]string{
 	"ticket expired":   {"The request expired", "申請の期限が切れました"},
 }
 
-// The states of a stage of the route (the ticket's `phase`).
+// The states of a stage of the route (the ticket's `phase`), as words.phase says them of a request in
+// progress.
 var phases = map[string][2]string{
 	"ahead":      {"Not yet", "これから"},
 	"active":     {"Waiting for answers", "回答を待っています"},
@@ -185,7 +186,8 @@ var phases = map[string][2]string{
 	"noted":      {"Summary step done", "要約のステップが済みました"},
 }
 
-// The states of a part of a stage (the ticket's `state`).
+// The states of a part of a stage (the ticket's `state`), as words.partState says them of a request in
+// progress.
 var partStates = map[string][2]string{
 	"active":   {"Waiting", "待っています"},
 	"passed":   {"Done", "済みました"},
@@ -195,6 +197,81 @@ var partStates = map[string][2]string{
 	"checked":  {"Checked", "確かめました"},
 	"once":     {"Done at another stage", "ほかのステップで済みました"},
 	"deferred": {"Waits for a later stage", "あとのステップを待っています"},
+}
+
+// phase is what a card says of a stage of the route: the phase the ticket holds. A ticket keeps the
+// phases it had when it stopped, so of one that is not in progress it says what came of those that
+// were waited for: the stage it stopped at says the ticket's state, one that waits for a later stage
+// (deferred) that it is not settled, and one ahead that the request did not reach it. moved is whether
+// the stage came again further on (a stage of its name is later in the route), as one that waited for
+// a later stage does when that stage has no approval for it (ringi's DESIGN 7.1): what it waited for is
+// the later one's.
+func (w words) phase(status, phase string, moved bool) string {
+	switch {
+	case phase == "active" && status != "in_progress":
+		return from(statuses, status, w.lang)
+	case phase == "ahead" && endedEarly(status):
+		return w.t("Not reached", "ここまで進みませんでした")
+	case phase == "deferred" && moved:
+		return w.movedOn()
+	case phase == "deferred" && !goesOn(status):
+		return w.unsettled(status)
+	}
+	return from(phases, phase, w.lang)
+}
+
+// partState is what a card says of a part of a stage: the state the ticket holds, and of one that is
+// not in progress what came of it, as phase does. refused is whether the part's approvers can come to
+// no approval (partRefused): the part of a request rejected that rejected it. moved is phase's. The
+// part of a summary's step keeps the state of an agent that is asked, whether or not the summary has
+// come.
+func (w words) partState(status, phase, state string, refused, moved bool) string {
+	switch state {
+	case "active", "agent":
+		switch {
+		case state == "agent" && phase != "active":
+			return w.t("Asked the agent", "エージェントに頼みました")
+		case state == "active" && status == "rejected" && refused:
+			return from(statuses, status, w.lang)
+		case status != "in_progress":
+			return w.unsettled(status)
+		}
+	case "deferred":
+		switch {
+		case moved:
+			return w.movedOn()
+		case !goesOn(status):
+			return w.unsettled(status)
+		}
+	case "stopped":
+		if !goesOn(status) {
+			return w.t("No approver", "承認者がいませんでした")
+		}
+	}
+	return from(partStates, state, w.lang)
+}
+
+// goesOn is whether a ticket's route goes on as it stands: in progress, or on hold until it is taken
+// off hold.
+func goesOn(status string) bool { return status == "in_progress" || status == "paused" }
+
+// endedEarly is whether a ticket ended before the end of its route.
+func endedEarly(status string) bool {
+	return status == "rejected" || status == "withdrawn" || status == "expired"
+}
+
+// unsettled is what a card says of what was waited for when a request stopped.
+func (w words) unsettled(status string) string {
+	if endedEarly(status) {
+		return w.t("Ended before it was settled", "決まる前に終わりました")
+	}
+	return w.t("Not settled yet", "まだ決まっていません")
+}
+
+// movedOn is what a card says of a stage, and of a part, whose approval is asked for at the stage of
+// the same name further on.
+func (w words) movedOn() string {
+	return w.t("Moved to the same stage below", "下の同じステップに移りました")
 }
 
 // from is a word of a table in lang, or the key as it is.
