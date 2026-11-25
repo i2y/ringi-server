@@ -126,7 +126,8 @@ func TestRemind(t *testing.T) {
 ## Use the pages yourself
 
 On a server with `-dev-login`, you can go from a request to its approval as one person after another. To try the
-pages for administrators, choose `system_admin` or another under "Roles" on the sign-in page, and then the person.
+pages for administrators, open "Try it with roles" under the people on the sign-in page, choose `system_admin` or
+another, and then the person.
 
 The time of the server cannot be moved on. The deadlines and reminders are for `ritsu ringi run`, and for a test
 that uses `servertest`.

@@ -67,3 +67,50 @@ func TestSignInRolePresets(t *testing.T) {
 		t.Errorf("the page in Japanese with roles=auditor:\n%s", page)
 	}
 }
+
+// TestSignInPeopleFirst: the page of signing in lists the people first, and the roles after them,
+// in a form of their own: the people's buttons sign in with the roles the page was asked with, which
+// a line above them says, and roles that do not read are said at their field and are not sent.
+func TestSignInPeopleFirst(t *testing.T) {
+	_, mux := signIn(t, org{})
+	b := &servertest.Browser{Handler: mux}
+	page := b.Get(devlogin.LoginPath + "?roles=workflow_admin,auditor").Body.String()
+	wellFormed(t, "the page of signing in with two roles", []byte(page))
+	people, roles := strings.Index(page, `name="person"`), strings.Index(page, `id="dev-roles"`)
+	if people < 0 || roles < 0 || people > roles {
+		t.Errorf("the people are not listed before the roles (%d, %d):\n%s", people, roles, page)
+	}
+	for _, s := range []string{
+		`<input type="hidden" name="roles" value="workflow_admin,auditor" />`,
+		"You use the server with the roles workflow_admin, auditor.",
+		`<details class="roles" open="open">`,
+		`<form method="get" action="/login">`,
+	} {
+		if !strings.Contains(page, s) {
+			t.Errorf("the page with two roles has no %s:\n%s", s, page)
+		}
+	}
+	// pressing a person signs in with the roles the people's form sends
+	w := b.Post(devlogin.LoginPath, url.Values{"person": {"e1201"}, "roles": {"workflow_admin,auditor"}})
+	var signed string
+	for _, c := range w.Result().Cookies() {
+		if c.Name == devlogin.RolesCookie {
+			signed = c.Value
+		}
+	}
+	if signed != url.QueryEscape("workflow_admin,auditor") {
+		t.Errorf("the roles signed in with: %d %q", w.Code, signed)
+	}
+	b.Header = nil
+	// with none, the line says so, the roles are folded, and the people's form sends none
+	b.Header = http.Header{"Accept-Language": {"ja"}}
+	page = b.Get(devlogin.LoginPath + "?roles=").Body.String()
+	if !strings.Contains(page, "役割の無いスタッフとして使います。") || strings.Contains(page, `type="hidden" name="roles"`) || !strings.Contains(page, `<details class="roles">`) {
+		t.Errorf("the page with no roles:\n%s", page)
+	}
+	// roles that do not read: said at the field, and not sent with a person
+	page = b.Get(devlogin.LoginPath + "?roles=" + url.QueryEscape("a b")).Body.String()
+	if !strings.Contains(page, `id="dev-roles-error"`) || strings.Contains(page, `type="hidden" name="roles"`) || !strings.Contains(page, "役割の無いスタッフとして使います。") {
+		t.Errorf("the page with roles that do not read:\n%s", page)
+	}
+}

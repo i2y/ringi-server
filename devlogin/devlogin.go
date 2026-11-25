@@ -28,8 +28,8 @@ import (
 
 // SignIn signs people in on the computer the server runs on, for trying a server in a browser: its
 // page lists the people of the organization, and the one chosen is who sends each request from then
-// on (a cookie names them), with the roles written above the list (another cookie: none when it is
-// left empty), for trying what the gate lets each role do: a link for each role that the gate of the
+// on (a cookie names them), with the roles chosen under the list (another cookie: none when none is
+// chosen), for trying what the gate lets each role do: a link for each role that the gate of the
 // examples declares, as the gate of a project ritsu ringi init makes does, opens the page with the
 // role written (?roles=). An organization of more people than a picker of the pages lists
 // (web.PicksListed) is not listed: the page finds people by a part of a name or an ID, as such a
@@ -271,6 +271,10 @@ var devWords = map[string]map[string]string{
 		"nonefound":       "Nothing is found by “%s”.",
 		"more":            "There are more. Add words to narrow them down.",
 		"roles":           "Roles",
+		"rolestitle":      "Try it with roles",
+		"using":           "You use the server with the roles %s.",
+		"usingnone":       "You use the server as a member of the staff, with no role.",
+		"apply":           "Use these roles",
 		"roleshint":       "Separated by commas, such as workflow_admin, system_admin or auditor, as the gate declares them. Leave it empty to use the server as a member of the staff with no other role.",
 		"badroles":        "The roles could not be read: write at most 16, separated by commas, each of letters, digits and marks with no space.",
 		"preset.staff":    "A member of the staff (no role)",
@@ -289,6 +293,10 @@ var devWords = map[string]map[string]string{
 		"nonefound":       "「%s」では見つかりませんでした。",
 		"more":            "ほかにもあります。言葉を足して絞り込んでください。",
 		"roles":           "役割",
+		"rolestitle":      "役割を付けて試す",
+		"using":           "役割「%s」で使います。",
+		"usingnone":       "役割の無いスタッフとして使います。",
+		"apply":           "この役割で使う",
 		"roleshint":       "gate が宣言した役割を、コンマで区切って書きます（workflow_admin、system_admin、auditor など）。空のままなら、ほかの役割の無いスタッフとして使います。",
 		"badroles":        "役割を読めませんでした。コンマで区切って16個まで、空白の無い英数字と記号で書いてください。",
 		"preset.staff":    "スタッフ（役割なし）",
@@ -329,6 +337,23 @@ var devPage = template.Must(template.New("login").Parse(`<!DOCTYPE html>
 {{- if .People}}
 <form class="entries" method="post" action="{{.Action}}">
 <input type="hidden" name="return_to" value="{{.ReturnTo}}" />
+{{- if .Using}}
+<input type="hidden" name="roles" value="{{.Using}}" />
+{{- end}}
+<p class="hint">{{.UsingWords}}</p>
+<ul>{{range .People}}<li><button type="submit" class="plain" name="person" value="{{.ID}}">{{.Label}}</button></li>{{end}}</ul>
+</form>
+{{- else if not .Many}}
+<p>{{.W.none}}</p>
+{{- end}}
+{{- if or .People .Many}}
+<details class="roles"{{if or .Roles .BadRoles}} open="open"{{end}}>
+<summary>{{.W.rolestitle}}</summary>
+<form method="get" action="{{.Action}}">
+<input type="hidden" name="return_to" value="{{.ReturnTo}}" />
+{{- if .Q}}
+<input type="hidden" name="q" value="{{.Q}}" />
+{{- end}}
 <div class="field">
 <label for="dev-roles">{{.W.roles}}</label>
 <p class="hint" id="dev-roles-hint">{{.W.roleshint}}</p>
@@ -336,12 +361,10 @@ var devPage = template.Must(template.New("login").Parse(`<!DOCTYPE html>
 {{- if .BadRoles}}
 <p class="error" id="dev-roles-error">{{.W.badroles}}</p>
 {{- end}}
-<input type="text" id="dev-roles" name="roles" value="{{.Roles}}" autocomplete="off" spellcheck="false" aria-describedby="dev-roles-hint{{if .BadRoles}} dev-roles-error{{end}}"{{if .BadRoles}} aria-invalid="true" autofocus="autofocus"{{end}} />
+<span class="find-box"><input type="text" id="dev-roles" name="roles" value="{{.Roles}}" autocomplete="off" spellcheck="false" aria-describedby="dev-roles-hint{{if .BadRoles}} dev-roles-error{{end}}"{{if .BadRoles}} aria-invalid="true" autofocus="autofocus"{{end}} /><button type="submit" class="plain">{{.W.apply}}</button></span>
 </div>
-<ul>{{range .People}}<li><button type="submit" class="plain" name="person" value="{{.ID}}">{{.Label}}</button></li>{{end}}</ul>
 </form>
-{{- else if not .Many}}
-<p>{{.W.none}}</p>
+</details>
 {{- end}}
 </section>
 </main>
@@ -426,15 +449,32 @@ func (d *SignIn) page(w http.ResponseWriter, r *http.Request) {
 	}
 	in["People"] = list
 	in["ReturnTo"], _ = localPath(r.URL.Query().Get("return_to"))
+	in["Roles"] = ""
 	if r.URL.Query().Has("bad_roles") {
 		in["BadRoles"] = true
 	} else if c, err := r.Cookie(RolesCookie); err == nil {
 		in["Roles"], _ = url.QueryUnescape(c.Value)
 	}
 	// the roles asked with ?roles= go before the cookie's, and a find keeps them: each link of the
-	// presets asks for its own, so that a click chooses a role without typing it
+	// presets asks for its own, so that a click chooses a role without typing it, and the form of the
+	// roles asks for what is typed in it. The people's buttons sign in with the roles read; roles
+	// that do not read are said at their field, and no one is signed in with them
 	if r.URL.Query().Has("roles") {
 		in["Roles"], in["Asked"] = r.URL.Query().Get("roles"), true
+	}
+	using, ok := Roles(in["Roles"].(string))
+	if !ok {
+		in["BadRoles"], using = true, nil
+	}
+	in["Using"] = strings.Join(using, ",")
+	if len(using) == 0 {
+		in["UsingWords"] = words["usingnone"]
+	} else {
+		sep := ", "
+		if lang == "ja" {
+			sep = "、"
+		}
+		in["UsingWords"] = with(words["using"], strings.Join(using, sep), lang)
 	}
 	type preset struct {
 		Label, URL string
