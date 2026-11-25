@@ -40,11 +40,11 @@ var phrasesEN = map[string]string{
 var phrasesJA = map[string]string{
 	"done":               "受け付けました。",
 	"nothing":            "何も保存していません。",
-	"would be refused":   "いま行うと、断られます",
+	"would be refused":   "いま行うと、受け付けられません",
 	"would be invalid":   "いま行うと、呼び出しの形が正しくないため受け付けられません：",
 	"would be not_found": "いま行うと、見つかりません：",
-	"books not asked":    "帳簿には問い合わせていません（books_not_asked）。実際に行うと、帳簿に断られることがあります。",
-	"refused":            "断られました",
+	"books not asked":    "帳簿には問い合わせていません（books_not_asked）。実際に行うと、帳簿が受け付けないことがあります。",
+	"refused":            "受け付けられませんでした",
 	"invalid":            "呼び出しの形が正しくないため、受け付けられませんでした：",
 	"not_found":          "見つかりません：",
 	"failed":             "サーバーで失敗しました。しばらくしてから、同じ呼び出しを同じ idempotency_key でやり直してください。",
@@ -72,15 +72,15 @@ var leadsEN = map[string]string{
 
 var leadsJA = map[string]string{
 	"state":   "チケットは、いまこの操作を受け付ける状態ではありません。",
-	"clock":   "チケットの時計が、まだ鳴っていないか、置かれていません。",
+	"clock":   "チケットのタイマーの時刻がまだ来ていないか、タイマーが設定されていません。",
 	"stale":   "読んだあとでチケットが変わりました。もう一度読み（get_ticket）、その revision で操作してください。",
 	"person":  "この人は、このチケットにこの操作をできません。",
 	"event":   "この申請の種類では、ここでこの操作はできません。",
 	"limit":   "この操作に使える回数か日数を使い切っています。",
 	"form":    "フォームに、この申請が受け付けない値があります。",
-	"comment": "呼び出しの comment を受け付けませんでした。空か（コメントの操作と、申請のステップが理由を求める操作には要ります）、長すぎます。フォームの値は断られていません。",
+	"comment": "呼び出しの comment を受け付けませんでした。空か（コメントの操作と、申請のステップが理由を求める操作には要ります）、長すぎます。フォームの値が理由ではありません。",
 	"submit":  "この人は、この種類の申請を出せません。",
-	"data":    "その日に使えるデータがありません（組織の版やカレンダーが無いか、申請の種類を使える日の外です）。",
+	"data":    "その日に使えるデータがありません。組織の版かカレンダーがないか、その日がこの申請の種類を使える期間の外です。",
 	"book":    "帳簿が受け付けませんでした。",
 	"unread":  "ファイルか、規則の答えを読めませんでした。",
 	"default": "申請が受け付けませんでした。",
@@ -288,15 +288,15 @@ func okSentence(lang string, d *toolDef, q url.Values, body []byte, title func(n
 		case len(ids) == 0 && ja && mine:
 			return "この一覧に、この人の申請はありません。"
 		case len(ids) == 0 && ja:
-			return "この一覧に、この人を待っているチケットはありません。"
+			return "この一覧に、この人の答えを待っているチケットはありません。"
 		case len(ids) == 0 && mine:
 			return "The list has none of the person's requests."
 		case len(ids) == 0:
 			return "The list has no ticket that waits for the person."
 		case ja && mine:
-			said = jatext.Join(fmt.Sprintf("この人の申請の、新しい物から%d件です：", len(ids)), strings.Join(ids, "、"), "。")
+			said = jatext.Join(fmt.Sprintf("この人の申請は、新しい順に次の%d件です：", len(ids)), strings.Join(ids, "、"), "。")
 		case ja:
-			said = jatext.Join(fmt.Sprintf("この人を待っているチケットの、新しい物から%d件です：", len(ids)), strings.Join(ids, "、"), "。")
+			said = jatext.Join(fmt.Sprintf("この人の答えを待っているチケットは、新しい順に次の%d件です：", len(ids)), strings.Join(ids, "、"), "。")
 		case mine:
 			said = fmt.Sprintf("The person's requests, the newest first: %s, %s.", count(len(ids), "ticket", "tickets"), strings.Join(ids, ", "))
 		default:

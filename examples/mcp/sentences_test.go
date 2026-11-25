@@ -99,12 +99,12 @@ func TestNamesInJapaneseAnswers(t *testing.T) {
 	id := field(t, ticket, "id").(string)
 	approverID := firstApprover(t, ticket)
 	check("submit_expense", text(r), "受け付けました。チケット "+id+"（expense）は in_progress です。ステップは ", " です。"+approverID+" を待っています。")
-	check("list_mine", text(call(t, applicant, "list_mine", map[string]any{})), "新しい物から1件です："+id+"（expense）。")
+	check("list_mine", text(call(t, applicant, "list_mine", map[string]any{})), "新しい順に次の1件です："+id+"（expense）。")
 	approver := e.session(t, approverID)
-	check("list_waiting", text(call(t, approver, "list_waiting", map[string]any{})), "新しい物から1件です："+id+"（expense）。")
+	check("list_waiting", text(call(t, approver, "list_waiting", map[string]any{})), "新しい順に次の1件です："+id+"（expense）。")
 	check("get_ticket", text(call(t, approver, "get_ticket", map[string]any{"id": id})), "チケット "+id+"（expense）は in_progress です。")
 	r = call(t, approver, "approve", map[string]any{"idempotency_key": "a1", "id": id, "revision": field(t, ticket, "revision")})
-	check("approve, which the gate does not allow", text(r), "断られました（person）。", "gate が approve を許していません")
+	check("approve, which the gate does not allow", text(r), "受け付けられませんでした（person）。", "gate が approve を許していません")
 	check("get_organization", text(call(t, applicant, "get_organization", map[string]any{})), "今日の組織の版です：", "人、", "チーム。")
 	check("a master", text(call(t, applicant, "get_master_company_masters_accounts", map[string]any{})), "マスタ company_masters.accounts の、選べる行は", "行です。")
 	// a second comment at once: the server does not take it now
@@ -115,5 +115,5 @@ func TestNamesInJapaneseAnswers(t *testing.T) {
 	// a day before the organization's first version
 	early := newEnv(t, envOptions{pkg: pkg, language: ja, at: time.Date(2026, 3, 20, 10, 0, 0, 0, examples.Zone)})
 	r = call(t, early.session(t, "e1201"), "submit_expense", map[string]any{"idempotency_key": "k1", "form": purchase, "comment": nil})
-	check("a day of no organization", text(r), "断られました（data）。", "2026-03-20 に効いている組織の版がありません")
+	check("a day of no organization", text(r), "受け付けられませんでした（data）。", "2026-03-20 に効いている組織の版がありません")
 }

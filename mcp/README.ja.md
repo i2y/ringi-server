@@ -109,8 +109,8 @@ call e1201 list_mine '{"limit":1}'
 受け付けました。チケット 01M7NQQD6XF71RQVBZFJ08MKEV（expense）は in_progress です。ステップは first です。e1101 を待っています。
 受け付けました。チケット 01M7NQQD6XF71RQVBZFJ08MKEV（expense）は in_progress です。ステップは first です。e1101 を待っています。
 受け付けました。チケット 01M7NQQD7D7NBWSNVV06JN4MNQ（expense）は in_progress です。ステップは first です。e1101 を待っています。
-この人を待っているチケットの、新しい物から2件です：01M7NQQD7D7NBWSNVV06JN4MNQ（expense）、01M7NQQD6XF71RQVBZFJ08MKEV（expense）。
-この人の申請の、新しい物から1件です：01M7NQQD7D7NBWSNVV06JN4MNQ（expense）。続きがあります。before に 01M7NQQD7D7NBWSNVV06JN4MNQ を渡すと、次のページを読めます。
+この人の答えを待っているチケットは、新しい順に次の2件です：01M7NQQD7D7NBWSNVV06JN4MNQ（expense）、01M7NQQD6XF71RQVBZFJ08MKEV（expense）。
+この人の申請は、新しい順に次の1件です：01M7NQQD7D7NBWSNVV06JN4MNQ（expense）。続きがあります。before に 01M7NQQD7D7NBWSNVV06JN4MNQ を渡すと、次のページを読めます。
 ```
 
 同じキーの呼び出しでは、チケットは一つです。別のキーでは、別のチケットになります。一覧の JSON の `more` は、続きがあるかどうかです。続きがあれば、次のページの読み方が文にあります。
@@ -123,7 +123,7 @@ call e1201 check_operation "{\"tool\":\"submit_expense\",\"arguments\":{\"form\"
 ```
 
 ```text
-何も保存していません。いま行うと、断られます（form）。フォームに、この申請が受け付けない値があります。
+何も保存していません。いま行うと、受け付けられません（form）。フォームに、この申請が受け付けない値があります。
 `1_000_001JPY` は、`items[0].price` の範囲（`>=1JPY <=1_000_000JPY`）の外です
 ```
 

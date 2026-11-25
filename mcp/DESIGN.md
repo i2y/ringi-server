@@ -223,7 +223,7 @@ person, an action, a day) as the pages and the framework's other Japanese senten
 kana and kanji by a space, and set right next to a full-width mark
 ("チケット 01J…（leave）は in_progress です。", "leave（Leave request）"). A number is no name: it is set
 right next to its counter or unit and to the words before it, as the pages and the screens write
-numbers ("申請の種類は10種類です", "新しい物から1件です", "10秒待ってから"). The rule is not the
+numbers ("申請の種類は10種類です", "新しい順に次の1件です", "10秒待ってから"). The rule is not the
 package's, because a person's ID may be digits alone: a sentence writes its numbers so itself.
 
 A body the API answers 400 is a tool's error, not an error of the protocol: the agent reads the

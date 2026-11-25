@@ -211,7 +211,7 @@ func TestRefusalsInJapanese(t *testing.T) {
 	}
 	high["items"] = []any{map[string]any{"what": "Server", "price": 1000001}}
 	r := call(t, cs, "submit_expense", map[string]any{"idempotency_key": "k1", "form": high})
-	if !r.IsError || !strings.HasPrefix(text(r), "断られました（form）。フォームに、この申請が受け付けない値があります。") {
+	if !r.IsError || !strings.HasPrefix(text(r), "受け付けられませんでした（form）。フォームに、この申請が受け付けない値があります。") {
 		t.Errorf("the refusal is not told in Japanese: %q", text(r))
 	}
 	ticket := submitPurchase(t, cs, "k2")

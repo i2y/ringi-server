@@ -83,7 +83,7 @@ call s1101 list_waiting '{}'
 この人が今日出せる申請の種類は1種類です：purchase（購買の申請）。
 何も保存していません。いま行うと、チケット（purchase）は in_progress になります。ステップは manager です。s1101 を待ちます。
 受け付けました。チケット 01M89KPYFZKZDRAPZNJRYJQX34（purchase）は in_progress です。ステップは manager です。s1101 を待っています。
-この人を待っているチケットの、新しい物から1件です：01M89KPYFZKZDRAPZNJRYJQX34（purchase）。
+この人の答えを待っているチケットは、新しい順に次の1件です：01M89KPYFZKZDRAPZNJRYJQX34（purchase）。
 ```
 
 二つ目の `check_operation` は、申請したらどうなるかを答えるだけで、何も保存しません。四つ目は、営業一課長として、自分を待っている申請を並べています。

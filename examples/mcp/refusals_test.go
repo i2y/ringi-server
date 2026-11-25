@@ -55,7 +55,7 @@ func TestRefusalsOfTheComment(t *testing.T) {
 	long := strings.Repeat("x", 2001)
 	leads := map[string]string{
 		"en": "Refused (comment). The call's comment was not taken: it is empty (a comment needs one, and so does an operation the step of the request asks a reason for), or it is too long. No value of the form was refused.\n",
-		"ja": "断られました（comment）。呼び出しの comment を受け付けませんでした。空か（コメントの操作と、申請のステップが理由を求める操作には要ります）、長すぎます。フォームの値は断られていません。\n",
+		"ja": "受け付けられませんでした（comment）。呼び出しの comment を受け付けませんでした。空か（コメントの操作と、申請のステップが理由を求める操作には要ります）、長すぎます。フォームの値が理由ではありません。\n",
 	}
 	for _, c := range []struct{ lang, long, reason string }{
 		{"en", "the comment is 2001 characters long, past the limit (2000)", "a `%s` of this request needs a reason: write it in the comment"},
@@ -100,11 +100,11 @@ func TestNamesInRefusals(t *testing.T) {
 		{"a person with names", "en", false,
 			"Refused (person). The person may not do this on this ticket.\ne1201 (Sales staff 1) made the request, and does not answer it (`self approval not allowed`)"},
 		{"a person with names", "ja", false,
-			"断られました（person）。この人は、このチケットにこの操作をできません。\ne1201（営業担当 1）は、この申請を出した人なので、答えられません（`self approval not allowed`）"},
+			"受け付けられませんでした（person）。この人は、このチケットにこの操作をできません。\ne1201（営業担当 1）は、この申請を出した人なので、答えられません（`self approval not allowed`）"},
 		{"a person with no names", "en", true,
 			"Refused (person). The person may not do this on this ticket.\ne1201 made the request, and does not answer it (`self approval not allowed`)"},
 		{"a person with no names", "ja", true,
-			"断られました（person）。この人は、このチケットにこの操作をできません。\ne1201 は、この申請を出した人なので、答えられません（`self approval not allowed`）"},
+			"受け付けられませんでした（person）。この人は、このチケットにこの操作をできません。\ne1201 は、この申請を出した人なので、答えられません（`self approval not allowed`）"},
 	} {
 		e := newEnv(t, envOptions{language: func(server.Person, http.Header) string { return c.lang }})
 		if c.nameless {
