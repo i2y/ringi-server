@@ -185,7 +185,9 @@ body:has(> .ringi), body:has(> main > .ringi) { margin: 0; background: #f1f4f9; 
    for each, one under another (Tab walks them in the page's order). */
 .ringi .entries ul { list-style: none; padding: 0; margin: 0.65rem 0 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .ringi .entries li { margin: 0; }
-.ringi .entries > ul > li > a { display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 1.1rem; background: var(--tint); border: 1px solid var(--line); border-radius: 12px; text-decoration: none; font-weight: 600; box-sizing: border-box; overflow-wrap: anywhere; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.ringi .entries > ul > li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.75rem; }
+.ringi .entries > ul > li > .from, .ringi .entries > ul > li > .summary-line, .ringi .entries > ul > li > ul { flex: 1 0 100%; }
+.ringi .entries > ul > li > a { flex: 1 1 12rem; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 1.1rem; background: var(--tint); border: 1px solid var(--line); border-radius: 12px; text-decoration: none; font-weight: 600; box-sizing: border-box; overflow-wrap: anywhere; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .ringi .entries > ul > li > a::after { content: "→"; font-weight: 700; color: var(--accent); margin-left: 0.75rem; flex-shrink: 0; }
 .ringi .entries > ul > li > a:hover { border-color: var(--accent); box-shadow: 0 3px 10px rgba(29, 78, 216, 0.08); }
 .ringi .entries li > button.plain { width: 100%; text-align: start; display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.1rem; border-radius: 10px; font-weight: 600; box-sizing: border-box; overflow-wrap: anywhere; }

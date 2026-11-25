@@ -398,9 +398,9 @@ func (w words) AdminLocksOut() string {
 func (w words) AdminLocksOutYes() string {
 	return w.t("Import it knowing this", "承知のうえで取り込む")
 }
-func (w words) AdminNotShown() string {
-	return w.t("What a version of a request type changes, and whom new data makes an approver, are what `ritsu ringi diff` says before you switch or import.",
-		"申請の種類の版が変える所と、新しいデータで承認者が変わる人は、切り替えや取り込みの前に `ritsu ringi diff` で読みます。")
+func (w words) AdminNotShown() template.HTML {
+	return template.HTML(w.t("Before you switch or import, <code>ritsu ringi diff</code> says what a version of a request type changes, and whom new data makes an approver.",
+		"申請の種類の版で変わる所と、新しいデータで承認者が変わる人は、切り替えや取り込みの前に <code>ritsu ringi diff</code> で読めます。"))
 }
 func (w words) AdminFilter() string  { return w.t("Show", "絞り込む") }
 func (w words) AdminFromDay() string { return w.t("From the day", "この日から") }
