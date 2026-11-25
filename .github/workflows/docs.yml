@@ -1,0 +1,73 @@
+name: docs
+
+# Builds the site from the documents (website/), and publishes it to GitHub Pages from main:
+# https://i2y.github.io/ringi-server/ and, in Japanese, https://i2y.github.io/ringi-server/ja/. A pull
+# request builds it and publishes nothing. Pages takes its source from "GitHub Actions" in the
+# repository's settings; while the repository is private, nothing is published.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.md"
+      - "docs/images/**"
+      - "website/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "**.md"
+      - "docs/images/**"
+      - "website/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# Only the job that publishes writes to Pages, and it runs nothing of the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Zensical, held to its hashes
+        run: |
+          python3 -m venv website/.venv
+          website/.venv/bin/pip install --require-hashes -r website/requirements.txt
+
+      - name: Build the site, and check it
+        run: website/build.sh
+
+      - name: Upload the site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/build
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && !github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

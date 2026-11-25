@@ -148,6 +148,27 @@ cd examples
 RINGI_DOCS=write go test -run 'TestDocuments$' .
 ```
 
+### The site
+
+<https://i2y.github.io/ringi-server/> shows the same documents, each as a page. `website/pages.py`
+writes the pages from the documents. It stops at a line that GitHub and the site would show in
+different ways, and at a line break in a sentence of Japanese, which would show as a space.
+`website/finish.py` checks what was built: the nav of each language lists every page, and every link
+leads somewhere. A new document needs its place in both navs (`website/zensical.toml` and
+`website/zensical.ja.toml`).
+
+To build the site and see it on your own computer, with Python 3.11 or later:
+
+```sh
+python3 -m venv website/.venv
+website/.venv/bin/pip install --require-hashes -r website/requirements.txt
+website/build.sh
+website/serve.sh
+```
+
+`.github/workflows/docs.yml` builds it on a pull request, and publishes it to GitHub Pages from
+`main`.
+
 ## Making the examples again
 
 `examples/project/` is a copy of ritsu's examples, but for the model its three flows with an agent

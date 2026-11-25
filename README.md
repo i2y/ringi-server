@@ -218,6 +218,8 @@ server without package `serve`.
 
 ## Documentation
 
+The documents are on [the site](https://i2y.github.io/ringi-server/) too.
+
 | You want to | Read |
 |---|---|
 | write a request type | ringi's [pages](https://i2y.github.io/ritsu/ringi/) and [reference](https://github.com/i2y/ritsu/blob/main/crates/ringi/docs/reference.md), in ritsu |

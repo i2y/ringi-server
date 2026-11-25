@@ -1,0 +1,93 @@
+# The Japanese pages of the site, https://i2y.github.io/ringi-server/ja/. pages.py writes pages/ja from
+# the documents; a page it writes that the nav does not list stops the build (check.py), as does one
+# the nav of the English pages (zensical.toml) does not.
+[project]
+site_name = "ringi-server"
+site_url = "https://i2y.github.io/ringi-server/ja/"
+site_description = "組織の申請と承認のサーバーを作る Go のフレームワーク。ritsu の言語の一つ ringi で書いた申請の種類から、人が使うブラウザのページ、HTTP API、エージェントのツールを動かす。"
+site_author = "Yasushi Itoh"
+copyright = "Copyright &copy; 2026 Yasushi Itoh"
+
+repo_url = "https://github.com/i2y/ringi-server"
+repo_name = "i2y/ringi-server"
+
+docs_dir = "pages/ja"
+site_dir = "build/ja"
+use_directory_urls = true
+
+nav = [
+  { "ringi-server" = "index.md" },
+  { "API を curl で試す" = "api.md" },
+  { "サーバーを動かす" = "operations.md" },
+  { "自分のルートとサーバー" = "embedding.md" },
+  { "部品" = [
+    { "ページ、画面、添付ファイル" = "web.md" },
+    { "画面" = "screens.md" },
+    { "素の HTML のページ" = "screens/page.md" },
+    { "ログイン" = "oidc.md" },
+    { "エージェントのツール" = "mcp.md" },
+    { "flow とエージェントのステップ" = "temporal.md" },
+  ] },
+  { "フレームワークを直す" = "contributing.md" },
+  { "設計" = [
+    { "サーバー" = "design/index.md" },
+    { "ページ、画面、添付ファイル" = "design/web.md" },
+    { "画面" = "design/screens.md" },
+    { "素の HTML のページ" = "design/screens/page.md" },
+    { "ログイン" = "design/oidc.md" },
+    { "エージェントのツール" = "design/mcp.md" },
+    { "flow" = "design/temporal.md" },
+  ] },
+  { "Go のリファレンス（英語）" = "https://pkg.go.dev/github.com/i2y/ringi-server" },
+  { "言語 ringi" = "https://i2y.github.io/ritsu/ja/ringi/" },
+]
+
+[[project.extra.alternate]]
+name = "English"
+link = "/ringi-server/"
+lang = "en"
+
+[[project.extra.alternate]]
+name = "日本語"
+link = "/ringi-server/ja/"
+lang = "ja"
+
+[project.theme]
+variant = "modern"
+language = "ja"
+icon.repo = "fontawesome/brands/github"
+# navigation.footer     previous / next at the foot of every page
+# navigation.top        a back-to-top button on long pages
+# content.code.copy     a copy button on every code block
+features = [
+  "navigation.footer",
+  "navigation.top",
+  "content.code.copy",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "black"
+accent = "teal"
+toggle.icon = "lucide/moon"
+toggle.name = "ダークモードにする"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "black"
+accent = "teal"
+toggle.icon = "lucide/sun"
+toggle.name = "ライトモードにする"
+
+# A heading's anchor is the one GitHub gives it, in Japanese too, so a link to it is the same there.
+[project.markdown_extensions.toc]
+slugify = { object = "pymdownx.slugs.slugify", kwds = { case = "lower" } }
+
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions.pymdownx.highlight]
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.superfences]

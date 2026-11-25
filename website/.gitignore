@@ -1,0 +1,5 @@
+# what build.sh writes
+.cache/
+.venv/
+build/
+pages/

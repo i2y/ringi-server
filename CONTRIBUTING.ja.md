@@ -121,6 +121,21 @@ cd examples
 RINGI_DOCS=write go test -run 'TestDocuments$' .
 ```
 
+### サイト
+
+同じ文書は、<https://i2y.github.io/ringi-server/ja/> でも読めます。一つの文書が 1 ページです。`website/pages.py` が、文書からページを書きます。GitHub とサイトで見え方が違う行や、日本語の文の途中の改行（空白になって見えます）があると、そこで止まります。`website/finish.py` は、できたサイトを確かめます。どちらの言語のメニューにもすべてのページが並んでいることと、すべてのリンクの先があることです。文書を足すときは、両方のメニュー（`website/zensical.toml` と `website/zensical.ja.toml`）に並べます。
+
+サイトを自分のコンピューターで作って見るには、Python 3.11 以降で次を実行します。
+
+```sh
+python3 -m venv website/.venv
+website/.venv/bin/pip install --require-hashes -r website/requirements.txt
+website/build.sh
+website/serve.sh
+```
+
+`.github/workflows/docs.yml` は、プルリクエストではサイトを作って確かめるところまでを行い、`main` からは GitHub Pages に公開します。
+
 ## 例を作り直す
 
 `examples/project/` は、ritsu の例の写しです。違うのは、エージェントを持つ三つの flow のモデルの名前だけで、ここでは仮の名前（`example-model`）です。エージェントの答えは `examples/parts.go` と試験が返し、どちらのモデルでも、ritsu が書く `go/` と `requests/` は同じです。`examples/regen.sh` は、`PATH` にある `ritsu` で、写しから `examples/go/` と `examples/requests/` を書き直します。

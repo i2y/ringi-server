@@ -178,6 +178,8 @@ go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
 
 ## 文書
 
+文書は[サイト](https://i2y.github.io/ringi-server/ja/)でも読めます。
+
 | したいこと | 読むもの |
 |---|---|
 | 申請の種類を書く | ritsu にある ringi の[ページ](https://i2y.github.io/ritsu/ja/ringi/)と[リファレンス](https://github.com/i2y/ritsu/blob/main/crates/ringi/docs/reference.md)（英語） |

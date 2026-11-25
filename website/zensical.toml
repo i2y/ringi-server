@@ -1,0 +1,93 @@
+# The English pages of the site, https://i2y.github.io/ringi-server/. pages.py writes pages/en from
+# the documents; a page it writes that the nav does not list stops the build (check.py), as does one
+# the nav of the Japanese pages (zensical.ja.toml) does not.
+[project]
+site_name = "ringi-server"
+site_url = "https://i2y.github.io/ringi-server/"
+site_description = "A Go framework that serves an organization's requests and approvals: the pages people use in a browser, the HTTP API, and the tools of agents, from request types written in ringi, one of ritsu's languages."
+site_author = "Yasushi Itoh"
+copyright = "Copyright &copy; 2026 Yasushi Itoh"
+
+repo_url = "https://github.com/i2y/ringi-server"
+repo_name = "i2y/ringi-server"
+
+docs_dir = "pages/en"
+site_dir = "build"
+use_directory_urls = true
+
+nav = [
+  { "ringi-server" = "index.md" },
+  { "The API, with curl" = "api.md" },
+  { "Running a server" = "operations.md" },
+  { "Your own route or server" = "embedding.md" },
+  { "The parts" = [
+    { "Pages, screens, attachments" = "web.md" },
+    { "Screens" = "screens.md" },
+    { "Plain HTML pages" = "screens/page.md" },
+    { "Signing in" = "oidc.md" },
+    { "Agents' tools" = "mcp.md" },
+    { "Flows and agents' steps" = "temporal.md" },
+  ] },
+  { "Changing the framework" = "contributing.md" },
+  { "Design" = [
+    { "The server" = "design/index.md" },
+    { "Pages, screens, attachments" = "design/web.md" },
+    { "Screens" = "design/screens.md" },
+    { "Plain HTML pages" = "design/screens/page.md" },
+    { "Signing in" = "design/oidc.md" },
+    { "Agents' tools" = "design/mcp.md" },
+    { "Flows" = "design/temporal.md" },
+  ] },
+  { "Go reference" = "https://pkg.go.dev/github.com/i2y/ringi-server" },
+  { "ringi, the language" = "https://i2y.github.io/ritsu/ringi/" },
+]
+
+[[project.extra.alternate]]
+name = "English"
+link = "/ringi-server/"
+lang = "en"
+
+[[project.extra.alternate]]
+name = "日本語"
+link = "/ringi-server/ja/"
+lang = "ja"
+
+[project.theme]
+variant = "modern"
+language = "en"
+icon.repo = "fontawesome/brands/github"
+# navigation.footer     previous / next at the foot of every page
+# navigation.top        a back-to-top button on long pages
+# content.code.copy     a copy button on every code block
+features = [
+  "navigation.footer",
+  "navigation.top",
+  "content.code.copy",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "black"
+accent = "teal"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "black"
+accent = "teal"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"
+
+# A heading's anchor is the one GitHub gives it, in Japanese too, so a link to it is the same there.
+[project.markdown_extensions.toc]
+slugify = { object = "pymdownx.slugs.slugify", kwds = { case = "lower" } }
+
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions.pymdownx.highlight]
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.superfences]
