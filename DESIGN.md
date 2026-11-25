@@ -574,7 +574,8 @@ and the environment first, before it reads or reaches anything (`serve.Flags.Che
 `-db` with `-files`, as `-db` keeps the attachments in the database (a server that keeps them
 somewhere else than PostgreSQL is made in Go, and gives `Config.Files`: 2.3); on two ways of
 signing in at once; on the provider's settings given in part (it names the ones
-missing); and on a way that checks no one (the header `X-Person`, `-dev-login`) on an address other
+missing), or a claim of the roles (`-oidc-roles-claim`) with a space at its ends; and on a way that
+checks no one (the header `X-Person`, `-dev-login`) on an address other
 computers reach, with the provider's settings in the environment (`RINGI_OIDC_CLIENT_SECRET`,
 `RINGI_SESSION_KEYS`), or with a certificate (`-tls-cert`). These are the settings of a server that
 serves people, where a flag left out would let anyone be anyone. The two ways also answer no person
@@ -626,6 +627,11 @@ return st.Serve(ctx, server.Config{
   server reads a request's headers within 5 seconds and the request within 30, writes its answer
   within 30, keeps an idle connection two minutes, and takes 64 KiB of headers at most. It shuts
   down within 10 seconds, then cuts off what is still being answered.
+- With the provider's flags, a person is found in the organization's data by the address the provider
+  verified (`oidc.ByEmail`). `-oidc-roles-claim` names the claim that lists their roles
+  (`oidc.Roles`), which the gate reads; without it no one who signs in has a role, and the server's
+  log says so when it starts. `-oidc-scopes` asks for more scopes than `openid`, `email` and
+  `profile`, for a provider that puts the roles in its ID tokens only then.
 - `Stores.Handle` adds a route of the project's to the server `Serve` makes: the agents' tools of
   `mcp/` at `/mcp`, say. Its `handler` makes the route's handler of the server, once `made` has been
   given the server and before anything is served. The route is behind the same guards as the pages

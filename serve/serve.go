@@ -28,7 +28,8 @@
 //   - With -dev-login, a page that lists the people of the organization: the one chosen is who uses
 //     the pages from then on (devlogin.SignIn). It checks no one either, and works the same way.
 //   - With the -oidc-… flags, signing in through the organization's OpenID Connect provider (package
-//     oidc), over https (-tls-cert and -tls-key, or a proxy in front that serves https). The server
+//     oidc), over https (-tls-cert and -tls-key, or a proxy in front that serves https). A person's
+//     roles are those of the claim -oidc-roles-claim names; without it they have none. The server
 //     reaches the provider with the client of Flags.ProviderClient, when the project's command sets
 //     one.
 //
@@ -75,6 +76,8 @@ type Flags struct {
 	ClientSecret string // -oidc-client-secret, or RINGI_OIDC_CLIENT_SECRET
 	RedirectURL  string // -oidc-redirect-url
 	SessionKeys  string // -session-keys, or RINGI_SESSION_KEYS
+	RolesClaim   string // -oidc-roles-claim
+	Scopes       string // -oidc-scopes
 	TLSCert      string // -tls-cert
 	TLSKey       string // -tls-key
 	// Getenv reads the environment; os.Getenv when nil.
@@ -98,6 +101,8 @@ func (f *Flags) Register(fs *flag.FlagSet) {
 	fs.StringVar(&f.ClientID, "oidc-client-id", "", "the client ID the provider registered for the server")
 	fs.StringVar(&f.ClientSecret, "oidc-client-secret", "", "the client's secret (or the environment variable RINGI_OIDC_CLIENT_SECRET, which other users of the computer cannot see)")
 	fs.StringVar(&f.RedirectURL, "oidc-redirect-url", "", "the URL the provider sends people back to, as registered there: https://<the server's host>/login/callback")
+	fs.StringVar(&f.RolesClaim, "oidc-roles-claim", "", "the claim of the provider's ID tokens that lists a person's roles, which the gate reads (roles, groups…). Without it, the provider gives no one a role")
+	fs.StringVar(&f.Scopes, "oidc-scopes", "", "more scopes to ask the provider for, separated by spaces, besides openid, email and profile: for a provider that needs one to put the roles in its ID tokens")
 	fs.StringVar(&f.SessionKeys, "session-keys", "", "the keys of the session cookies, base64 of 32 bytes each, the newest first (or the environment variable RINGI_SESSION_KEYS)")
 	fs.StringVar(&f.TLSCert, "tls-cert", "", "a certificate to serve https with (with -tls-key)")
 	fs.StringVar(&f.TLSKey, "tls-key", "", "the certificate's private key")
@@ -113,7 +118,8 @@ func (f Flags) getenv(name string) string {
 
 // provider reports whether any of the -oidc-… flags (and -session-keys) is given.
 func (f Flags) provider() bool {
-	return f.Issuer != "" || f.ClientID != "" || f.ClientSecret != "" || f.RedirectURL != "" || f.SessionKeys != ""
+	return f.Issuer != "" || f.ClientID != "" || f.ClientSecret != "" || f.RedirectURL != "" || f.SessionKeys != "" ||
+		f.RolesClaim != "" || f.Scopes != ""
 }
 
 // secretAndKeys answers the client's secret and the session keys: the flags, else the environment.
@@ -171,6 +177,9 @@ func (f Flags) Check() error {
 	if len(missing) > 0 {
 		return fmt.Errorf("signing in through the provider takes -oidc-issuer, -oidc-client-id, -oidc-client-secret, -oidc-redirect-url and -session-keys, and these are missing: %s", strings.Join(missing, ", "))
 	}
+	if strings.TrimSpace(f.RolesClaim) != f.RolesClaim {
+		return fmt.Errorf("-oidc-roles-claim has a space at its ends: %q", f.RolesClaim)
+	}
 	cfg, err := f.providerConfig()
 	if err != nil {
 		return err
@@ -189,8 +198,17 @@ func (f Flags) providerConfig() (oidc.Config, error) {
 	if err != nil {
 		return oidc.Config{}, fmt.Errorf("-session-keys: %w", err)
 	}
-	return oidc.Config{Issuer: f.Issuer, ClientID: f.ClientID, ClientSecret: secret, RedirectURL: f.RedirectURL, Keys: parsed,
-		HTTPClient: f.ProviderClient}, nil
+	cfg := oidc.Config{Issuer: f.Issuer, ClientID: f.ClientID, ClientSecret: secret, RedirectURL: f.RedirectURL, Keys: parsed,
+		HTTPClient: f.ProviderClient}
+	if more := strings.Fields(f.Scopes); len(more) > 0 {
+		cfg.Scopes = []string{"openid", "email", "profile"}
+		for _, scope := range more {
+			if !slices.Contains(cfg.Scopes, scope) {
+				cfg.Scopes = append(cfg.Scopes, scope)
+			}
+		}
+	}
+	return cfg, nil
 }
 
 // Stores are where the flags say the tickets and the attachments are kept, opened.
@@ -640,6 +658,9 @@ func signInOf(ctx context.Context, f Flags, pg *postgres.Store, log *slog.Logger
 			return nil, err
 		}
 		cfg.Map = oidc.ByEmail(func(ctx context.Context) ([]server.OrgPerson, error) { return oidc.PeopleOf(ctx, s.srv) })
+		if f.RolesClaim != "" {
+			cfg.Map = oidc.Roles(cfg.Map, f.RolesClaim)
+		}
 		cfg.Logger = log
 		if pg != nil {
 			cfg.Revocations = pg // a sign-out holds in every process that uses the same database
@@ -654,6 +675,9 @@ func signInOf(ctx context.Context, f Flags, pg *postgres.Store, log *slog.Logger
 		s.web = web.Config{Require: in.Require, LoginURL: in.LoginURL, SignOut: "/logout"}
 		s.mount = func(h *web.Handler) { in.Mount(h) }
 		log.Info("people sign in through the OpenID Connect provider", "issuer", f.Issuer)
+		if f.RolesClaim == "" {
+			log.Info("the provider gives no one a role, so the gate makes no one an administrator by a role of theirs (-oidc-roles-claim names the claim that lists the roles)")
+		}
 	default:
 		s.auth = devlogin.Header{}
 		s.mount = func(*web.Handler) {}

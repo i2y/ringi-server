@@ -137,6 +137,19 @@ func TestSettingsMixed(t *testing.T) {
 		{"the provider's settings with an issuer over http", func() Flags { f := provider; f.Issuer = "http://id.example.test"; return f }(), nil,
 			`the -oidc-… settings: oidc: Issuer "http://id.example.test": an https URL`},
 		{"the provider's settings", provider, map[string]string{"RINGI_SESSION_KEYS": "the environment is not read for what a flag gives"}, ""},
+		{"the claim of the roles alone", Flags{Addr: "127.0.0.1:8443", RolesClaim: "roles"}, nil,
+			"signing in through the provider takes -oidc-issuer"},
+		{"more scopes alone", Flags{Addr: "127.0.0.1:8443", Scopes: "groups"}, nil,
+			"signing in through the provider takes -oidc-issuer"},
+		{"-dev-login with the claim of the roles", Flags{Addr: "127.0.0.1:8080", DevLogin: true, RolesClaim: "roles"}, nil,
+			"-dev-login and the -oidc-… flags are two ways of signing in: choose one"},
+		{"the claim of the roles with a space", func() Flags { f := provider; f.RolesClaim = "roles "; return f }(), nil,
+			`-oidc-roles-claim has a space at its ends: "roles "`},
+		{"the claim of the roles and more scopes", func() Flags {
+			f := provider
+			f.RolesClaim, f.Scopes = "https://example.test/roles", "groups offline"
+			return f
+		}(), nil, ""},
 		{"the provider's settings on any address", func() Flags { f := provider; f.Addr = ":8443"; return f }(), nil, ""},
 	} {
 		c.f.Getenv = env(c.env)
@@ -232,6 +245,138 @@ func testCertificate(t *testing.T) (cert, key string) {
 	return cert, key
 }
 
+// logged is what a server logs, read while it runs.
+type logged struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *logged) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *logged) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// browserOf answers a browser of the server at base that the provider's certificate is trusted in:
+// what it answers sends a request as a browser does, from the site of from (the server's own when "").
+func browserOf(t *testing.T, provider *oidctest.Provider, base string) func(method, target, from string) (*http.Response, string) {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browser := &http.Client{Transport: provider.Client().Transport, Jar: jar, Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return func(method, target, from string) (*http.Response, string) {
+		t.Helper()
+		if strings.HasPrefix(target, "/") {
+			target = base + target
+		}
+		req, _ := http.NewRequest(method, target, nil)
+		req.Header.Set("Sec-Fetch-Mode", "navigate")
+		req.Header.Set("Accept", "text/html")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		if from != "" {
+			req.Header.Set("Sec-Fetch-Site", "cross-site")
+		}
+		if method == "POST" {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		resp, err := browser.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, target, err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp, string(b)
+	}
+}
+
+// followed follows the redirects of an answer, to the provider and back, and answers the last
+// answer, its body and the addresses gone through.
+func followed(t *testing.T, open func(method, target, from string) (*http.Response, string), resp *http.Response) (*http.Response, string, []*url.URL) {
+	t.Helper()
+	var body string
+	var through []*url.URL
+	for i := 0; resp.StatusCode/100 == 3 && i < 10; i++ {
+		next, err := resp.Request.URL.Parse(resp.Header.Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		through = append(through, next)
+		from := ""
+		if next.Host != resp.Request.URL.Host {
+			from = resp.Request.URL.Host
+		}
+		resp, body = open("GET", next.String(), from)
+	}
+	return resp, body, through
+}
+
+// TestProviderRoles: a person who signs in through the provider has the roles of the claim that
+// -oidc-roles-claim names, and none without it; -oidc-scopes asks the provider for more scopes than
+// the three it is always asked for, each once.
+func TestProviderRoles(t *testing.T) {
+	p, err := server.LoadKinds(3, "en", kinds(), os.DirFS(filepath.Join("..", "screens", "testdata", "requests")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, claim, scopes, asked, roles string }{
+		{"no claim named", "", "", "openid email profile", ""},
+		{"the claim named", "groups", "", "openid email profile", "workflow_admin,others"},
+		{"a claim of one role", "role", "", "openid email profile", "auditor"},
+		{"a claim the token has not", "roles", "", "openid email profile", ""},
+		{"more scopes", "groups", "groups  email", "openid email profile groups", "workflow_admin,others"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			provider := oidctest.New(t, nil)
+			certFile, keyFile := testCertificate(t)
+			addr := freeAddr(t)
+			redirect := "https://" + addr + "/login/callback"
+			provider.Register(redirect)
+			sessionKey := sha256.Sum256([]byte("the key of the test's session cookies"))
+			said := &logged{}
+			st, err := Open(t.Context(), Flags{Addr: addr, Issuer: provider.URL, ClientID: provider.ClientID, ClientSecret: provider.Secret, RedirectURL: redirect,
+				RolesClaim: c.claim, Scopes: c.scopes, SessionKeys: base64.StdEncoding.EncodeToString(sessionKey[:]), TLSCert: certFile, TLSKey: keyFile,
+				ProviderClient: provider.Client(), Getenv: env(nil)}, slog.New(slog.NewTextHandler(said, nil)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.Handle("/whoami", func(*server.Server) (http.Handler, error) { return &whoami{}, nil })
+			serving(t, st, addr, server.Config{Packages: []*server.Package{p}, Gate: server.AllowAll, Organization: mailOrg{}}, nil)
+			provider.SignInAs(map[string]any{"sub": "u-1201", "email": "alice@example.test", "email_verified": true,
+				"groups": []string{"workflow_admin", "others", "workflow_admin", ""}, "role": "auditor"})
+			open := browserOf(t, provider, "https://"+addr)
+			resp, _ := open("GET", "/pages/mine/leave", "")
+			resp, body, through := followed(t, open, resp)
+			if resp.StatusCode != http.StatusOK || !strings.Contains(body, "Alice") {
+				t.Fatalf("the page after signing in: %d %.300s", resp.StatusCode, body)
+			}
+			var asked string
+			for _, u := range through {
+				if s := u.Query().Get("scope"); s != "" {
+					asked = s
+				}
+			}
+			if asked != c.asked {
+				t.Errorf("the provider was asked for %q, want %q", asked, c.asked)
+			}
+			if _, body := open("GET", "/whoami", ""); body != "e1201 "+c.roles {
+				t.Errorf("the person is %q, want the roles %q", body, c.roles)
+			}
+			if none := strings.Contains(said.String(), "the provider gives no one a role"); none != (c.claim == "") {
+				t.Errorf("the log says that the provider gives no roles: %t; the claim is %q", none, c.claim)
+			}
+		})
+	}
+}
+
 // TestProviderClient signs in through a provider (package oidctest's, over https on a local address)
 // to a server Serve runs, also over https: the server reaches the provider with the client of
 // Flags.ProviderClient (without it, the provider's certificate is not trusted, and the server stops
@@ -277,37 +422,8 @@ func TestProviderClient(t *testing.T) {
 	serving(t, st, addr, cfg, nil)
 	provider.SignInAs(map[string]any{"sub": "u-1201", "email": "alice@example.test", "email_verified": true})
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	browser := &http.Client{Transport: provider.Client().Transport, Jar: jar, Timeout: 10 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	base := "https://" + addr
-	// open sends a request as a browser does, from the site of from (the server's own when "").
-	open := func(method, target, from string) (*http.Response, string) {
-		t.Helper()
-		if strings.HasPrefix(target, "/") {
-			target = base + target
-		}
-		req, _ := http.NewRequest(method, target, nil)
-		req.Header.Set("Sec-Fetch-Mode", "navigate")
-		req.Header.Set("Accept", "text/html")
-		req.Header.Set("Sec-Fetch-Site", "same-origin")
-		if from != "" {
-			req.Header.Set("Sec-Fetch-Site", "cross-site")
-		}
-		if method == "POST" {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
-		resp, err := browser.Do(req)
-		if err != nil {
-			t.Fatalf("%s %s: %v", method, target, err)
-		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
-		return resp, string(b)
-	}
+	open := browserOf(t, provider, base)
 	// With no session: the route answers 401, and a page sends the browser to sign in. (The page
 	// is the list of one's requests: the start page asks the kinds' code, which the test's kinds do
 	// not run.)
@@ -321,18 +437,7 @@ func TestProviderClient(t *testing.T) {
 	}
 	// Signing in: the server sends the browser to the provider, which sends it back to the server's
 	// callback, which makes the session and sends it on to the page.
-	var body string
-	for i := 0; resp.StatusCode/100 == 3 && i < 10; i++ {
-		next, err := resp.Request.URL.Parse(resp.Header.Get("Location"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		from := ""
-		if next.Host != resp.Request.URL.Host {
-			from = resp.Request.URL.Host
-		}
-		resp, body = open("GET", next.String(), from)
-	}
+	resp, body, _ := followed(t, open, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != base+page || !strings.Contains(body, "Alice") {
 		t.Fatalf("the page after signing in: %d %s %.300s", resp.StatusCode, resp.Request.URL, body)
 	}
@@ -372,12 +477,13 @@ func TestRegister(t *testing.T) {
 	}
 	args := []string{"-addr", "localhost:9000", "-db", "postgres://db.example.test/ringi", "-files", "files", "-dev-login",
 		"-oidc-issuer", "https://id.example.test", "-oidc-client-id", "ringi", "-oidc-client-secret", "s", "-oidc-redirect-url", "https://r.example.test/login/callback",
-		"-session-keys", "k", "-tls-cert", "c.pem", "-tls-key", "k.pem"}
+		"-session-keys", "k", "-tls-cert", "c.pem", "-tls-key", "k.pem", "-oidc-roles-claim", "roles", "-oidc-scopes", "groups"}
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
 	want := Flags{Addr: "localhost:9000", DB: "postgres://db.example.test/ringi", Files: "files", DevLogin: true, Issuer: "https://id.example.test", ClientID: "ringi",
-		ClientSecret: "s", RedirectURL: "https://r.example.test/login/callback", SessionKeys: "k", TLSCert: "c.pem", TLSKey: "k.pem"}
+		ClientSecret: "s", RedirectURL: "https://r.example.test/login/callback", SessionKeys: "k", TLSCert: "c.pem", TLSKey: "k.pem",
+		RolesClaim: "roles", Scopes: "groups"}
 	if f.Getenv != nil || fmt.Sprintf("%+v", f) != fmt.Sprintf("%+v", want) {
 		t.Errorf("the flags parsed: %+v", f)
 	}

@@ -309,8 +309,9 @@ the ones the server uses for every ticket. A deployment that reads its people el
 own function.
 
 `Roles(m, claim)` adds the roles a claim lists (a text or a list of texts, such as `groups`) to the
-person `m` makes, for the gate. The person's roles are what the sign-in said of them when they signed
-in; a change at the provider takes effect at the next sign-in.
+person `m` makes, for the gate; package `serve` uses it with the claim of `-oidc-roles-claim`. The
+person's roles are what the sign-in said of them when they signed in; a change at the provider takes
+effect at the next sign-in.
 
 A person removed from the organization's data, or whose roles changed, keeps the session they have
 until its limits; `Config.Revocations` ends one sooner.
