@@ -109,9 +109,9 @@
 {{- if or .Added .Removed .Changed}}
 <section class="day" aria-label="{{.Day}}">
 <h2>{{.Day}}</h2>
-{{- if .Added}}<p>{{$.W.AdminAddedP}} {{range $i, $p := .Added}}{{if $i}}, {{end}}<bdi>{{$p}}</bdi>{{end}}</p>{{end}}
-{{- if .Removed}}<p>{{$.W.AdminRemovedP}} {{range $i, $p := .Removed}}{{if $i}}, {{end}}<bdi>{{$p}}</bdi>{{end}}</p>{{end}}
-{{- if .Changed}}<p>{{$.W.AdminChangedP}} {{range $i, $p := .Changed}}{{if $i}}, {{end}}<bdi>{{$p}}</bdi>{{end}}</p>{{end}}
+{{- if .Added}}<p>{{$.W.AdminAddedP}}{{range $i, $p := .Added}}{{if $i}}{{$.W.AdminSep}}{{end}}<bdi>{{$.W.AdminPersonText $p}}</bdi>{{end}}</p>{{end}}
+{{- if .Removed}}<p>{{$.W.AdminRemovedP}}{{range $i, $p := .Removed}}{{if $i}}{{$.W.AdminSep}}{{end}}<bdi>{{$.W.AdminPersonText $p}}</bdi>{{end}}</p>{{end}}
+{{- if .Changed}}<p>{{$.W.AdminChangedP}}{{range $i, $p := .Changed}}{{if $i}}{{$.W.AdminSep}}{{end}}<bdi>{{$.W.AdminPersonText $p}}</bdi>{{end}}</p>{{end}}
 </section>
 {{- end}}
 {{- end}}

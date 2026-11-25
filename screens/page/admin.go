@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html/template"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -113,7 +114,15 @@ type AdminDraft struct {
 type AdminDay struct {
 	Day, When, Change       string
 	People, Teams, Members  AdminCount
-	Added, Removed, Changed []string // the people, by ID
+	Added, Removed, Changed []AdminPerson
+}
+
+// AdminPerson is a person of a day of the difference: their ID, their name in the page's language
+// (from the draft, or from the snapshot for one removed), and, for one changed, the fields of theirs
+// that change (id, name, name_ja, email, language).
+type AdminPerson struct {
+	ID, Name string
+	Fields   []string
 }
 
 // AdminCount is how many were added, removed and changed.
@@ -387,9 +396,47 @@ func (w words) AdminCounts(c AdminCount) string {
 }
 func (w words) AdminProxies() string  { return w.t("Proxies", "代理") }
 func (w words) AdminRows() string     { return w.t("Rows of the masters", "マスタの行") }
-func (w words) AdminAddedP() string   { return w.t("People added:", "足す人:") }
-func (w words) AdminRemovedP() string { return w.t("People removed:", "除く人:") }
-func (w words) AdminChangedP() string { return w.t("People changed:", "変わる人:") }
+func (w words) AdminAddedP() string   { return w.t("People added: ", "足す人：") }
+func (w words) AdminRemovedP() string { return w.t("People removed: ", "除く人：") }
+func (w words) AdminChangedP() string { return w.t("People changed: ", "変わる人：") }
+
+// AdminSep is what parts the people of a line of the difference.
+func (w words) AdminSep() string { return w.t(", ", "、") }
+
+// AdminPersonText is a person of the difference by name and ID ("Alice (e1201)", 「アリス（e1201）」),
+// with what changes of one changed ("Alice (e1201): email", 「アリス（e1201）：メールアドレス」); a
+// person whose data has no name is said by ID.
+func (w words) AdminPersonText(p AdminPerson) string {
+	s := p.ID
+	if p.Name != "" && p.Name != p.ID {
+		s = p.Name + w.t(" ("+p.ID+")", "（"+p.ID+"）")
+	}
+	if len(p.Fields) > 0 {
+		var fields []string
+		for _, f := range p.Fields {
+			fields = append(fields, w.adminField(f))
+		}
+		s += w.t(": ", "：") + strings.Join(fields, w.AdminSep())
+	}
+	return s
+}
+
+// adminField says a field of a person's data.
+func (w words) adminField(f string) string {
+	switch f {
+	case "id":
+		return "ID"
+	case "name":
+		return w.t("name", "名前")
+	case "name_ja":
+		return w.t("name in Japanese", "日本語の名前")
+	case "email":
+		return w.t("email address", "メールアドレス")
+	case "language":
+		return w.t("language", "言語")
+	}
+	return f
+}
 func (w words) AdminImport() string   { return w.t("Import", "取り込む") }
 func (w words) AdminLocksOut() string {
 	return w.t("After this import, the organization in effect today does not let you import the organization's data: you could not check or import data again, nor undo this import yourself.",

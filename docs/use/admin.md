@@ -57,8 +57,8 @@ zip file. As a rule, those who run the system make it for you ([how to make it](
    file". "Check the data the server reads at start" is the button that reads again the data built into the
    server. You do not use it to give a zip file.
 2. For each day, the page says how many people, teams and memberships are added, removed and changed, and
-   the IDs of the people. See that it is what you meant. If there is a mistake, it says which line of which
-   file.
+   the people by name and ID, with what changes of each one changed (their email address, say). See that it
+   is what you meant. If there is a mistake, it says which line of which file.
 3. If it is right, write the reason and press "Import".
 
 Until you press "Import", nothing changes. After it, a version with a later day is not used until that day

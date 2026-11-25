@@ -615,10 +615,37 @@ type draftAnswer struct {
 		Day, When, Change      string
 		People, Teams, Members struct {
 			Added, Removed []json.RawMessage
-			Changed        []struct{ Key string }
+			Changed        []changedRow
 		}
 	}
 	Counts map[string]page.AdminCount
+}
+
+// changedRow is a row of the organization's data that a draft changes: its key, and the row before
+// and after.
+type changedRow struct {
+	Key           string
+	Before, After json.RawMessage
+}
+
+// changedFields answers the fields of a row that differ before and after, in the order of their names.
+func changedFields(before, after json.RawMessage) []string {
+	var b, a map[string]json.RawMessage
+	json.Unmarshal(before, &b)
+	json.Unmarshal(after, &a)
+	var out []string
+	for k := range a {
+		if !bytes.Equal(b[k], a[k]) {
+			out = append(out, k)
+		}
+	}
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // adminDraft serves the page of a draft.
@@ -646,27 +673,37 @@ func (h *Handler) draftPage(w http.ResponseWriter, r *http.Request, p server.Per
 	in.What = page.AdminDraftPage
 	d := &page.AdminDraft{ID: a.Draft, Latest: deref(a.Latest), Digest: a.Digest, Source: a.Source, At: h.adminTime(a.At), Same: a.Same, LocksOut: a.LocksOut,
 		Proxies: a.Counts["proxies"], Rows: a.Counts["rows"], Action: keepLang(r, adminPath+"organization/drafts/"+url.PathEscape(a.Draft))}
-	idOf := func(j json.RawMessage) string {
-		var x struct{ ID string }
+	// a person of the difference, named in the page's language
+	person := func(j json.RawMessage) page.AdminPerson {
+		var x server.OrgPerson
 		json.Unmarshal(j, &x)
-		return x.ID
+		name := x.Name
+		if lang == "ja" && x.NameJa != "" {
+			name = x.NameJa
+		}
+		return page.AdminPerson{ID: x.ID, Name: name}
 	}
 	count := func(x struct {
 		Added, Removed []json.RawMessage
-		Changed        []struct{ Key string }
+		Changed        []changedRow
 	}) page.AdminCount {
 		return page.AdminCount{Added: len(x.Added), Removed: len(x.Removed), Changed: len(x.Changed)}
 	}
 	for _, day := range a.Days {
 		ad := page.AdminDay{Day: day.Day, When: day.When, Change: day.Change, People: count(day.People), Teams: count(day.Teams), Members: count(day.Members)}
 		for _, x := range day.People.Added {
-			ad.Added = append(ad.Added, idOf(x))
+			ad.Added = append(ad.Added, person(x))
 		}
 		for _, x := range day.People.Removed {
-			ad.Removed = append(ad.Removed, idOf(x))
+			ad.Removed = append(ad.Removed, person(x))
 		}
 		for _, x := range day.People.Changed {
-			ad.Changed = append(ad.Changed, x.Key)
+			p := person(x.After)
+			if p.ID == "" {
+				p.ID = x.Key
+			}
+			p.Fields = changedFields(x.Before, x.After)
+			ad.Changed = append(ad.Changed, p)
 		}
 		d.Days = append(d.Days, ad)
 	}

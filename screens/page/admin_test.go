@@ -164,7 +164,8 @@ func TestAdminPages(t *testing.T) {
 
 		// a draft: its difference, and the import; a draft of the latest's own data has no button
 		d := &AdminDraft{ID: "d1", Digest: "x1", Source: "upload", At: "2026-11-16 10:00", Action: "/pages/admin/organization/drafts/d1",
-			Days:    []AdminDay{{Day: "2026-04-01", When: "now", Change: "changed", People: AdminCount{Added: 1, Changed: 2}, Added: []string{evil}, Changed: []string{"e1", "e2"}}},
+			Days:    []AdminDay{{Day: "2026-04-01", When: "now", Change: "changed", People: AdminCount{Added: 1, Changed: 2}, Added: []AdminPerson{{ID: "e9", Name: evil}},
+				Changed: []AdminPerson{{ID: "e1", Name: "Alice", Fields: []string{"email"}}, {ID: "e2"}}}},
 			Proxies: AdminCount{Removed: 1}}
 		pg, err = p.AdminPage(Admin{Language: lang, What: AdminDraftPage, Now: now, Draft: d})
 		if root := checkPage(t, "admin draft "+lang, pg, err); root != nil {
@@ -174,7 +175,10 @@ func TestAdminPages(t *testing.T) {
 				t.Errorf("admin draft %s: the import's form", lang)
 			}
 			got := text(root)
-			for _, want := range []string{w.AdminCounts(AdminCount{Added: 1, Changed: 2}), w.AdminChange("changed"), w.AdminSource("upload")} {
+			// the people are named, with their IDs, and what changes of one changed
+			alice := w.t("Alice (e1): email address", "Alice（e1）：メールアドレス")
+			for _, want := range []string{w.AdminCounts(AdminCount{Added: 1, Changed: 2}), w.AdminChange("changed"), w.AdminSource("upload"),
+				w.AdminChangedP() + alice + w.AdminSep() + "e2", w.t(" (e9)", "（e9）")} {
 				if !strings.Contains(got, want) {
 					t.Errorf("admin draft %s does not say %q: %s", lang, want, got)
 				}
