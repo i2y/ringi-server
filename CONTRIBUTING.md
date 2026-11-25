@@ -120,6 +120,18 @@ cd examples
 RINGI_SHOTS=../docs/images RINGI_BROWSER=/path/to/a/browser go test -tags browser -run TestShots .
 ```
 
+### In CI
+
+`.github/workflows/ci.yml` runs these tests on Linux, on every push to a branch and every pull
+request: the framework, the examples and `mcp` with Go 1.26 and 1.27 and on PostgreSQL 18, the pages
+in the runner's browser, and the flows with the Temporal CLI. It also checks the format, `go vet`,
+that the `go.mod` files are tidy, that the modules build for macOS and Windows, and that the examples
+are what ritsu writes. `ci/test.sh` runs the tests there, and fails on a skipped test as on a failed
+one.
+
+The steps that need ritsu take the release of the version that wrote the examples, which the first
+line of their files says. While it is not released, they do not run, and the run has a warning.
+
 ## The documents
 
 Each document is in English and, beside it, in Japanese. `TestDocuments` runs the commands of
@@ -159,10 +171,12 @@ and `temporal/vX.Y.Z`. Before tagging:
 2. Keep the copies of `LICENSE-APACHE` and `LICENSE-MIT` in `mcp/` and `temporal/` (files, not
    links): the go command copies into the zip of a module in a subdirectory the root's file named
    `LICENSE` alone. `TestLicensesOfTheModules` checks that they are the root's.
-3. Check the modules as a project fetches them: from a file proxy (`GOPROXY=file://…`) made of the
+3. See that CI passed on the commit to tag, with the steps that need ritsu. If that version of ritsu
+   is not released yet, run those steps with it on your own computer.
+4. Check the modules as a project fetches them: from a file proxy (`GOPROXY=file://…`) made of the
    commit to tag, with no network and no replace, tidy, build and vet a module that requires `mcp`
    alone and one that requires `temporal` alone, and tidy, generate, vet and test the projects
    `ritsu ringi init` writes with `--mcp` and with `--mcp --temporal`; and see that each module's zip
    holds the two license files.
-4. Add the version to the table of [README.md](README.md#versions), with the ritsu and the contract
+5. Add the version to the table of [README.md](README.md#versions), with the ritsu and the contract
    it goes with.

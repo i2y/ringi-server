@@ -104,6 +104,12 @@ cd examples
 RINGI_SHOTS=../docs/images RINGI_BROWSER=/path/to/a/browser go test -tags browser -run TestShots .
 ```
 
+### CI
+
+`.github/workflows/ci.yml` は、ブランチへの push とプルリクエストのたびに、これらの試験を Linux で動かします。フレームワーク、例、`mcp` は Go 1.26 と 1.27、PostgreSQL 18 で、ページはランナーのブラウザで、flow は Temporal の CLI で試します。書式、`go vet`、`go.mod` が tidy であること、モジュールが macOS と Windows 向けにビルドできること、例が ritsu の書くとおりであることも確かめます。試験は `ci/test.sh` で動かすので、飛ばした試験も失敗になります。
+
+ritsu が要る手順では、例を書いた版（例のファイルの一行目にあります）のリリースを使います。その版がまだリリースされていなければ、その手順は動かさず、警告を出します。
+
 ## 文書
 
 どの文書にも英語版があり、隣に日本語版があります。`TestDocuments` は、README.md、docs/api.md、web/README.md、mcp/README.md と、それぞれの日本語版にあるコマンドを、書いてあるとおりに例のサーバーで実行し、出力を文書と突き合わせます。ほかの試験は、二つの言語のコマンドとコードが同じであること、Go のコードがコンパイルしているファイルのとおりであること、SQL が表に合うこと、リンクの先があることを確かめます。`scaffold` の `TestReadme` は、README に載せた `ritsu ringi init` のコマンドを実行し、表示を README と突き合わせます。
@@ -125,5 +131,6 @@ RINGI_DOCS=write go test -run 'TestDocuments$' .
 
 1. `mcp/go.mod`、`temporal/go.mod`、`examples/go.mod` で、フレームワークの require をその版に上げる（`go mod edit -require=github.com/i2y/ringi-server@vX.Y.Z`）。`mcp` か `temporal` だけを要求するプロジェクトは、これらのファイルが要求する版のフレームワークを受け取るので、取得できる版でなければならない。`replace github.com/i2y/ringi-server => ../` は残す。go コマンドは main モジュールの replace だけを読み、`mcp` と `temporal` には、replace のあるモジュールを断る `go install` で入れるコマンドがない。
 2. `mcp/` と `temporal/` にある `LICENSE-APACHE` と `LICENSE-MIT` の写しを残す（リンクでなくファイル）。go コマンドは、サブディレクトリのモジュールの zip に、ルートの `LICENSE` という名前のファイルしか写さない。`TestLicensesOfTheModules` が、ルートのものと同じことを確かめる。
-3. プロジェクトが取得するのと同じ形で確かめる。タグを付けるコミットから作ったファイルのプロキシ（`GOPROXY=file://…`）で、ネットワークも replace もなしに、`mcp` だけを要求するモジュールと `temporal` だけを要求するモジュールを tidy、build、vet する。`ritsu ringi init` が `--mcp` と、`--mcp --temporal` で書くプロジェクトを、tidy、generate、vet、test する。どのモジュールの zip にも、二つのライセンスのファイルがあることを見る。
-4. [README.ja.md](README.ja.md#版) と README.md の表に、その版と、組になる ritsu と約束の版を足す。
+3. タグを付けるコミットで CI が通っていることを見る。ritsu が要る手順も通っていること。その版の ritsu がまだリリースされていなければ、その手順を、自分のコンピューターで、その ritsu で行う。
+4. プロジェクトが取得するのと同じ形で確かめる。タグを付けるコミットから作ったファイルのプロキシ（`GOPROXY=file://…`）で、ネットワークも replace もなしに、`mcp` だけを要求するモジュールと `temporal` だけを要求するモジュールを tidy、build、vet する。`ritsu ringi init` が `--mcp` と、`--mcp --temporal` で書くプロジェクトを、tidy、generate、vet、test する。どのモジュールの zip にも、二つのライセンスのファイルがあることを見る。
+5. [README.ja.md](README.ja.md#版) と README.md の表に、その版と、組になる ritsu と約束の版を足す。

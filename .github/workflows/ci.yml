@@ -1,0 +1,215 @@
+name: ci
+
+# The tests, on every push to a branch and every pull request. What a test needs beyond Go is here
+# (PostgreSQL, Node, a browser, the Temporal CLI, ritsu), and ci/test.sh fails on a test that was
+# skipped: what did not run must not look as if it ran. Only GitHub's own actions run; the programs
+# that are downloaded are held to their checksums.
+
+on:
+  push:
+    branches: ["**"] # and no tag: a version is tagged on a commit that has passed
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The framework, the agents' tools and the examples, with the Go releases that are supported: the
+  # store on PostgreSQL, the conformance tests, the pages' script under Node, and the commands of the
+  # documents.
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26", "1.27"]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ringi_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -h localhost"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      RINGI_TEST_DATABASE: postgres://postgres:postgres@localhost:5432/ringi_test?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+          cache-dependency-path: "**/go.sum"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: The versions
+        run: go version && node --version && bash --version | head -1 && curl --version | head -1 && jq --version
+
+      - name: The code is formatted
+        run: |
+          unformatted=$(gofmt -l .)
+          echo "$unformatted"
+          test -z "$unformatted"
+
+      - name: The go.mod files are tidy, and the code passes go vet
+        run: |
+          for module in . mcp temporal examples; do
+            (cd "$module" && go mod tidy -diff && go vet ./...)
+          done
+          cd examples && go vet -tags browser ./...
+
+      - name: The modules build on macOS and Windows
+        run: |
+          for os in darwin windows; do
+            for module in . mcp temporal examples; do
+              (cd "$module" && GOOS="$os" go build ./...)
+            done
+          done
+
+      # These two start projects with ritsu: the job `ritsu` runs them.
+      - name: Test the framework
+        run: ci/test.sh -race -timeout 30m ./... -skip '^(TestInit|TestReadme)$'
+
+      - name: Test the agents' tools
+        working-directory: mcp
+        run: ../ci/test.sh -race ./...
+
+      - name: Test the examples
+        working-directory: examples
+        run: ../ci/test.sh -race -timeout 60m ./...
+
+  # The pages in the browser of the runner, with the fonts of the pages' Japanese.
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          check-latest: true
+          cache-dependency-path: "**/go.sum"
+
+      - name: The fonts
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends fonts-noto-cjk
+
+      - name: Test the pages in the browser
+        working-directory: examples
+        run: |
+          RINGI_BROWSER=$(command -v google-chrome)
+          export RINGI_BROWSER
+          "$RINGI_BROWSER" --version
+          ../ci/test.sh -tags browser -run Browser .
+
+  # The flows on Temporal's dev server, and what ritsu writes: the examples and the projects of
+  # `ritsu ringi init`.
+  ritsu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TEMPORAL_CLI_VERSION: "1.10.1"
+      TEMPORAL_CLI_SHA256: "4c1500e2ce2d4de136e5fe8852d9b7f82eb62f19b6b383b3e0c040519a9d20b1"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          check-latest: true
+          cache-dependency-path: "**/go.sum"
+
+      - name: The Temporal CLI, held to its checksum
+        run: |
+          set -eu
+          d="$RUNNER_TEMP/temporal"
+          mkdir -p "$d"
+          curl -fsSL -o "$d/cli.tar.gz" "https://github.com/temporalio/cli/releases/download/v$TEMPORAL_CLI_VERSION/temporal_cli_${TEMPORAL_CLI_VERSION}_linux_amd64.tar.gz"
+          echo "$TEMPORAL_CLI_SHA256  $d/cli.tar.gz" | sha256sum -c -
+          tar -xzf "$d/cli.tar.gz" -C "$d" temporal
+          "$d/temporal" --version
+          echo "TEMPORAL_CLI=$d/temporal" >> "$GITHUB_ENV"
+
+      # TestExamples needs ritsu, and runs below.
+      - name: Test the flows
+        working-directory: temporal
+        run: ../ci/test.sh -race ./... -skip '^TestExamples$'
+
+      # The ritsu that wrote the examples' code, as its first line says. The framework can be ahead of
+      # ritsu's releases: the steps below are then skipped, and a warning says so.
+      - name: ritsu, held to its checksum
+        id: ritsu
+        run: |
+          set -eu
+          version=$(sed -n '1s/^\/\/ Code generated by ritsu \([0-9.]*[0-9]\)\. .*/\1/p' examples/go/ticketkinds/ticketkinds.go)
+          test -n "$version"
+          release="https://github.com/i2y/ritsu/releases/download/v$version"
+          code=$(curl -sSL -o /dev/null -w '%{http_code}' "$release/SHA256SUMS")
+          if [ "$code" = 404 ]; then
+            echo "::warning::ritsu $version is not released: the examples and the projects ritsu writes were not tested"
+            exit 0
+          fi
+          d="$RUNNER_TEMP/ritsu"
+          mkdir -p "$d"
+          cd "$d"
+          archive="ritsu-v$version-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -O "$release/$archive" -O "$release/SHA256SUMS"
+          grep -F " $archive" SHA256SUMS | sha256sum -c -
+          tar -xzf "$archive"
+          ./ritsu --version
+          echo "$d" >> "$GITHUB_PATH"
+          echo "released=true" >> "$GITHUB_OUTPUT"
+
+      - name: The examples are what ritsu writes
+        if: steps.ritsu.outputs.released == 'true'
+        run: |
+          examples/regen.sh
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+      - name: Test the flows of the examples
+        if: steps.ritsu.outputs.released == 'true'
+        working-directory: temporal
+        run: ../ci/test.sh -race -run '^TestExamples$' .
+
+      # TestInit builds the projects with no network, from the module cache: the modules that the
+      # project with every option needs are those of the others too.
+      - name: The modules of a project
+        if: steps.ritsu.outputs.released == 'true'
+        run: |
+          set -eu
+          cd "$(mktemp -d)"
+          ritsu ringi init approvals --module example.test/approvals --mcp --temporal
+          cd approvals
+          go mod edit -replace "github.com/i2y/ringi-server=$GITHUB_WORKSPACE" \
+            -replace "github.com/i2y/ringi-server/mcp=$GITHUB_WORKSPACE/mcp" \
+            -replace "github.com/i2y/ringi-server/temporal=$GITHUB_WORKSPACE/temporal"
+          go mod tidy
+
+      - name: Test the projects ritsu starts
+        if: steps.ritsu.outputs.released == 'true'
+        run: ci/test.sh -timeout 40m -run '^(TestInit|TestReadme)$' ./scaffold
