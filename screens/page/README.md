@@ -61,11 +61,11 @@ spaces around it. The body is what ritsu's `functions.js` sends for the same val
 operation sent over HTTP.
 
 When the reading stops a post (`rd.Operation == nil`), or the API refuses the operation
-(`rd.Refused(refusal)`, with the `screens.Refusal` the API returned), the server shows the page again
-with `Again: rd`: the values as typed, and what is wrong beside each part, a refusal of a value
-beside the field its place names. To a post of Enter pressed in a field (`rd.Stay()`) it returns 204
-No Content, and the browser keeps the page as it is. DESIGN.md, section 1, has the whole of a
-server's handler.
+(`rd.Refused(refusal)`, with the `screens.Refusal` the API returned), the server shows the page
+again with `Again: rd`: the values as typed, and what is wrong beside each part, a refusal of a
+value beside the field its place names. To a post of Enter pressed in a field (`rd.Stay()`) it
+returns 204 No Content, and the browser keeps the page as it is. [The design](DESIGN.md), section 1,
+has the whole of a server's handler.
 
 In the page, the price of the first row is
 
@@ -118,7 +118,7 @@ Around the screens:
 - `pages.Offered` makes the page that says from which day a kind may be requested, in the words of the
   API's `unoffered` refusal and of the A2UI screen (`screens.OfferedWords`).
 
-DESIGN.md, section 3.4, has them.
+[The design](DESIGN.md), section 3.4, says more of them.
 
 ## Tests
 
@@ -140,6 +140,6 @@ with the kinds', and 1,208 posted forms with what `functions.js` sends; the kind
 Node that test prints a `SKIP:` line (`go test -v` shows it) and passes.
 
 Each page they read back is checked for what a person with a keyboard or a screen reader needs (one
-`<main>`, where the focus goes, what a search found in a line of its own, the words of a kind shown in
-another language marked with it), and the colours of `page.css` for the contrast WCAG 2.2 asks for, in
-light and in dark. DESIGN.md, section 7, lists the tests.
+`<main>`, where the focus goes, what a search found in a line of its own, the words of a kind shown
+in another language marked with it), and the colours of `page.css` for the contrast WCAG 2.2 asks
+for, in light and in dark. [The design](DESIGN.md), section 7, lists the tests.

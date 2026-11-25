@@ -60,7 +60,7 @@ h, err := web.New(srv, web.Config{
 signin.Mount(h) // GET /login、GET /login/callback、POST /logout。ハンドラーの検査の後ろに置く
 ```
 
-`New` はプロバイダーのディスカバリーの文書と鍵を読みます。そのため、issuer の誤りや、プロバイダーにつながらないことは、最初のログインのときではなく、サーバーの起動のときにわかります。ページと画面のハンドラー（パッケージ `web`）を使わないときは、`Mount` に `*http.ServeMux` を渡します（DESIGN.ja.md の 10 節）。
+`New` はプロバイダーのディスカバリーの文書と鍵を読みます。そのため、issuer の誤りや、プロバイダーにつながらないことは、最初のログインのときではなく、サーバーの起動のときにわかります。ページと画面のハンドラー（パッケージ `web`）を使わないときは、`Mount` に `*http.ServeMux` を渡します（[設計](DESIGN.ja.md)の 10 節）。
 
 人の役割は、最後にログインしたときの ID トークンにあるものです。ID トークンにそのクレームがなければ、役割はありません。グループを ID で挙げるプロバイダーでは、その ID が役割になります。gate は、プロバイダーが送る値に合わせて書いてください。
 
@@ -97,4 +97,4 @@ ok  	github.com/i2y/ringi-server/oidc	0.841s
 ?   	github.com/i2y/ringi-server/oidc/oidctest	[no test files]
 ```
 
-試験は自前のプロバイダーを TLS で動かし（`httptest`）、ほかへは何も送りません。何を試しているかは、DESIGN.ja.md の 12 節にあります。
+試験は自前のプロバイダーを TLS で動かし（`httptest`）、ほかへは何も送りません。何を試しているかは、[設計](DESIGN.ja.md)の 12 節にあります。

@@ -76,7 +76,7 @@ op, err := set.Operation(a)
 {"id":"approve","method":"POST","path":"/tickets/T-1/approve","ticket":"T-1","body":{"revision":{"round":1,"stage":0,"edits":0},"comment":"Fine."},"key":"screen-8d0467a0aadff7e480af24d481d53aa2e36df49c83ecfc2172995b9eeded1a9b"}
 ```
 
-本文は、ほかの本文と同じように、サーバーが操作のスキーマで確かめます。キーは、操作の冪等キーです。新しい申請では申請書と本文ごとに一つ、チケットへの操作では押すたびに一つです（DESIGN.ja.md の 3.1）。
+本文は、ほかの本文と同じように、サーバーが操作のスキーマで確かめます。キーは、操作の冪等キーです。新しい申請では申請書と本文ごとに一つ、チケットへの操作では押すたびに一つです（[設計](DESIGN.ja.md)の 3.1）。
 
 サーバーが操作を拒否したとき、API が返したものは `screens.Refusal` に入ります。種類、英語と日本語の文、`form` の拒否ならフォームの場所（`at`。`items[1].price` のように、行を 0 から数えます。`screens.ReadPlace` が読みます）です。`set.Refused` は、見せている申請書や承認カードに拒否を表示するメッセージを作ります。本人が入れた値は、そのまま残ります。文は、場所が指すフィールドの横に出ます。種類が `comment` の拒否はコメントの下に、どちらでもなければ画面の先頭に出ます。次は、日本語の申請書での、`items[0].price` の拒否です（`testdata/golden/expense.form.refused.ja.json`）。
 
@@ -84,7 +84,7 @@ op, err := set.Operation(a)
 {"version":"1.0","updateDataModel":{"surfaceId":"expense.form.f1","path":"/refused","value":{"comment":false,"field":"items","text":"`1_000_001JPY` は、`items[0].price` の範囲（`>=1JPY <=1_000_000JPY`）の外です"}}}
 ```
 
-`screens.RefusalWords(lang, kind)` は、拒否と一緒に見せる文を返します。文は拒否の種類だけで決まり（DESIGN.ja.md の 3.2）、画面と素の HTML のページが同じ表を使います。`LimitedWords` は、コメントを今は受け付けないときの文を返します。`OfferedWords` は、有効な版がまだなく、ある日から出せる申請の種類の文を返します。その日から出せる人（`Server.Offered`）には、出せる日と戻る先を入れた `offered` の画面を見せます（`set.Offered(screens.Offered{Kind: "leave", Language: "ja", From: "2027-04-01", Home: "/pages/", Surface: newID()})`）。この画面が約束に加わる前に生成したパッケージも、そのまま読めます。そのときのフォームは 404 になり、`OfferedWords` の文が返ります。ページとエージェントのツールも、この文を使います。
+`screens.RefusalWords(lang, kind)` は、拒否と一緒に見せる文を返します。文は拒否の種類だけで決まり（[設計](DESIGN.ja.md)の 3.2）、画面と素の HTML のページが同じ表を使います。`LimitedWords` は、コメントを今は受け付けないときの文を返します。`OfferedWords` は、有効な版がまだなく、ある日から出せる申請の種類の文を返します。その日から出せる人（`Server.Offered`）には、出せる日と戻る先を入れた `offered` の画面を見せます（`set.Offered(screens.Offered{Kind: "leave", Language: "ja", From: "2027-04-01", Home: "/pages/", Surface: newID()})`）。この画面が約束に加わる前に生成したパッケージも、そのまま読めます。そのときのフォームは 404 になり、`OfferedWords` の文が返ります。ページとエージェントのツールも、この文を使います。
 
 レンダラは、ritsu のカタログと関数も読みます。`set.Asset("catalog.json")` と `set.Asset("functions.js")` は、それぞれを Content-Type と ETag と一緒に返します。`set.Assets()` は、二つをファイルシステムとして返します。
 
@@ -99,7 +99,7 @@ go test .            # 6 秒ほど。./... ならページ（page/）も含め�
 go test -race .      # 65 秒ほど。./... なら 95 秒ほど
 ```
 
-試験は、`testdata/` に生成してある ritsu の例（十の種類の 120 のテンプレート、そのベクタ、ritsu が生成した Go のパッケージ）を使います。画面は、`testdata/driver.mjs` を通して、Node 24 でレンダラと同じように読みます。Node がなければ、その試験は `SKIP:` と書いて通ります。ベクタから 5,542 の画面に値を入れ、336 のボタンをすべて押します。ベクタのイベントは、画面のボタンを 2,230 回押して行い、画面が送ったものを生成されたコードに渡します。送った 2,052 回の結果は、どれもベクタのとおりです。画面の検査が止めた 176 回、画面が隠すフィールドに値を入れた 2 回（画面はそのフィールドを送りません）、どの画面からも送られないものを求める 138 行は、申請の種類もすべて拒否します。試験の一覧は、DESIGN.ja.md の 7 章にあります。
+試験は、`testdata/` に生成してある ritsu の例（十の種類の 120 のテンプレート、そのベクタ、ritsu が生成した Go のパッケージ）を使います。画面は、`testdata/driver.mjs` を通して、Node 24 でレンダラと同じように読みます。Node がなければ、その試験は `SKIP:` と書いて通ります。ベクタから 5,542 の画面に値を入れ、336 のボタンをすべて押します。ベクタのイベントは、画面のボタンを 2,230 回押して行い、画面が送ったものを生成されたコードに渡します。送った 2,052 回の結果は、どれもベクタのとおりです。画面の検査が止めた 176 回、画面が隠すフィールドに値を入れた 2 回（画面はそのフィールドを送りません）、どの画面からも送られないものを求める 138 行は、申請の種類もすべて拒否します。試験の一覧は、[設計](DESIGN.ja.md)の 7 章にあります。
 
 新しい ritsu の例を取り込むには、ritsu のチェックアウトを用意し、`ritsu` を `PATH` に置いて、次を実行します。
 

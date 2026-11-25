@@ -75,7 +75,8 @@ signin.Mount(h) // GET /login, GET /login/callback, POST /logout, behind the han
 
 `New` reads the provider's discovery document and keys, so a wrong issuer or a provider that cannot
 be reached stops the server when it starts, not at the first sign-in. Without the handler of the
-pages and the screens (package `web`), `Mount` takes an `*http.ServeMux` (DESIGN.md, section 10).
+pages and the screens (package `web`), `Mount` takes an `*http.ServeMux` ([the design](DESIGN.md),
+section 10).
 
 A person's roles are those of the ID token of their last sign-in. A claim the ID token does not have
 gives no role, and a provider that lists groups by an ID gives the IDs: write the gate with what the
@@ -120,5 +121,5 @@ ok  	github.com/i2y/ringi-server/oidc	0.841s
 ?   	github.com/i2y/ringi-server/oidc/oidctest	[no test files]
 ```
 
-The tests run a provider of their own over TLS (`httptest`), and send nothing anywhere else.
-DESIGN.md, section 12, lists what they run.
+The tests run a provider of their own over TLS (`httptest`), and send nothing anywhere else. [The
+design](DESIGN.md), section 12, lists what they run.

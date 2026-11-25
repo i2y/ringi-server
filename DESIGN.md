@@ -18,10 +18,10 @@ The framework holds the code that does not depend on any kind of request:
 
 - the API of `openapi.json` (every operation but the screens and the agents' tools),
 - the screens of the kinds (A2UI), the same screens as plain HTML pages, and their attachments over
-  HTTP, behind the same guards as the API (`web`, `screens` and `screens/page`, each with a
-  DESIGN.md of its own),
-- signing in through the organization's OpenID Connect provider (`oidc`, with a DESIGN.md of its
-  own),
+  HTTP, behind the same guards as the API ([`web`](web/DESIGN.md), [`screens`](screens/DESIGN.md)
+  and [`screens/page`](screens/page/DESIGN.md), each with a design of its own),
+- signing in through the organization's OpenID Connect provider ([`oidc`](oidc/DESIGN.md), with a
+  design of its own),
 - a server's command line: the flags every server takes and their checks, where the tickets and the
   attachments are kept, the sign-in and the HTTP server (`serve`), with the two ways of signing in
   that check no one, for trying a server on one's own computer (`devlogin`),
@@ -265,7 +265,7 @@ And the rest of `*Server`:
   `MaxOrganization()` is the largest upload of the organization's data the server takes (13.3).
 - The calls the screens and the pages make (`Authenticate`, `Can`, `Replied` and `FormAt`, which 8.1
   says, `Submitting`, `Names`, `MasterRows`, `TicketFiles`, `Files`, `MaxBody`, `Packages`) are in
-  `web`'s DESIGN.md.
+  [the design of `web`](web/DESIGN.md).
 
 ### 2.3 The parts you swap
 
@@ -463,15 +463,14 @@ that has the hold's arguments, its key among them.
 
 **Files.** Attachments are file IDs in the forms (the fields of the type `attachment`, in rows too).
 `Files` keeps the files with who uploaded each and when: `Put` takes a file with its record
-(`FileInfo`), `Stat` answers the record, `Open` the bytes, `URL` an address of the store's own for
-a browser, or `""` when the server sends the bytes itself, and `Delete` deletes one. A person
-uploads a file through `Server.Upload`, which puts it in `Files` and records it in the store as the
-person's upload, one that no ticket holds yet. When `Config.Files` is set, `Do` holds a `submit`,
-`resubmit` or `edit` to the files the ticket already holds (the ones its form or any event of its
-history named) and the ones the person sending it uploaded: any other ID is 400
-(`form.receipt: no such file`), on every way in. The move that names an upload holds it from then
-on (4.1). `web` serves the uploads and the downloads, and keeps who may download what (its
-DESIGN.md, section 6).
+(`FileInfo`), `Stat` answers the record, `Open` the bytes, `URL` an address of the store's own for a
+browser, or `""` when the server sends the bytes itself, and `Delete` deletes one. A person uploads
+a file through `Server.Upload`, which puts it in `Files` and records it in the store as the person's
+upload, one that no ticket holds yet. When `Config.Files` is set, `Do` holds a `submit`, `resubmit`
+or `edit` to the files the ticket already holds (the ones its form or any event of its history
+named) and the ones the person sending it uploaded: any other ID is 400 (`form.receipt: no such
+file`), on every way in. The move that names an upload holds it from then on (4.1). `web` serves the
+uploads and the downloads, and keeps who may download what ([its design](web/DESIGN.md), section 6).
 
 An upload no ticket holds is kept `Config.UploadsKept` (7 days when not given; a negative duration,
 until a ticket holds it). Then `Sweep` lets go of it and deletes its file; `Run` sweeps when it
@@ -565,7 +564,7 @@ than failing each request after. Each part checks its own when it is made:
 | `New` (no I/O) | a required part missing; a part that is a `Checker` and answers an error (`web.ProxyHeader`: no secret, one shorter than 32 characters, one with characters a header does not carry as they are, two headers named alike) |
 | `postgres.New` | a database it cannot reach within `postgres.ReachWithin` (10 seconds), and tables newer than the code |
 | `oidc.New`, and `oidc.Config.Check` before anything is reached | an issuer or a redirect URL that is not https; no client ID or secret, or one with a space or a line break at its ends; no key of the sessions, or one that is not 32 random bytes (text, bytes over and over, a key given twice); a provider whose discovery document or keys cannot be read, or do not say what they must |
-| `web.New`, `mcp.New`, `(*mcp.Tools).Handler` | their own settings (their DESIGN.md); `web.New` also two packages whose screens give one catalog ID to other files (`web`'s DESIGN.md, 2.3) |
+| `web.New`, `mcp.New`, `(*mcp.Tools).Handler` | their own settings (their designs); `web.New` also two packages whose screens give one catalog ID to other files ([the design of `web`](web/DESIGN.md), 2.3) |
 | `ImportOrganization` | organization's data that does not read or does not pass its checks (13.3): the first 100 problems, each on a line of its own at its file and line, how many more there are and whether the checks stopped at 1,000, and a word to check the data with `ritsu ringi check`; the example commands log each line as a record of its own (`server.LogStop`) |
 | `serve`'s `Stores.Serve`, before anything is made or reached | a route the project added (`Stores.Handle`, 2.6) whose pattern is empty, does not read as a pattern of `http.ServeMux`, takes a path of the framework's, or conflicts with a route added before; a route with no handler. A handler that cannot be made, or is nil, stops it before it serves |
 
@@ -2337,11 +2336,11 @@ said as a problem of the data (400), as `ImportOrganization` says it at start (2
 ### 13.7 The pages
 
 `web` serves the administration's pages under `/pages/admin/`, behind the same guards as the other
-pages (section 3 of its DESIGN.md: the person, the refusal of what another site sends, the sizes,
-the headers), made by package `screens/page` beside the start page, with their words in English and
-in Japanese. A page asks the same operations as the API (`Do`, `Via: "pages"`), and is shown in the
-language chosen, as the other pages are (its section 9.4). Each page but the first links back to the
-first under its head. The pages need no script.
+pages (section 3 of [its design](web/DESIGN.md): the person, the refusal of what another site sends,
+the sizes, the headers), made by package `screens/page` beside the start page, with their words in
+English and in Japanese. A page asks the same operations as the API (`Do`, `Via: "pages"`), and is
+shown in the language chosen, as the other pages are (its section 9.4). Each page but the first
+links back to the first under its head. The pages need no script.
 
 | Page | What it shows, and its post |
 |---|---|
@@ -2356,8 +2355,8 @@ The start page (`/pages/`) links to `/pages/admin/` when the person may use one 
 gate there is logged and shows no link). A page says each name of the data and each value of a line
 of the record within an element of its own direction (`<bdi>`), so that a name with a character that
 turns the order of what follows does not turn the page's words. A post's key is made as the pages
-make theirs (from the page, its values and the time the page was shown: section 4.5 of
-`screens/page`'s DESIGN.md), so that a page posted twice is one operation.
+make theirs (from the page, its values and the time the page was shown: section 4.5 of [the design
+of `screens/page`](screens/page/DESIGN.md)), so that a page posted twice is one operation.
 
 A page checks what a person can get wrong with its own forms before it sends the operation, and says
 it in the page's language, on the page shown again (422): a day that does not read as `YYYY-MM-DD`

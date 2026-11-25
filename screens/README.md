@@ -92,7 +92,7 @@ becomes this operation:
 
 The server checks the body against the operation's schema, as it checks any body. The key is the
 operation's idempotency key: for a new request there is one for each form and body, and for an
-operation on a ticket one for each press (DESIGN.md, 3.1).
+operation on a ticket one for each press ([the design](DESIGN.md), 3.1).
 
 When the server refuses the operation, `screens.Refusal` holds what the API returns: the kind, the
 text in English and in Japanese, and, for a refusal of `form`, the place in the form it names (`at`,
@@ -107,14 +107,14 @@ Japanese form, from `testdata/golden/expense.form.refused.ja.json`:
 ```
 
 `screens.RefusalWords(lang, kind)` returns the sentence shown with a refusal. It depends on the
-refusal's kind alone (DESIGN.md, 3.2), and the screens and the plain HTML pages use the same table.
-`LimitedWords` returns the sentence for a comment the server does not take now, and `OfferedWords`
-the one for a kind that has no version in effect yet and may be requested from a day. Someone who
-may make the request from that day (`Server.Offered`) is shown the `offered` screen, filled with the
-day and the way back: `set.Offered(screens.Offered{Kind: "leave", Language: "en", From:
-"2027-04-01", Home: "/pages/", Surface: newID()})`. A package ritsu generated before that screen was
-part of the contract loads all the same; its form is then a 404 with the sentence of `OfferedWords`,
-which the pages and the agents' tools use too.
+refusal's kind alone ([the design](DESIGN.md), 3.2), and the screens and the plain HTML pages use
+the same table. `LimitedWords` returns the sentence for a comment the server does not take now, and
+`OfferedWords` the one for a kind that has no version in effect yet and may be requested from a day.
+Someone who may make the request from that day (`Server.Offered`) is shown the `offered` screen,
+filled with the day and the way back: `set.Offered(screens.Offered{Kind: "leave", Language: "en",
+From: "2027-04-01", Home: "/pages/", Surface: newID()})`. A package ritsu generated before that
+screen was part of the contract loads all the same; its form is then a 404 with the sentence of
+`OfferedWords`, which the pages and the agents' tools use too.
 
 The renderer also reads ritsu's catalog and its functions. `set.Asset("catalog.json")` and
 `set.Asset("functions.js")` return each with its content type and ETag, and `set.Assets()` returns
@@ -140,8 +140,8 @@ fill 5,542 screens from the vectors, press each of the 336 buttons, make the vec
 their screens in 2,230 presses, and give what the screens send to the generated code. Each of the
 2,052 sent has the result its vector says. The kind also refuses each of the 176 that the screens'
 checks stop, each of the 2 that give a field the screen hides (which the screen leaves out of what
-it sends), and each of the 138 lines that ask for what no screen sends. DESIGN.md, 7, lists the
-tests.
+it sends), and each of the 138 lines that ask for what no screen sends. [The design](DESIGN.md), 7,
+lists the tests.
 
 To take in a newer ritsu's examples, with a ritsu checkout, and `ritsu` on `PATH`:
 
