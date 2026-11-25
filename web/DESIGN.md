@@ -333,7 +333,7 @@ links takes any others. It checks no one, so it answers only requests sent to a 
 no proxy forwarded (none of the headers a proxy adds, such as `X-Forwarded-For` and `Forwarded`), and
 a server's command starts it only when it listens on one (`-dev-login` of package `serve`, which the
 example server takes), and not with the settings of a server that serves people
-([Signing in](../README.md#signing-in) in the README).
+([Three ways to sign in](../docs/sign-in.md#three-ways-to-sign-in)).
 
 ## 4. `Can`, and who may make a request
 

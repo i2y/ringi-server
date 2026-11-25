@@ -1,284 +1,273 @@
-# API を curl で試す
+# プログラムから API を呼ぶ
 
-申請を出してから決まるまでを HTTP API で一通り行い、そのあと、応答、一覧、検索、管理を順に見ます。コマンドは例のサーバーで動かします。自分のサーバーにも、自分の申請の種類について同じパスがあります。一つ一つの説明は、`ritsu gen` が書く `requests/openapi.json` にあります。英語版は [api.md](api.md) です。
+ページでできることは、HTTP API でもできます。社内のほかのシステムから申請を出す、承認が済んだかを読む、といったときに使います。英語版は [api.md](api.md) です。
 
-API では、出された申請をチケット（ticket）、申請の種類を kind と呼びます。
+承認が済んだときに知らせを受けるには、API を繰り返し読む代わりに、[承認のあとの処理を始める](flows.ja.md)か[通知の送り方を変える](notices.ja.md)方法を使います。
 
-## サーバーを起動する
+このページでは、[チュートリアル](start.ja.md)のプロジェクトを使い、申請から承認までを curl で行います。curl と jq が要ります。
 
-`examples/` で実行します。Go 1.26 以降、curl、jq が要ります。
+申請の操作は、`requests/openapi.json` にすべて書いてあります（OpenAPI 3.1）。ritsu が申請の種類から作るファイルで、入力する項目の型や範囲も入っています。
+
+API では、一件の申請をチケット（`ticket`）と呼びます。申請の種類は、URL や引数では `kind`、応答のチケットの中では `request` です。
+
+## だれの操作になるか
+
+API の操作は、いつも、だれか一人の操作です。サーバーがその人をどう見つけるかは、サーバーの起動のしかたで変わります。
+
+| サーバー | だれの操作になるか |
+|---|---|
+| フラグなしで起動したサーバー | ヘッダー `X-Person` に書いた人。役割は `X-Roles` にコンマで区切って書く。自分のコンピューターからだけ使える |
+| `-dev-login` のサーバー | 試用のログインのページで選んだ人（クッキー） |
+| 会社のログインを使うサーバー | ログインした人（ブラウザのクッキー） |
+| 自分で組み立てたサーバー | 自分で書いた方法で見つけた人 |
+
+会社のログインを使うサーバーの API は、人がログインしないプログラムからは、そのままでは呼べません。プログラムに使わせるには、サーバーを自分で組み立てて、プログラムのトークンを受け付けます（[プログラムのトークンを受け付ける](embedding.ja.md#2-プログラムのトークンを受け付ける)）。
+
+ここからは、一つ目の方法で試します。プロジェクトのディレクトリで、フラグなしで起動します。
 
 ```sh
 go run ./cmd/server
 ```
 
-申請はメモリに置きます。だれのリクエストかは、ヘッダー `X-Person`（組織のデータにある人の ID）で決まり、役割は `X-Roles` で渡します。本人を確かめないので、サーバーは、自分のコンピューターのアドレスで、そこへ送られたリクエストにだけ使います。ほかのサイトのページがブラウザにリクエストを送らせても、だれのリクエストにもなりません。人に使ってもらうサーバーでは、同じ呼び出しにセッションのクッキーを付けます（[ログイン](../README.ja.md#ログイン)）。
+## 申請から承認まで
 
-## 申請から決定まで
+### 申請を出す
 
-[drive.sh](../examples/drive.sh) は、経費を申請して、決まるまで進めます。別の端末で、`examples/` で実行します。
-
-```sh
-./drive.sh
-```
-
-```
-1. What e1201 (on the sales staff of Section 1A) may submit:
-   account  Account request
-   account_ja  アカウントの申請
-   contract  Contract review
-   contract_ja  契約の確認
-   expense  Expense request
-   expense_ja  経費の申請
-   leave  Leave request
-   leave_ja  休暇の申請
-   purchase  Purchase ringi
-   purchase_ja  購買の稟議
-2. e1201 attaches the receipts, and asks for a trip to Fukuoka, 118,000 yen:
-   ticket 01M89783QJ6FRF0K259NXW4W9H: in_progress, at the stage first
-3. What e1101 (the manager of Section 1A) waits for:
-   01M89783QJ6FRF0K259NXW4W9H  expense  first
-4. e1101 approves it:
-   in_progress, at the stage decide
-5. e3101 (the head of Sales Department 1) approves what was shown before e1101's approval:
-   refused, stale: `approve` was made on the ticket at round 1, stage 1 of the ticket, 0 edits, and it is at round 1, stage 2 of the ticket, 0 edits now: the ticket is to be shown again
-6. e3101 decides it on what is shown now:
-   approved
-7. The ticket's history, as e1201 sees it:
-   submitted  e1201  
-   approved  e1101  
-   approved  e3101  Have a good trip
-   ticket approved    
-8. e1201 asks for a day trip of 12,000 yen, which the agent decides:
-   approved: submitted, agent asked, agent ok, ticket approved
-```
-
-営業担当 1（e1201）が領収書を付けて福岡への出張を申請し、営業一課長（e1101）が承認し、営業一部長（e3101）が決めます。5 では、部長が、課長の承認より前に見た内容で承認しようとしたので、`stale` で拒否されています。8 は、エージェントが決める日帰りの出張です。
-
-サーバーのログには、保存のあとに外へ出たものが残ります。通知（自分のサーバーならメールを送るところ）、承認された経費が始める flow `pay`、日帰りの出張を決めたエージェントです。通知は、受け取る人の言語で書きます。組織のデータにその人の言語があればそれで、なければ申請の種類の言語です。
-
-```
-level=INFO msg=notice notice=waiting to="e1101 e1101@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783QJ6FRF0K259NXW4W9H：承認待ち body=経費の申請（01M89783QJ6FRF0K259NXW4W9H）は、あなたの承認を待っています（ステップ：first）。 ticket=01M89783QJ6FRF0K259NXW4W9H stage=first
-level=INFO msg=notice notice=waiting to="e3101 e3101@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783QJ6FRF0K259NXW4W9H：承認待ち body=経費の申請（01M89783QJ6FRF0K259NXW4W9H）は、あなたの承認を待っています（ステップ：decide）。 ticket=01M89783QJ6FRF0K259NXW4W9H stage=decide
-level=INFO msg="flow launched" flow=pay kind=expense ticket=01M89783QJ6FRF0K259NXW4W9H run=01M89783QJ6FRF0K259NXW4W9H/1/17
-level=INFO msg=notice notice=decided to="e1201 e1201@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783QJ6FRF0K259NXW4W9H：結果 body=経費の申請（01M89783QJ6FRF0K259NXW4W9H）は、結果が出ました。 ticket=01M89783QJ6FRF0K259NXW4W9H stage=""
-level=INFO msg="agent asked" flow=travel_decision kind=expense ticket=01M89783SSWWJ5M5EA80VAPNNH stage=decide note=false
-level=INFO msg="agent answered" flow=travel_decision ticket=01M89783SSWWJ5M5EA80VAPNNH verdict=ok outcome=ok
-level=INFO msg="flow launched" flow=pay kind=expense ticket=01M89783SSWWJ5M5EA80VAPNNH run=01M89783SSWWJ5M5EA80VAPNNH/1/12
-level=INFO msg=notice notice=decided to="e1201 e1201@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783SSWWJ5M5EA80VAPNNH：結果 body=経費の申請（01M89783SSWWJ5M5EA80VAPNNH）は、結果が出ました。 ticket=01M89783SSWWJ5M5EA80VAPNNH stage=""
-```
-
-サーバーを `-verdict doubt` で起動すると、エージェントは日帰りの出張を決めずに、課長へ回します。
-
-## 一つずつ呼ぶ
-
-e1203 が休暇を申請します。POST には、`application/json` の本文と、その操作のキー（`Idempotency-Key`）を付けます。同じキーでもう一度送っても、実行は一度だけで、同じ応答が返ります。
+営業担当 1（s1201）として、購買を申請します。POST には、JSON の本文と、その操作のための番号（`Idempotency-Key`）を付けます。番号は、操作ごとに違う文字列なら何でもかまいません。
 
 ```sh
-curl -s -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1203' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-1' \
-  -d '{"form": {"kind": "paid", "first_day": "2026-12-28", "days": 2, "reason": "A trip home"}}' > made.json
+curl -s -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-1' \
+  -d '{"form": {"amount": 120000, "purpose": "新しいメンバーのノートパソコン"}}' > made.json
 jq -c '.ticket | {id, status, stage, revision}' made.json
 TICKET=$(jq -r '.ticket.id' made.json)
 REVISION=$(jq -c '.ticket.revision' made.json)
 ```
 
 ```
-{"id":"01M89785T0X2VT6RJDS6BBBKV7","status":"in_progress","stage":"manager","revision":{"edits":0,"round":1,"stage":0}}
+{"id":"01M89M0RBPS2H5M8HF082BPSN9","status":"in_progress","stage":"manager","revision":{"edits":0,"round":1,"stage":0}}
 ```
 
-e1101 は、自分を待っているものの中にその申請を見つけ、見た内容（`revision`）のまま承認します。
+申請の番号が `id`、いまのステップが `stage` です。`revision` は、申請がどこまで進んだかを表します。次の操作に使います。
+
+### 待っている申請を読んで、承認する
+
+営業一課長（s1101）は、自分を待っている申請の一覧でそれを見つけ、承認します。承認には、読んだときの `revision` を付けます。
 
 ```sh
-curl -s localhost:8080/waiting -H 'X-Person: e1101' | jq -c '.tickets[] | {id, request, stage}'
-curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: e1101' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-2' \
-  -d "{\"revision\": $REVISION, \"comment\": \"Enjoy\"}" | jq -c '.ticket | {status, revision}'
+curl -s localhost:8080/waiting -H 'X-Person: s1101' | jq -c '.tickets[] | {id, request, stage}'
+curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: s1101' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: ok-1' \
+  -d "{\"revision\": $REVISION, \"comment\": \"お願いします\"}" | jq -c '.ticket | {status, stage, revision}'
 ```
 
 ```
-{"id":"01M89785T0X2VT6RJDS6BBBKV7","request":"leave","stage":"manager"}
-{"status":"approved","revision":{"edits":0,"round":1,"stage":null}}
+{"id":"01M89M0RBPS2H5M8HF082BPSN9","request":"purchase","stage":"manager"}
+{"status":"in_progress","stage":"head","revision":{"edits":0,"round":1,"stage":1}}
 ```
 
-同じ呼び出しを同じキーで送ると、最初と同じ応答が返り、何も変わりません。
+次のステップの営業部長（s1001）に回りました。
 
-```sh
-curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: e1101' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-2' \
-  -d "{\"revision\": $REVISION, \"comment\": \"Enjoy\"}" | jq -c '.ticket | {status, revision}'
-```
+### 同じ操作をもう一度送る
 
-```
-{"status":"approved","revision":{"edits":0,"round":1,"stage":null}}
-```
-
-規則に合わないものは、409 で拒否されます。どの規則か、その理由、フォームのどこかが返ります。
+通信が切れて、操作が済んだかどうか分からないときは、同じ `Idempotency-Key` でもう一度送ります。実行は一度だけで、最初と同じ応答が返ります。
 
 ```sh
-curl -s -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1203' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-3' \
-  -d '{"form": {"kind": "paid", "first_day": "2026-12-28", "days": 0}}' | jq .
+curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: s1101' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: ok-1' \
+  -d "{\"revision\": $REVISION, \"comment\": \"お願いします\"}" | jq -c '.ticket | {status, stage, revision}'
+```
+
+```
+{"status":"in_progress","stage":"head","revision":{"edits":0,"round":1,"stage":1}}
+```
+
+### 受け付けられないとき
+
+決まりに合わない操作には、409 と理由が返ります。たとえば、営業部長が、課長の承認より前に読んだ `revision` で承認したときです。
+
+```sh
+curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: s1001' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: ok-2' \
+  -d "{\"revision\": $REVISION}" | jq .
 ```
 
 ```json
 {
-  "refused": "form",
-  "text": "`0` is outside the range of `days` (`>=1 <=20`)",
-  "text_ja": "`0` は、`days` の範囲（`>=1 <=20`）の外です",
-  "at": "days"
+  "refused": "stale",
+  "text": "`approve` was made on the ticket at round 1, stage 1 of the ticket, 0 edits, and it is at round 1, stage 2 of the ticket, 0 edits now: the ticket is to be shown again",
+  "text_ja": "`approve` はチケットの 1 回目、1 番目のステップ、直し 0 回のときのものですが、チケットは今 1 回目、2 番目のステップ、直し 0 回です。チケットを見せ直してください",
+  "at": null
 }
 ```
 
-### 応答
+`refused` は理由の種類です（[受け付けない理由](refusals.ja.md)）。このときは、申請を読み直し、新しい `revision` で、新しい `Idempotency-Key` を付けて送ります。フォームの値が原因のときは、`at` にその項目が入ります。
 
-| ステータス | 本文 | いつ |
-|---|---|---|
-| 200 | チケットの操作なら `{"ticket": …}` | 実行した |
-| 400 | `{"error": …}` | 本文が読めない。POST にキーがない。キーが別の操作に使われている |
-| 401 | `{"error": …}` | だれもログインしていない |
-| 404 | `{"error": …}` | そのチケットがない。または、その人は見られない |
-| 409 | `{"refused": …, "text": …, "text_ja": …, "at": …}` | 規則に合わない。`at` はフォームのどこか（行の中なら `items[1].price`）、または null |
-| 413、415 | `{"error": …}` | 本文が大きすぎる。JSON でない |
-| 429 | `{"error": …}` | 多すぎる。待てば済むときは `Retry-After` に時間がある |
-| 500 | `{"error": …}` | サーバーの失敗。理由はログにある |
+```sh
+curl -s -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-2' \
+  -d '{"form": {"amount": 0, "purpose": "新しいメンバーのノートパソコン"}}' | jq -c '{refused, text_ja, at}'
+```
 
-拒否も、キーと一緒に残ります。同じキーで送ると同じ拒否が返るので、直して送るときは別のキーを付けます。すべての場合は、[設計](../DESIGN.ja.md)の 7.1 にあります。
+```
+{"refused":"form","text_ja":"`0JPY` は、`金額` の範囲（`>=1JPY <=10_000_000JPY`）の外です","at":"amount"}
+```
 
-### 操作
+### 申請と履歴を読む
+
+申請を見られる人なら、`GET /tickets/{id}` で、申請と履歴を読めます。ほかの人には 404 を返します。
+
+```sh
+curl -s localhost:8080/tickets/$TICKET -H 'X-Person: s1201' | jq -c '.history[] | {did, stage, by, comment}'
+curl -s -w ' %{http_code}\n' localhost:8080/tickets/$TICKET -H 'X-Person: s1202'
+```
+
+```
+{"did":"submitted","stage":null,"by":"s1201","comment":null}
+{"did":"approved","stage":"manager","by":"s1101","comment":"お願いします"}
+{"error":"no such ticket"} 404
+```
+
+## 操作の一覧
 
 | すること | 呼び出し |
 |---|---|
-| 出せる申請の種類、自分を待っているもの、自分の申請を並べる | `GET /requests`、`GET /waiting`、`GET /mine` |
-| チケットとその履歴を読む | `GET /tickets/{id}` |
-| 申請を出す、差し戻された申請を出し直す | `POST /requests/{kind}/tickets`、`POST /requests/{kind}/tickets/{id}/resubmit` |
-| 承認者が入れるフィールドに入力する、直す | `POST /requests/{kind}/tickets/{id}/edit` |
-| ステップで答える | `POST /tickets/{id}/approve`、`…/reject`、`…/send_back` |
-| 自分の承認を取り消す（次のステップがまだ答えていないあいだ） | `POST /tickets/{id}/retract` |
-| 承認者を足す、自分の番をほかの人に渡す | `POST /tickets/{id}/add_approver`、`…/hand_over` |
+| 申請できる種類を並べる | `GET /requests` |
+| 自分を待っている申請、自分の申請を並べる | `GET /waiting`、`GET /mine` |
+| 申請と履歴を読む | `GET /tickets/{id}` |
+| 申請する、再申請する | `POST /requests/{kind}/tickets`、`POST /requests/{kind}/tickets/{id}/resubmit` |
+| 承認者が入力する項目を書く | `POST /requests/{kind}/tickets/{id}/edit` |
+| 承認する、却下する、差し戻す | `POST /tickets/{id}/approve`、`…/reject`、`…/send_back` |
+| 承認を取り消す（次のステップがまだ答えていないあいだ） | `POST /tickets/{id}/retract` |
+| 承認者を加える、引き継ぐ | `POST /tickets/{id}/add_approver`、`…/hand_over` |
+| 保留にする、また進める | `POST /tickets/{id}/pause`、`…/resume` |
 | コメントする | `POST /tickets/{id}/comment` |
-| チケットの期限を止める、また動かす | `POST /tickets/{id}/pause`、`…/resume` |
-| 申請を取り下げる、差し戻された申請を破棄する | `POST /tickets/{id}/withdraw`、`…/discard` |
-| 組織、マスタの行を読む | `GET /organization`、`GET /masters/{file}/{master}` |
-| ファイルを添付する | `POST /files`（[curl で試す](../web/README.ja.md#curl-で試す)） |
+| 取り下げる、申請をやめる | `POST /tickets/{id}/withdraw`、`…/discard` |
+| 組織のデータ、選択肢の一覧を読む | `GET /organization`、`GET /masters/{file}/{master}` |
+| 人、チーム、選択肢を言葉で探す | `GET /find/people`、`GET /find/teams`、`GET /find/masters/{file}/{master}` |
+| ファイルを添付する | `POST /files`（[ページと画面の README](../web/README.ja.md#curl-で試す)に例がある） |
 
-それぞれをだれができるかは、gate と申請の種類が決めます。[ページと画面](../web/README.ja.md)も、[エージェントのツール](../mcp/README.ja.md)も、同じ操作を実行します。
+本文に書くものは `requests/openapi.json` にあります。どの申請の種類も使わない操作は、そこにはありません。だれがどれをできるかは、ページと同じです。
 
-## 一覧
+## 応答
 
-`GET /waiting` は自分を待っているチケットを、`GET /mine` は自分の申請を、新しい順に返します。`kind` で申請の種類を、`/mine` では `status` で状態を一つに絞れます。一ページは `limit` 件（1〜100、指定がなければ 50）です。続きがあるかは `more` に、次のページは、最後のチケットの ID を `before` に入れて読みます。
+| ステータス | 本文 | いつ |
+|---|---|---|
+| 200 | 申請の操作なら `{"ticket": …}` | 実行した |
+| 400 | `{"error": …}` | 本文が読めない。POST に `Idempotency-Key` がない。同じ番号を、別の操作に使った |
+| 401 | `{"error": …}` | だれもログインしていない |
+| 403 | `{"error": …}` | ほかのサイトのページを開いたブラウザから送られた |
+| 404 | `{"error": …}` | その申請がない、その人は見られない、その申請の種類にいま使える版がない、その URL がない |
+| 409 | `{"refused": …, "text": …, "text_ja": …, "at": …}` | 決まりに合わない。`at` は、フォームの原因の項目（行の中なら `items[1].price`）か null |
+| 413、415 | `{"error": …}` | 本文が大きすぎる。JSON でない |
+| 429 | `{"error": …}` | 多すぎる。待てばよいときは、`Retry-After` に待つ時間がある |
+| 500 | `{"error": …}` | サーバーの失敗。理由はサーバーのログにある。同じ番号で送り直してよい |
 
-```sh
-curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: e1201' | jq -c '{shown: [.tickets[] | [.id, .request, .status]], more}'
-LAST=$(curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: e1201' | jq -r '.tickets[-1].id')
-curl -s "localhost:8080/mine?limit=1&before=$LAST" -H 'X-Person: e1201' | jq -c '{shown: [.tickets[] | [.id, .request, .status]], more}'
-```
+409 の応答も、番号と一緒に残ります。直して送り直すときは、新しい番号を付けます。番号と応答は 30 日のあいだ残ります。
 
-```
-{"shown":[["01M89783SSWWJ5M5EA80VAPNNH","expense","approved"]],"more":true}
-{"shown":[["01M89783QJ6FRF0K259NXW4W9H","expense","approved"]],"more":false}
-```
+## 一覧の続きを読む
 
-## フォームが計算するもの
+`GET /waiting` と `GET /mine` は、新しい順に返します。`limit` を付けなければ、一度に 50 件までです。
 
-`POST /requests/{kind}/worked` は、ここまでに入力した値から、フォームが計算するものを返します。ほかの値しだいで出るフィールドや必須になるフィールドが今どうか、合計などの値（まだ決まらないあいだは null）です。ページと画面も同じものを使います。何も保存しません。承認者が直すときは `POST /requests/{kind}/tickets/{id}/worked` です。
+| 引数 | 意味 |
+|---|---|
+| `kind` | 申請の種類を一つに絞る |
+| `status` | 状態を一つに絞る（`/mine` だけ） |
+| `limit` | 一度に返す件数（1〜100） |
+| `before` | この番号の申請より古いものを返す |
 
-```sh
-curl -s -w '\n' -X POST localhost:8080/requests/expense/worked -H 'X-Person: e1201' -H 'Content-Type: application/json' \
-  -d '{"form": {"category": "travel", "items": [{"what": "Flight to Fukuoka and back", "price": 64000}]}}'
-curl -s -w '\n' -X POST localhost:8080/requests/expense/worked -H 'X-Person: e1201' -H 'Content-Type: application/json' \
-  -d '{"form": {"category": "purchase", "items": [{"what": "A desk lamp", "price": 4800}]}}'
-```
-
-```
-{"fields":{"amount":{"value":64000},"receipt":{"required":true},"trip_to":{"shown":true}}}
-{"fields":{"amount":{"value":4800},"receipt":{"required":false},"trip_to":{"shown":false}}}
-```
-
-## 人、チーム、行を探す
-
-`GET /find/people`、`GET /find/teams`、`GET /find/masters/{file}/{master}` は、フォームで選ぶ値を言葉で探し、近い順に返します。引数は `q`（言葉）、`limit`（1〜100、指定がなければ 20）、`lang`（`en` か `ja`）です。マスタの行には、選ぶ日の `on` もあります。
+応答の `more` が `true` なら続きがあります。最後の申請の番号を `before` に入れて、もう一度読みます。
 
 ```sh
-curl -s -w '\n' -G localhost:8080/find/people --data-urlencode 'q=営業' -d 'limit=3&lang=ja' -H 'X-Person: e1201'
-curl -s -w ' %{http_code}\n' 'localhost:8080/find/people?q=sales' -H 'X-Person: x9999'
+curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: s1201' | jq -c '{shown: [.tickets[] | [.id, .request, .status]], more}'
 ```
 
 ```
-{"found":[{"value":"e0101","name":"営業本部長","label":"営業本部長（e0101）"},{"value":"e1101","name":"営業一課長","label":"営業一課長（e1101）"},{"value":"e1201","name":"営業担当 1","label":"営業担当 1（e1201）"}],"more":true}
-{"error":"the organization is read by its people only, and x9999 is not in the version in effect on 2026-11-25"} 404
+{"shown":[["01M89M0RBPS2H5M8HF082BPSN9","purchase","in_progress"]],"more":false}
 ```
 
-人とチームを探せるのは、二つ目の応答のとおり、組織の人だけです。
+## フォームの途中の値を計算させる
 
-## 管理
+合計の金額、ほかの値によって出る項目、必須になる項目を、申請の前に計算させられます。何も保存しないので、`Idempotency-Key` は要りません。
 
-管理者は、申請の種類の版を切り替え、組織の新しいデータを取り込み、その記録を、チケットごとの操作と一緒に読みます。`/pages/admin/` の下のページでも、API でもできます。だれが何をできるかは gate が決めます。例では、`workflow_admin` は自分の部署が持つ申請の種類を、`system_admin` はすべてを管理し、`auditor` はすべての記録を読めて、何も変えられません。下の番号が最初の状態になるよう、サーバーを起動し直します。
+```sh
+curl -s -w '\n' -X POST localhost:8080/requests/purchase/worked -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -d '{"form": {"amount": 120000}}'
+```
+
+```
+{"fields":{}}
+```
+
+購買の申請には計算する項目がないので、空です。[合計のある経費の例](../examples/project/expense.ja.ringi)では、`{"fields":{"amount":{"value":64000},"receipt":{"required":true},"trip_to":{"shown":true}}}` のように返ります。承認者が入力するときは、`POST /requests/{kind}/tickets/{id}/worked` を使います。
+
+## 人やチームを探す
+
+人を選ぶ項目に入れる値を、名前の一部から探せます。近い順に返ります。
+
+```sh
+curl -s -w '\n' -G localhost:8080/find/people --data-urlencode 'q=営業' -d 'limit=2&lang=ja' -H 'X-Person: s1201'
+```
+
+```
+{"found":[{"value":"s1001","name":"営業部長","label":"営業部長（s1001）"},{"value":"s1101","name":"営業一課長","label":"営業一課長（s1101）"}],"more":true}
+```
+
+## 社員の代わりに申請する
+
+申請の代理になっている人は、本文の `requester` に本人の ID を書いて、代わりに申請できます。代理は、組織のデータの `proxies.csv` に書きます（[代理を決める](organization.ja.md#代理を決める)）。ここでは、営業担当 2 を営業担当 1 の代理にします。
+
+```csv title="project/org/proxies.csv"
+person,proxy,kind,from,to,requests
+s1201,s1202,submit,2026-04-01,,purchase
+```
+
+サーバーを起動し直し、営業担当 2 として申請します。
 
 ```sh
 go run ./cmd/server
 ```
 
+```sh
+curl -s -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1202' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: for-1' \
+  -d '{"requester": "s1201", "form": {"amount": 30000, "purpose": "課の本"}}' | jq -c '.ticket | {requester, made_by, stage}'
+```
+
+```
+{"requester":"s1201","made_by":"s1202","stage":"manager"}
+```
+
+承認者は、申請者（`requester`）の所属から決まります。プログラムに代わりをさせるときは、プログラムのための人を組織のデータに作り、その人を代理にします。
+
+## 管理する
+
+管理のページですることも、API でできます。役割を持つ人として操作します。
+
 | すること | 呼び出し |
 |---|---|
-| 切り替えられる申請の種類と、その版を並べる | `GET /admin/kinds` |
-| 版を切り替える | `POST /admin/kinds/{kind}/versions/{version}` |
-| 組織の新しいデータを確かめ、変わるところを読む | `POST /admin/organization/drafts`、`GET /admin/organization/drafts/{id}` |
+| 申請の種類と、その版を並べる | `GET /admin/kinds` |
+| 版を始める日を変える、止める | `POST /admin/kinds/{kind}/versions/{version}` |
+| 組織のデータを送って確かめる、確かめた結果を読む | `POST /admin/organization/drafts`、`GET /admin/organization/drafts/{id}` |
 | 確かめたデータを取り込む | `POST /admin/organization/imports` |
 | 記録を読む | `GET /admin/records`、`GET /admin/records.csv` |
 
-人事部長の e6001 が、切り替えられるものを並べ、`leave` の第 2 版を 2027-05-01 からにし、記録を CSV で読みます。
+購買の申請を止めてみます。`number` には、一覧にある版の `start.number` を書きます。だれかが先に切り替えていたら番号が合わないので、受け付けません。
 
 ```sh
-curl -s localhost:8080/admin/kinds -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' |
-  jq -c '.kinds[] | {name, current, versions: [.versions[] | {version, usable, start: .start.how}]}'
-curl -s -X POST localhost:8080/admin/kinds/leave/versions/2 -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' \
+curl -s localhost:8080/admin/kinds -H 'X-Person: s1001' -H 'X-Roles: system_admin' |
+  jq -c '.kinds[] | {name, current, versions: [.versions[] | {version, start: .start.how, number: .start.number}]}'
+curl -s -X POST localhost:8080/admin/kinds/purchase/versions/1 -H 'X-Person: s1001' -H 'X-Roles: system_admin' \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: switch-1' \
-  -d '{"start": "2027-05-01", "reason": "Start with the payroll month", "number": 0}' |
-  jq -c '.record | {what, kind, version, before, after, person, reason}'
-curl -s localhost:8080/admin/records.csv -H 'X-Person: e6001' -H 'X-Roles: workflow_admin'
+  -d '{"start": "never", "reason": "決まりを見直す", "number": 0}' | jq -c '.record | {what, kind, version, person, reason}'
+curl -s -w ' %{http_code}\n' -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-3' -d '{"form": {"amount": 120000, "purpose": "机"}}'
 ```
 
 ```
-{"name":"leave","current":1,"versions":[{"version":1,"usable":{"from":"2026-04-01","through":null},"start":"description"},{"version":2,"usable":{"from":"2027-04-01","through":null},"start":"description"}]}
-{"name":"leave_ja","current":1,"versions":[{"version":1,"usable":{"from":"2026-04-01","through":null},"start":"description"},{"version":2,"usable":{"from":"2027-04-01","through":null},"start":"description"}]}
-{"what":"kind","kind":"leave","version":2,"before":{"how":"description","at":1806505200,"day":"2027-04-01"},"after":{"how":"day","at":1809097200,"day":"2027-05-01"},"person":"e6001","reason":"Start with the payroll month"}
-﻿at,line,what,ticket,kind,version,number,person,via,event,did,stage,by,proxy_of,to,comment,note,before,after,reason
-2026-11-25T10:00:00+09:00,01M89785ZNRFX2Y9DKT0137W94,kind,,leave,2,,e6001,api,,,,,,,,,"{""how"":""description"",""at"":1806505200,""day"":""2027-04-01""}","{""how"":""day"",""at"":1809097200,""day"":""2027-05-01""}",Start with the payroll month
+{"name":"purchase","current":1,"versions":[{"version":1,"start":"description","number":0}]}
+{"what":"kind","kind":"purchase","version":1,"person":"s1001","reason":"決まりを見直す"}
+{"error":"no version of purchase is in effect now, and none is to start"} 404
 ```
 
-`number` は、一覧にある版の `start.number` です（ここでは 0）。ほかの管理者が切り替える前に読んだ番号で送ると、`stale` で拒否され、何も変わりません。CSV はバイト順マークで始まるので、表計算ソフトは UTF-8 として読みます。
-
-`-dev-login` では、ログインのページに、例の役割ごとのリンクがあります。それを押してから、人を選びます。
-
-### 有効な版がないあいだ
-
-有効な版がない申請の種類には、入力するフォームがありません。第 2 版は 2027-05-01 からなので、e6001 が `leave` の第 1 版を止めると、その申請は 404 になります。その日から出せる人には日付を返し、ほかの人には、存在しないパスと同じ応答を返します。
-
-```sh
-curl -s -X POST localhost:8080/admin/kinds/leave/versions/1 -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: switch-2' \
-  -d '{"start": "never", "reason": "Version 2 replaces it", "number": 0}' | jq -c '.kind.current'
-curl -s -w '\n' -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1201' -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: leave-1' -d '{"form": {"kind": "paid"}}'
-curl -s -w '\n' -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e0001' -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: leave-2' -d '{"form": {"kind": "paid"}}'
-```
-
-```
-null
-{"error":"no version of leave is in effect now: it may be requested from 2027-05-01","from":"2027-05-01"}
-{"error":"no such path"}
-```
-
-ページ、画面、エージェントのツールも、同じ日を示します。管理の操作が確かめること、gate に尋ねること、記録に残ることは、[設計](../DESIGN.ja.md)の 13 にあります。
-
-## PostgreSQL を使う
-
-`-db` を付けると、チケットと添付ファイルはデータベースに入ります。例の帳簿もそこに入ります。サーバーは帳簿の表を作り、どの部署にも 50,000,000 円の予算を、どの人にも 20 日の休暇を与えます。上の経費は、申請したときに営業一部の予算から 118,000 円を仮押さえし、承認されたときに確定します。
-
-```sh
-go run ./cmd/server -dev-login -db "postgres://localhost:5432/ringi"
-```
-
-`-db` を付けないときは、`-files <ディレクトリ>` で、添付ファイルをメモリの代わりにディレクトリに置けます。二つは一緒に使えません。
+進行中の申請は、そのまま最後まで進みます。このサーバーは何もかもメモリに置いているので、起動し直すと元に戻ります。

@@ -1,225 +1,129 @@
 # ringi-server
 
-ringi-server は、組織の申請と承認（経費、購買、休暇、アカウント、契約など）のための Go のフレームワークです。申請の種類は、[ritsu](https://github.com/i2y/ritsu) の言語の一つである ringi で書きます。書くのは、フォーム、だれがどの順で承認するか、期限、差し戻しや却下や取り下げのときにどうなるかです。ritsu はそれを検査し、申請を一つ一つどう進めるかを決める Go のコードを生成します。ringi-server は、そのコードを、人とプログラムとエージェントが使うサーバーとして動かします。
+ringi-server は、会社の申請と承認（稟議）のシステムを作るための Go のフレームワークです。
+
+購買、経費、休暇などの申請の種類ごとに、入力する項目と承認の決まりを一つのファイルに書きます。ringi-server を使うと、そのファイルのとおりに動くサーバーができます。社員はブラウザで申請して承認し、サーバーは承認者を探し、通知を送り、期限を管理し、履歴を残します。
 
 英語版は [README.md](README.md) です。
 
-| 承認者を待っている申請 | 承認者が見る申請 |
+## 書くもの
+
+購買の申請の、主なところです。差し戻しや取り下げの決まりは省きました。
+
+```ringi title="project/purchase.ringi"
+form
+  金額(amount)  : money[JPY] "金額"  range >=1JPY <=10_000_000JPY
+  目的(purpose) : long text "目的"  count >=1 <=500
+
+route
+  上長(manager)  上長
+  部長(head)     部長
+
+who
+  上長(manager)   = manager of requester
+  部長(dept_head) = head of requester.department
+
+every stage
+  due in 3 business days at end of day
+  remind after 2 business days at 09:00
+  when late expire
+```
+
+| 書く場所 | 内容 |
 |---|---|
-| <img src="docs/images/home.ja.webp" width="400" alt="ホーム。経費と休暇の申請が承認を待っている。出せる申請の種類と、自分の申請も並ぶ"> | <img src="docs/images/card.ja.webp" width="400" alt="経費の申請。入力された値、承認の経路、承認・却下・差し戻し・コメントのボタン"> |
+| `form` | 申請する人が入力する項目。金額は 1 円から 10,000,000 円まで、目的は 500 字まで |
+| `route` | 承認の順。まず上長、次に部長 |
+| `who` | 承認する人の決め方。申請した人の上長と、申請した人の部の長。だれになるかは、承認の順が回ってきた日の、会社の組織のデータで決まる |
+| `every stage` | 期限。3 営業日目の終わりまでに答えてもらう。2 営業日たっても答えがなければ催促し、期限を過ぎた申請は終わりにする |
 
-## できること
+ファイルは、ringi という言語で書きます。[ritsu](https://github.com/i2y/ritsu) というコマンドがこのファイルを検査して、申請を進める Go のコードを作ります。金額によって承認する人を増やす、二人のうち一人が答えればよい、差し戻しは二回まで、といった決まりも書けます（[ringi で書けること](https://i2y.github.io/ritsu/ja/ringi/language/)）。
 
-- **英語と日本語のページ。** 申請する、承認する、自分の申請の状況を見る、をブラウザで行えます。ページは、JavaScript がなくても、キーボードだけでも、スクリーンリーダーでも、幅の狭い画面でも使えます。
-- **どこから使っても同じ規則。** ページ、HTTP API、エージェントのツールは、ログインしている人として同じ操作を実行します。ボタンは、その人が押せるときにだけ出ます。受け付けないときは、その理由を、該当するフィールドのところに、その人の言語で示します。
-- **承認のまわりの仕事。** 期限と催促の時刻が来れば処理し、次の承認者へ回し、通知を送り、予算や休暇の帳簿を呼び、flow を始め、エージェントに尋ねます。失敗した処理は成功するまでやり直し、二度実行しても一度分にしかなりません。
-- **管理。** 管理者は、申請の種類の版を切り替え、組織の新しいデータを確かめて取り込み、だれが、いつ、なぜ、何を変えたかを読めます。ページでも API でもできます。
-- **データベースは一つ。** 申請とその履歴、添付ファイル、タイマーは PostgreSQL に入ります。一つのデータベースで複数のプロセスを動かせます。ほかに動かすものは要りません（申請の種類が Temporal の flow を始める場合を除きます）。
-- **約束どおりかを確かめる試験。** ritsu は、申請の種類ごとにテストベクタを書きます。このフレームワークには、サーバーをそのすべてと突き合わせるパッケージがあります。
+## 動くもの
+
+このファイルから、次のページができます。ページを作るコードは書きません。
+
+| 申請する人 | 承認する人 |
+|---|---|
+| <img src="docs/images/start-form.ja.webp" width="400" alt="購買の申請のフォーム。金額と目的を入力して、申請するボタンを押す"> | <img src="docs/images/start-card.ja.webp" width="400" alt="承認する人のページ。申請の内容と経路の下に、承認する、却下する、差し戻すのボタンがある"> |
+
+ボタンは、その人が押してよいときにだけ出ます。承認する人には承認、却下、差し戻しのボタンが、申請した人には取り下げるボタンが出ます。
+
+## 自分で書くもの、書かなくてよいもの
+
+自分で書くのは、会社ごとに違うことだけです。
+
+| 書くもの | 書き方 |
+|---|---|
+| 申請の種類。入力する項目、承認の順、期限、差し戻しの決まり | `.ringi` のファイル |
+| 会社の人、チーム、役職 | CSV のファイル |
+| 会社の営業日と休日 | `.cal` のファイル。最初からあるものを直す |
+| だれが何をしてよいか。見てよい人、管理する人 | `.gate` のファイル。最初からあるものを直す |
+| 通知の送り方 | Go のコード |
+| 予算や休暇の残り、承認のあとの処理 | `.book` と `.flow` のファイルと、Go のコード。使うときだけ |
+
+次のことは、サーバーがします。
+
+- 申請、承認、差し戻し、取り下げ、管理のためのページを出す。日本語と英語があり、スマートフォンでも使える
+- 承認する人を組織のデータから探し、順に回す
+- 期限を営業日で数え、催促し、期限切れにする
+- 通知を送り、失敗したら届くまでやり直す
+- ログインした人が、その操作をしてよいかを毎回確かめる
+- ボタンの二度押し、二人の同時の操作、古いページからの操作があっても、申請を正しく保つ
+- 申請、履歴、添付ファイルを PostgreSQL に保存する
+- 同じ操作ができる HTTP API と、エージェントのツールを出す
+
+できないこともあります。
+
+- ブラウザの上で申請の種類を組み立てる画面はありません。決まりはファイルに書き、検査し、Git で管理します。
+- サーバーが出すページの色やロゴは変えられません。見た目を自分で決めたいときは、API を使う画面を作ります（[自分の画面を作る](docs/screens.ja.md)）。
 
 ## しくみ
 
-![申請の種類、gate、組織を書く。ritsu がそこからコードを生成する。ringi-server がそれを、人とプログラムとエージェントのために動かす。PostgreSQL、ログインのプロバイダー、通知、帳簿、flow とつながる](docs/images/overview.ja.svg)
+![自分で書くのは、申請の種類、権限、組織のデータ。ritsu がそれを検査して Go のコードを作り、ringi-server がそのコードをサーバーとして動かす。人はブラウザで、プログラムは API で、エージェントはツールで使う。サーバーは PostgreSQL、ログインのプロバイダー、通知の送り先、予算の帳簿などとつながる](docs/images/overview.ja.svg)
 
-規則は、使う組織が書きます。ritsu はそこから、Go のパッケージと、サーバーが守る約束（OpenAPI の記述、画面、テストベクタ）を生成します。プロジェクトのコマンドは、生成されたパッケージと、組織ごとに違う部品をサーバーに渡します。残りはサーバーの仕事です。サーバー自身は、承認について何も決めません。その人がしてよいかを gate に尋ね、出来事を生成されたコードに渡し、コードが返した結果を保存します。
+1. 申請の種類、組織のデータ、権限を、ファイルに書きます。
+2. ritsu が、書いたものに食い違いや抜けがないかを検査し、申請をどう進めるかを決める Go のコードを作ります。
+3. ringi-server が、そのコードをサーバーとして動かします。次にだれへ回すか、いつ終わるかは、サーバーが自分で決めるのではなく、作られたコードに尋ねます。
 
-## 5 分で試す
+本番で動かすのに要るのは、PostgreSQL と、会社のログイン（OpenID Connect のサービス）です。サーバーは一つの実行ファイルで、何台でも動かせます。承認のあとの処理を Temporal で動かすときだけ、Temporal も要ります。
 
-Go 1.26 以降が要ります。ritsu の五つの例（経費、購買、休暇、アカウント、契約。それぞれ英語と日本語があります）を動かします。申請はメモリに置きます。
+## 試す
+
+Go 1.26 以降があれば、五つの申請の例（経費、購買、休暇、アカウント、契約）を動かせます。
 
 ```sh
-cd examples
+git clone https://github.com/i2y/ringi-server
+cd ringi-server/examples
 go run ./cmd/server -dev-login
 ```
 
-ブラウザで <http://localhost:8080/> を開きます。ログインのページに、架空の組織の人が並びます。
+ブラウザで <http://localhost:8080/> を開くと、架空の会社の人が並びます。「営業担当 1」を選んで経費を申請し、ログアウトして「営業一課長」を選ぶと、その申請を承認できます。申請はメモリに置くので、サーバーを止めると消えます。
 
-1. e1201（営業担当 1）を選び、領収書を付けて経費を申請します。
-2. ログアウトして、e1101（営業一課長）を選びます。ホームに、承認を待っている申請が出ます。
-3. その申請を開いて、承認します。
-
-`-dev-login` は本人を確かめないので、自分のコンピューターのアドレスでしか動きません。人にログインしてもらう方法は、[ログイン](#ログイン)にあります。
-
-`pages.sh` は、同じことを curl で、JavaScript のないブラウザと同じように行います。別の端末で、`examples/` で実行します（jq も要ります）。
-
-```sh
-./pages.sh
-```
-
-次のように表示されます。ID は毎回変わります。
-
-```
-1. e1203 (Sales staff 3) signs in, opens the form of a leave request and sends it:
-   303 http://127.0.0.1:8080/pages/tickets/01M7KSVDS42R2WGTT04B6HRP2B?lang=en
-2. e1101 (the manager of Section 1A) signs in; the start page and the list say what waits:
-   Leave request (1)
-   href="/pages/tickets/01M7KSVDS42R2WGTT04B6HRP2B?lang=en"
-3. e1101 opens the card and approves:
-   303 http://127.0.0.1:8080/pages/tickets/01M7KSVDS42R2WGTT04B6HRP2B?lang=en
-4. The same card sent again, as a second press of the button sends it, is answered as the first was:
-   303 http://127.0.0.1:8080/pages/tickets/01M7KSVDS42R2WGTT04B6HRP2B?lang=en
-5. The same card sent with another comment is refused: the request changed after it was shown:
-   409
-      The request changed after this page was shown. Here it is as it is now: check it, and try again.
-6. The ticket, as the API returns it to e1203 with the same cookie:
-   approved
-   submitted  e1203  Two days before the holidays.
-   approved  e1101  Enjoy the holidays.
-   ticket approved
-```
-
-出された申請を、API とコードではチケット（ticket）と呼びます。申請の種類は kind です。API と管理を一通り試す手順は、[API を curl で試す](docs/api.ja.md)にあります。
-
-## 自分のプロジェクトを始める
-
-`ritsu ringi init` は、プロジェクトの最初のファイルを書きます。申請の種類、それを出す組織、gate、ritsu がそこから生成するコード、このフレームワークで動くサーバー、試験です。ritsu（[入れ方](https://github.com/i2y/ritsu/blob/main/README.ja.md#入れ方)）と Go 1.26 以降が要ります。
-
-```sh
-ritsu ringi init shinsei --module example.com/acme/shinsei --lang ja
-```
-
-```
-shinsei に 53 個のファイルを書きました（モジュール example.com/acme/shinsei）。project/ に申請の種類と組織と gate、go/ と requests/ にそこから ritsu が生成したコード、cmd/server/ にフレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー、それと試験です。次に:
-  cd shinsei
-  go mod tidy
-  go test ./...
-  go run ./cmd/server -dev-login
-を走らせ、ブラウザで http://127.0.0.1:8080/pages/ を開きます。続きは README.ja.md にあります
-```
-
-`--module` は Go のモジュールのパスで、`go mod init` に渡すものと同じです。`--lang ja` を付けると、申請の種類と組織と gate の名前が日本語になり、README.ja.md も書きます。
-
-| パス | 中身 |
-|---|---|
-| `project/` | ritsu が読む規則。`purchase.ringi` は購買の申請で、金額と目的を入れ、申請した人の上長、次に部長が承認する。期限と催促もある。組織は `shared/company.ringi` と `org/`（三つの部、二つの課、十人）、gate は `shared/company.gate`、営業日のカレンダーは `shared/office.cal` |
-| `go/`、`requests/` | ritsu が `project/` から生成するもの。Go のパッケージと、約束 |
-| `generate.go` | `ritsu gen` を実行する `//go:generate` の行 |
-| `shinsei.go`、`gate.go`、`notify.go` | プロジェクトがサーバーに渡すもの。生成されたパッケージと組織、sekisho が生成した gate を呼ぶコード、通知をログに書く Notifier |
-| `cmd/server/` | サーバー。パッケージ `serve` に、上のものを渡す |
-| `*_test.go` | 試験。ベクタを API に流す `TestVectors`、gate の `TestGate`、ページで申請して承認する `TestPages` |
-
-書かれたファイルは、利用者のものです。`init` は、どのファイルも一度だけ書きます。すでにあるファイルがあれば、その名前を挙げて、何も書きません。`project/` を変えたら、`go generate ./...` が `go/` と `requests/` だけを書き直します。申請の種類や flow の足し方は、プロジェクトの README にあります。
-
-二つのオプションで、なくても動くものを足せます。
-
-- `--mcp` は、エージェントが呼ぶツール（モジュール `mcp`）を、サーバーの `/mcp` に置きます。ログインはページと同じです。
-- `--temporal` は、二つ目の申請の種類として経費を足します。承認されると、申請した人に払い戻す flow が始まります。flow は、モジュール `temporal` を使って Temporal で動かします。`temporal server start-dev` で、プロジェクトがつなぐ先の `localhost:7233` に Temporal のサーバーが起動します。
-
-```sh
-ritsu ringi init shinsei --module example.com/acme/shinsei --lang ja --mcp --temporal
-```
-
-```
-shinsei に 89 個のファイルを書きました（モジュール example.com/acme/shinsei）。project/ に申請の種類二つ（一つは flow を持つ）と組織と gate、go/ と requests/ にそこから ritsu が生成したコード、cmd/server/ にフレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー（/mcp にエージェントのツール）、cmd/worker/ に flow のワーカー、それと試験です。次に:
-  cd shinsei
-  go mod tidy
-  go test ./...
-を走らせ、Temporal の開発用サーバーを起動し（temporal server start-dev）、別々の端末で
-  go run ./cmd/worker
-  go run ./cmd/server -dev-login
-を走らせ、ブラウザで http://127.0.0.1:8080/pages/ を開きます。続きは README.ja.md にあります
-```
-
-## ログイン
-
-だれがリクエストを送ったかを見つける方法は、サーバーごとに一つです。パッケージ `serve` は、どのサーバーにも次の三つを用意します。フラグで選びます。
-
-| フラグ | だれのリクエストか | 用途 |
-|---|---|---|
-| なし | ヘッダー `X-Person`（と `X-Roles`）の人 | 自分のコンピューターで、curl で API を試す |
-| `-dev-login` | ページで選んだ人 | 自分のコンピューターで、ページを試す |
-| `-oidc-…` | 組織の OpenID Connect のプロバイダーでログインした人 | 人に使ってもらう |
-
-上の二つは本人を確かめません。自分のコンピューターのアドレスでしか動かず、プロキシが転送したリクエストは受け付けません。人に使ってもらうときは、プロバイダーの設定を渡します。
-
-```sh
-export RINGI_OIDC_CLIENT_SECRET='プロバイダーが発行したシークレット'
-export RINGI_SESSION_KEYS="$(head -c 32 /dev/urandom | base64)"
-go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
-  -oidc-issuer https://id.example.com \
-  -oidc-client-id ringi \
-  -oidc-redirect-url https://ringi.example.com:8443/login/callback
-```
-
-プロバイダーには、このサーバーを、シークレットを持つ認可コードフローのクライアントとして登録します。リダイレクト URI は上のもの、スコープは `openid email profile` です。ログインした人は、プロバイダーが確認済みとしているメールアドレスで、組織のデータから探します。役割は、`-oidc-roles-claim` で指定したクレームから取ります。詳しくは[ログイン](oidc/README.ja.md)に、そのほかに要ることは[人に使ってもらうサーバーを動かす](docs/operations.ja.md)にあります。
-
-## プロジェクトが用意するもの
-
-プロジェクトのコマンドは、自分の部品をサーバーに渡し、残りをパッケージ `serve` に任せます。例のコマンド [examples/cmd/server/main.go](examples/cmd/server/main.go) は、次のように渡しています。
-
-```go
-	return st.Serve(ctx, server.Config{
-		Packages:     []*server.Package{pkg, pkg2},
-		Gate:         &examples.Gate{Log: log},
-		Organization: examples.Organization(),
-		Notifier:     notices,
-		Flows:        examples.LogFlows{Log: log},
-		Agents:       agents,
-		Books:        books,
-		Logger:       log,
-	}, func(srv *server.Server) { agents.Server, notices.Server = srv, srv })
-```
-
-どの部品も、メソッドが数個のインターフェースです。
-
-| 部品 | インターフェース | フレームワークにあるもの |
-|---|---|---|
-| だれが何をしてよいか | `Gate` | sekisho が生成した gate を呼ぶコード。`ritsu ringi init` が書く（[examples/gate.go](examples/gate.go)）。試すだけなら `server.AllowAll` |
-| 組織のデータ | `OrgSource` | `orgfiles`。ritsu が読むのと同じファイルを読む |
-| 通知 | `Notifier` | なし。メールやチャットへの送信を書くまでは、ログに出る |
-| 帳簿 | `Books` | chobo が生成したクライアントを呼ぶコードの例（[examples/books.go](examples/books.go)） |
-| flow とエージェントのステップ | `Flows`、`Agents` | モジュール `temporal` |
-| だれがログインしたか | `Authenticator` | `oidc`。人をログインさせるプロキシの後ろでは `web.ProxyHeader`。自分のコンピューターで試すときは `devlogin` |
-| 申請を置く場所 | `Store` | `postgres`。試験用の `memstore` |
-| 添付ファイル | `Files` | PostgreSQL、ディレクトリ（`web.NewDiskFiles`）、メモリ |
-| 履歴の写し | `AuditLog` | なし。`servertest` に試験用のものがある |
-
-それぞれの部品が守ることは、[設計](DESIGN.ja.md)の 2.3 にあります。たとえば Notifier は、同じキーの通知を一度だけ送らなければなりません。自分のルートを足す方法と、パッケージ `serve` を使わずにサーバーを作る方法は、[自分のルートと、自分で作るサーバー](docs/embedding.ja.md)にあります。
-
-## 文書
-
-文書は[サイト](https://i2y.github.io/ringi-server/ja/)でも読めます。
+## 次に読むもの
 
 | したいこと | 読むもの |
 |---|---|
-| 申請の種類を書く | ritsu にある ringi の[ページ](https://i2y.github.io/ritsu/ja/ringi/)と[リファレンス](https://github.com/i2y/ritsu/blob/main/crates/ringi/docs/reference.md)（英語） |
-| API を呼ぶ、curl で管理する | [API を curl で試す](docs/api.ja.md) |
-| 人に使ってもらうサーバーを動かす | [人に使ってもらうサーバーを動かす](docs/operations.ja.md) |
-| ルートを足す、自分のプログラムに組み込む | [自分のルートと、自分で作るサーバー](docs/embedding.ja.md) |
-| ページ、画面、添付ファイルを知る | [ページ、画面、添付ファイル](web/README.ja.md)、[画面](screens/README.ja.md)、[素の HTML のページ](screens/page/README.ja.md) |
-| 人にログインしてもらう | [ログイン](oidc/README.ja.md) |
-| エージェントに申請と承認をさせる | [エージェントのツール](mcp/README.ja.md) |
-| flow とエージェントのステップを動かす | [flow とエージェントのステップ](temporal/README.ja.md) |
-| サーバーが何をするかと、その理由を正確に知る | [設計](DESIGN.ja.md) |
-| フレームワークを直す、自分の Store を試験する | [フレームワークを直す、自分のサーバーを試験する](CONTRIBUTING.ja.md) |
+| 自分の会社の申請を作り始める | [1. 動かして、申請を承認する](docs/start.ja.md)、[2. 申請の種類を書き換える](docs/change.ja.md)、[3. 通知をメールで送る](docs/mail.ja.md) |
+| どう動くのか、言葉の意味を知る | [しくみと言葉](docs/concepts.ja.md) |
+| 社員に使い方を伝える | [申請する](docs/use/requester.ja.md)、[承認する](docs/use/approver.ja.md)、[管理する](docs/use/admin.ja.md) |
+| 申請の種類を増やす、変える | [申請の種類を足す、変える](docs/types.ja.md)、[フォームの選択肢を一覧から読む](docs/lists.ja.md) |
+| 自分の会社の人、営業日、権限を入れる | [組織のデータを用意する](docs/organization.ja.md)、[営業日と祝日を決める](docs/calendar.ja.md)、[だれが何をしてよいかを決める](docs/permissions.ja.md) |
+| 会社のログイン、通知、予算、承認のあとの処理とつなぐ | [ログインをつなぐ](docs/sign-in.ja.md)、[通知の送り方を変える](docs/notices.ja.md)、[予算や休暇の残りを確かめる](docs/books.ja.md)、[承認のあとの処理を始める](docs/flows.ja.md) |
+| 自分の画面、プログラム、エージェントから使う | [プログラムから API を呼ぶ](docs/api.ja.md)、[エージェントに申請と承認をさせる](docs/agents.ja.md)、[承認の経路でエージェントに確かめさせる](docs/agent-steps.ja.md)、[自分の画面を作る](docs/screens.ja.md)、[自分のプログラムに組み込む](docs/embedding.ja.md) |
+| 社員に使ってもらうサーバーを動かす | [用意して起動する](docs/operations.ja.md)、[バックアップと版の上げ方](docs/maintenance.ja.md)、[監視する、困ったとき](docs/troubleshooting.ja.md) |
+| フラグ、上限、エラーの意味を調べる | [フラグと設定](docs/reference.ja.md)、[受け付けない理由](docs/refusals.ja.md)、[部品とパッケージ](docs/parts.ja.md) |
 
-## パッケージとモジュール
-
-本体は、ルートのモジュールにあります。別のライブラリに依存する三つは、別のモジュールです。
-
-| パッケージ、モジュール | 中身 |
-|---|---|
-| `server`（ルート） | 申請、タイマー、これから送るもの、管理、HTTP の API（`Server` は `http.Handler`）、同じ操作の Go の関数（`Do`、`Try`、`Waiting`、`Mine`、`Can` など） |
-| `serve` | サーバーのコマンドライン。どのサーバーにもあるフラグとその検査、フラグが指す Store、ログイン、HTTP サーバー |
-| `web` | API の手前に置く、ページと画面と添付ファイル |
-| `screens`、`screens/page` | ritsu が生成した画面（A2UI）にサーバーのデータを入れたもの。同じ画面の、素の HTML のページ |
-| `oidc`、`devlogin` | ログイン |
-| `postgres`、`memstore` | 申請と添付ファイルを置く場所 |
-| `orgfiles` | 組織のデータをファイルから読む |
-| `servertest`、`conformance` | 試験用の部品と、サーバーを約束と突き合わせる試験 |
-| `temporal/`（モジュール） | Temporal で動かす flow とエージェントのステップ |
-| `mcp/`（モジュール） | Model Context Protocol で、エージェントが呼ぶツール |
-| `examples/`（モジュール。公開しない） | このフレームワークで動かす ritsu の五つの例と、それを試すサーバー |
+これらの文書は、[サイト](https://i2y.github.io/ringi-server/ja/)でも読めます。
 
 ## 版
 
-サーバーが動かすのは、ritsu の特定の版が生成したコードです。二つの版は組で使います。
+ringi-server と ritsu は、次の組み合わせで使います。
 
 | ringi-server | ritsu | 約束の版 | 新しいこと |
 |---|---|---|---|
 | v0.1.0 | 0.56.0 | 3 | 最初の版 |
 
-`ritsu ringi init` が書く `go.mod` は、生成したコードに合う版を要求します。モジュール `mcp` と `temporal` も同じ版です。約束の版が違うパッケージを渡されたサーバーは、リクエストを受ける前に、そう表示して止まります。動いているサーバーの版の上げ方は、[版を上げる](docs/operations.ja.md#版を上げる)にあります。
+「約束の版」は、ritsu が作るコードとサーバーの受け渡しの決まりに付けた番号です。番号の合わないコードを渡すと、サーバーはそのことを表示して、起動しません。版の上げ方は、[版を上げる](docs/maintenance.ja.md#版を上げる)にあります。
 
 ## ライセンス
 

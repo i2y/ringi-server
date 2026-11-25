@@ -1,4 +1,5 @@
 # what build.sh writes
+__pycache__/
 .cache/
 .venv/
 build/

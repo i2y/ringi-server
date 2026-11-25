@@ -9,7 +9,7 @@ depends on the standard library and the framework's core (the package `server`) 
 
 A server whose command is package `serve` (the one `ritsu ringi init` makes, and the example server)
 already signs people in with this package when it is given its `-oidc-…` flags
-([Signing in](../README.md#signing-in) in the README). Read [Use](#use) below for a server made in
+([Connect the sign-in](../docs/sign-in.md)). Read [Use](#use) below for a server made in
 Go.
 
 ## Register the server at the provider

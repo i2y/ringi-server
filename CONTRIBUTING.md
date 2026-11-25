@@ -72,8 +72,8 @@ more than Go, and are skipped without it; with `-v`, `go test` names them on lin
 | `RINGI_TEST_DATABASE`, a PostgreSQL database the tests may write in | the store, the conformance tests and the books on PostgreSQL |
 | `node` on the `PATH` | the screens and the pages' script, run as a browser runs them |
 | `bash`, `curl` and `jq` on the `PATH` | the commands of the documents |
-| ritsu, on the `PATH` or named by `RITSU` | the projects `ritsu ringi init` writes and the README's commands that start them (`scaffold`, a few minutes), and the flows of the examples (`temporal`) |
-| the Temporal CLI, in the SDK's cache or named by `TEMPORAL_CLI` | the flows on Temporal's dev server |
+| ritsu, on the `PATH` or named by `RITSU` | the projects `ritsu ringi init` writes (`scaffold`, a few minutes), the documents that work in one (`examples`, a few minutes), and the flows of the examples (`temporal`) |
+| the Temporal CLI, in the SDK's cache or named by `TEMPORAL_CLI` | the flows on Temporal's dev server, and the documents that use them |
 
 ### What the examples show
 
@@ -113,12 +113,16 @@ They open the pages, the administration's too, in English and in Japanese, light
 - the date field of a switch, a zip of the organization's files chosen and imported, and the record's
   CSV saved.
 
-`RINGI_SHOTS` names a directory for the pictures of the documents, and `TestShots` takes them:
+`RINGI_SHOTS` names a directory for the pictures of the documents. `TestShots` takes those of the
+examples, and `TestGuideShots` those of the tutorial, in a project ritsu makes:
 
 ```sh
 cd examples
-RINGI_SHOTS=../docs/images RINGI_BROWSER=/path/to/a/browser go test -tags browser -run TestShots .
+RINGI_SHOTS=../docs/images RINGI_BROWSER=/path/to/a/browser go test -tags browser -run 'TestShots|TestGuideShots' .
 ```
+
+The other pictures are drawn by `docs/images/figures.py`, which writes the SVG files of both
+languages.
 
 ### In CI
 
@@ -134,28 +138,35 @@ line of their files says. While it is not released, they do not run, and the run
 
 ## The documents
 
-Each document is in English and, beside it, in Japanese. `TestDocuments` runs the commands of
-README.md, docs/api.md, web/README.md and mcp/README.md (and of their Japanese versions) as they are
-written, on the example server, and holds what they print to what the document shows. Other tests
-hold the two languages to the same commands and code, the Go code to files that are compiled, the SQL
-to the tables, and the links to what is there. `TestReadme`, in `scaffold`, runs the README's commands
-that start a project, and holds what they print to what it shows.
+Each document is in English and, beside it, in Japanese. The tests of the examples' module hold them
+to what the code does:
 
-When an output changes for a good reason, write it into the documents again, and read the difference:
+| Test | What it holds |
+|---|---|
+| `TestGuides` | runs the tutorial and the guides of `docs/` in projects `ritsu ringi init` makes: the commands, the files the blocks write and change, and what is printed |
+| `TestDocuments` | runs the commands of README.md, web/README.md and mcp/README.md on the server of the examples, and holds what they print |
+| `TestDocumentsInBothLanguages` | a document and its Japanese version have the same commands and the same code |
+| `TestDocumentsGo`, `TestDocumentsSQL` | the Go code is in files that are compiled, and the SQL runs on the server's tables |
+| `TestDocumentsFlags`, `TestDocumentsLog`, `TestDocumentsNumbers` | the flags, the lines of the log and the limits are the code's |
+| `TestDocumentsLinks` | each link leads to something that is there |
+
+When an output changes for a good reason, write it into the documents again, and read the difference.
+`RINGI_GUIDES` names one of the guides, to run only that one and those it goes on from:
 
 ```sh
 cd examples
 RINGI_DOCS=write go test -run 'TestDocuments$' .
+RINGI_DOCS=write RINGI_GUIDES=docs/mail.md go test -run 'TestGuides$' .
 ```
 
 ### The site
 
-<https://i2y.github.io/ringi-server/> shows the same documents, each as a page. `website/pages.py`
-writes the pages from the documents. It stops at a line that GitHub and the site would show in
-different ways, and at a line break in a sentence of Japanese, which would show as a space.
-`website/finish.py` checks what was built: the nav of each language lists every page, and every link
-leads somewhere. A new document needs its place in both navs (`website/zensical.toml` and
-`website/zensical.ja.toml`).
+<https://i2y.github.io/ringi-server/> shows README.md and the documents of `docs/`, each as a page.
+`website/pages.py` writes the pages from the documents. It stops at a line that GitHub and the site
+would show in different ways, and at a line break in a sentence of Japanese, which would show as a
+space. `website/tools` colours ritsu's languages. `website/finish.py` checks what was built: the nav
+of each language lists every page, and every link leads somewhere. A new document needs its place in
+both navs (`website/zensical.toml` and `website/zensical.ja.toml`).
 
 To build the site and see it on your own computer, with Python 3.11 or later:
 

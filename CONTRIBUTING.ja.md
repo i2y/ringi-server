@@ -65,8 +65,8 @@ RINGI_TEST_DATABASE="postgres://localhost:5432/ringi_test" go test -race ./...
 | `RINGI_TEST_DATABASE`（試験が書き込んでよい PostgreSQL のデータベース） | PostgreSQL の上の Store、突き合わせ、帳簿 |
 | `PATH` にある `node` | 画面と、ページのスクリプト（ブラウザと同じように実行する） |
 | `PATH` にある `bash`、`curl`、`jq` | 文書のコマンド |
-| ritsu（`PATH` か、環境変数 `RITSU`） | `ritsu ringi init` が書くプロジェクトと、README に載せた `ritsu ringi init` のコマンド（どちらも `scaffold`。数分）、例の flow（`temporal`） |
-| Temporal の CLI（SDK のキャッシュか、環境変数 `TEMPORAL_CLI`） | Temporal の開発用サーバーの上の flow |
+| ritsu（`PATH` か、環境変数 `RITSU`） | `ritsu ringi init` が書くプロジェクト（`scaffold`。数分）、プロジェクトの中で動かす文書（`examples`。数分）、例の flow（`temporal`） |
+| Temporal の CLI（SDK のキャッシュか、環境変数 `TEMPORAL_CLI`） | Temporal の開発用サーバーの上の flow と、それを使う文書 |
 
 ### 例での結果
 
@@ -97,12 +97,14 @@ RINGI_BROWSER=/path/to/a/browser go test -tags browser -run Browser .
 - スクリプトが書く名前に、言語の印が付いていること。
 - 版の切り替えの日付のフィールド、組織のファイルの zip を選んで取り込むこと、記録の CSV を保存すること。
 
-文書の写真は、`RINGI_SHOTS` に置き場所を指定して、`TestShots` で撮ります。
+文書の写真は、`RINGI_SHOTS` に置き場所を指定して撮ります。例のサーバーの写真は `TestShots`、チュートリアルの写真は、ritsu が作るプロジェクトを使う `TestGuideShots` が撮ります。
 
 ```sh
 cd examples
-RINGI_SHOTS=../docs/images RINGI_BROWSER=/path/to/a/browser go test -tags browser -run TestShots .
+RINGI_SHOTS=../docs/images RINGI_BROWSER=/path/to/a/browser go test -tags browser -run 'TestShots|TestGuideShots' .
 ```
+
+ほかの図は、`docs/images/figures.py` が、両方の言語の SVG のファイルを書きます。
 
 ### CI
 
@@ -112,18 +114,28 @@ ritsu が要る手順では、例を書いた版（例のファイルの一行�
 
 ## 文書
 
-どの文書にも英語版があり、隣に日本語版があります。`TestDocuments` は、README.md、docs/api.md、web/README.md、mcp/README.md と、それぞれの日本語版にあるコマンドを、書いてあるとおりに例のサーバーで実行し、出力を文書と突き合わせます。ほかの試験は、二つの言語のコマンドとコードが同じであること、Go のコードがコンパイルしているファイルのとおりであること、SQL が表に合うこと、リンクの先があることを確かめます。`scaffold` の `TestReadme` は、README に載せた `ritsu ringi init` のコマンドを実行し、表示を README と突き合わせます。
+どの文書にも英語版があり、隣に日本語版があります。例のモジュールの試験が、文書とコードが合っていることを確かめます。
 
-出力が変わるのが正しいときは、文書に書き直して、差分を読みます。
+| 試験 | 確かめること |
+|---|---|
+| `TestGuides` | `docs/` のチュートリアルと手引きを、`ritsu ringi init` が作るプロジェクトで実行する。コマンド、ブロックが書くファイルと直すファイル、出力 |
+| `TestDocuments` | README.md、web/README.md、mcp/README.md のコマンドを、例のサーバーで実行し、出力を突き合わせる |
+| `TestDocumentsInBothLanguages` | 文書とその日本語版のコマンドとコードが同じ |
+| `TestDocumentsGo`、`TestDocumentsSQL` | Go のコードがコンパイルしているファイルにある。SQL がサーバーの表で動く |
+| `TestDocumentsFlags`、`TestDocumentsLog`、`TestDocumentsNumbers` | フラグ、ログの行、上限がコードのとおり |
+| `TestDocumentsLinks` | リンクの先がある |
+
+出力が変わるのが正しいときは、文書に書き直して、差分を読みます。`RINGI_GUIDES` に手引きを一つ書くと、それと、その前提になるものだけを実行します。
 
 ```sh
 cd examples
 RINGI_DOCS=write go test -run 'TestDocuments$' .
+RINGI_DOCS=write RINGI_GUIDES=docs/mail.md go test -run 'TestGuides$' .
 ```
 
 ### サイト
 
-同じ文書は、<https://i2y.github.io/ringi-server/ja/> でも読めます。一つの文書が 1 ページです。`website/pages.py` が、文書からページを書きます。GitHub とサイトで見え方が違う行や、日本語の文の途中の改行（空白になって見えます）があると、そこで止まります。`website/finish.py` は、できたサイトを確かめます。どちらの言語のメニューにもすべてのページが並んでいることと、すべてのリンクの先があることです。文書を足すときは、両方のメニュー（`website/zensical.toml` と `website/zensical.ja.toml`）に並べます。
+README.ja.md と `docs/` の文書は、<https://i2y.github.io/ringi-server/ja/> でも読めます。一つの文書が 1 ページです。`website/pages.py` が、文書からページを書きます。GitHub とサイトで見え方が違う行や、日本語の文の途中の改行（空白になって見えます）があると、そこで止まります。`website/tools` は、ritsu の言語に色を付けます。`website/finish.py` は、できたサイトを確かめます。どちらの言語のメニューにもすべてのページが並んでいることと、すべてのリンクの先があることです。文書を足すときは、両方のメニュー（`website/zensical.toml` と `website/zensical.ja.toml`）に並べます。
 
 サイトを自分のコンピューターで作って見るには、Python 3.11 以降で次を実行します。
 

@@ -67,7 +67,7 @@ type tab struct {
 }
 
 // openBrowser starts the browser on the server at base and opens a page in it.
-func openBrowser(t *testing.T, base string) *tab {
+func openBrowser(t *testing.T, base string, more ...string) *tab {
 	t.Helper()
 	program := os.Getenv("RINGI_BROWSER")
 	if program == "" {
@@ -83,15 +83,18 @@ func openBrowser(t *testing.T, base string) *tab {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(program,
-		"--headless", "--remote-debugging-pipe", "--user-data-dir="+profile,
+	if len(more) == 0 {
+		more = []string{"about:blank"}
+	}
+	cmd := exec.Command(program, append([]string{
+		"--headless", "--remote-debugging-pipe", "--user-data-dir=" + profile,
 		"--no-first-run", "--no-default-browser-check", "--disable-background-networking",
 		"--disable-component-update", "--disable-sync", "--disable-default-apps", "--disable-extensions",
 		"--disable-client-side-phishing-detection", "--disable-domain-reliability", "--disable-breakpad",
 		"--no-pings", "--metrics-recording-only", "--use-mock-keychain", "--password-store=basic",
 		"--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1",
 		"--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=127.0.0.1",
-		"--hide-scrollbars", "--force-color-profile=srgb", "--window-size=1280,900", "about:blank")
+		"--hide-scrollbars", "--force-color-profile=srgb", "--window-size=1280,900"}, more...)...)
 	cmd.ExtraFiles = []*os.File{in, out}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

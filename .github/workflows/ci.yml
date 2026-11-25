@@ -84,9 +84,9 @@ jobs:
             done
           done
 
-      # These two start projects with ritsu: the job `ritsu` runs them.
+      # TestInit and TestGuides start projects with ritsu: the job `ritsu` runs them.
       - name: Test the framework
-        run: ci/test.sh -race -timeout 30m ./... -skip '^(TestInit|TestReadme)$'
+        run: ci/test.sh -race -timeout 30m ./... -skip '^TestInit$'
 
       - name: Test the agents' tools
         working-directory: mcp
@@ -94,7 +94,7 @@ jobs:
 
       - name: Test the examples
         working-directory: examples
-        run: ../ci/test.sh -race -timeout 60m ./...
+        run: ../ci/test.sh -race -timeout 60m ./... -skip '^TestGuides$'
 
   # The pages in the browser of the runner, with the fonts of the pages' Japanese.
   browser:
@@ -123,11 +123,11 @@ jobs:
           "$RINGI_BROWSER" --version
           ../ci/test.sh -tags browser -run Browser .
 
-  # The flows on Temporal's dev server, and what ritsu writes: the examples and the projects of
-  # `ritsu ringi init`.
+  # The flows on Temporal's dev server, and what ritsu writes: the examples, the projects of
+  # `ritsu ringi init`, and the documents that work in one.
   ritsu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       TEMPORAL_CLI_VERSION: "1.10.1"
       TEMPORAL_CLI_SHA256: "4c1500e2ce2d4de136e5fe8852d9b7f82eb62f19b6b383b3e0c040519a9d20b1"
@@ -212,4 +212,9 @@ jobs:
 
       - name: Test the projects ritsu starts
         if: steps.ritsu.outputs.released == 'true'
-        run: ci/test.sh -timeout 40m -run '^(TestInit|TestReadme)$' ./scaffold
+        run: ci/test.sh -timeout 40m -run '^TestInit$' ./scaffold
+
+      - name: Test the documents that work in a project
+        if: steps.ritsu.outputs.released == 'true'
+        working-directory: examples
+        run: ../ci/test.sh -timeout 40m -run '^TestGuides$' .

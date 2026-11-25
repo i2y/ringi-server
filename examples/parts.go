@@ -41,7 +41,7 @@ var noticeWords = map[string][4]string{
 	"waiting":     {"Waiting for your answer", "waits for your answer", "承認待ち", "は、あなたの承認を待っています"},
 	"reminder":    {"Reminder", "still waits for your answer", "承認の催促", "は、まだあなたの承認を待っています"},
 	"went_up":     {"Went up", "went up to the next approver", "上の承認者へ", "は、上の承認者に回りました"},
-	"returned":    {"Sent back", "was sent back", "差し戻し", "は、差し戻されました"},
+	"returned":    {"Back with the requester", "is back with its requester", "申請者に戻りました", "は、申請者に戻りました"},
 	"decided":     {"Decided", "was decided", "結果", "は、結果が出ました"},
 	"circulation": {"For you to read", "is passed round to you to read", "回覧", "が、回覧で届きました"},
 	"paused":      {"Paused", "was paused", "一時停止", "は、一時停止されました"},

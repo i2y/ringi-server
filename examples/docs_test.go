@@ -24,15 +24,17 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// documents are the documents whose commands are run, from the root of the repository, each with
-// its Japanese version beside it.
-var documents = []string{"README.md", "docs/api.md", "web/README.md", "mcp/README.md"}
+// documents are the documents whose commands are run with the server of the examples, from the root
+// of the repository, each with its Japanese version beside it. TestGuides runs those that work in a
+// project of their own.
+var documents = []string{"README.md", "web/README.md", "mcp/README.md"}
 
 // writtenAt is the time the servers of the documents start at: their commands name days, and what
 // waits for whom depends on the day.
@@ -40,20 +42,26 @@ const writtenAt = "2026-11-25T10:00:00+09:00"
 
 // notRun are the blocks the test does not run, by what their first command begins with, and why.
 var notRun = []struct{ begins, why string }{
-	{"ritsu ringi init", "the tests of the scaffold run it"},
-	{"export RINGI_OIDC_CLIENT_SECRET=", "it needs a provider"},
-	{"go run ./cmd/server -dev-login -db ", "it needs a database"},
 	{"go test ", "it runs the tests"},
 }
 
 // docBlock is a fenced block of a document.
 type docBlock struct {
-	lang     string // what follows the fence: sh, go, json… ("" for output)
+	lang     string // the first word after the fence: sh, go, json… ("" for output)
+	title    string // the file it is of, when the fence says title="…"
+	hl       []int  // its lines the fence highlights with hl_lines="…", from 1
 	lines    []string
 	from, to int // the lines of the document it is, the fences left out
+	indent   string
 }
 
 func (b docBlock) text() string { return strings.Join(b.lines, "\n") + "\n" }
+
+var (
+	fenceLine  = regexp.MustCompile("^( *)```([^\\s`]*)(.*)$")
+	fenceTitle = regexp.MustCompile(`\btitle="([^"]*)"`)
+	fenceLines = regexp.MustCompile(`\bhl_lines="([0-9 -]*)"`)
+)
 
 // docBlocks are the fenced blocks of a document, in their order.
 func docBlocks(t *testing.T, path string) (lines []string, blocks []docBlock) {
@@ -64,13 +72,32 @@ func docBlocks(t *testing.T, path string) (lines []string, blocks []docBlock) {
 	}
 	lines = strings.Split(string(raw), "\n")
 	for i := 0; i < len(lines); i++ {
-		lang, ok := strings.CutPrefix(lines[i], "```")
-		if !ok {
+		m := fenceLine.FindStringSubmatch(lines[i])
+		if m == nil {
 			continue
 		}
-		b := docBlock{lang: lang, from: i + 1}
-		for i++; i < len(lines) && lines[i] != "```"; i++ {
-			b.lines = append(b.lines, lines[i])
+		b := docBlock{lang: m[2], indent: m[1], from: i + 1}
+		if title := fenceTitle.FindStringSubmatch(m[3]); title != nil {
+			b.title = title[1]
+		}
+		if hl := fenceLines.FindStringSubmatch(m[3]); hl != nil {
+			for n := range strings.FieldsSeq(hl[1]) {
+				first, last, ranged := strings.Cut(n, "-")
+				if !ranged {
+					last = first
+				}
+				at, err := strconv.Atoi(first)
+				to, err2 := strconv.Atoi(last)
+				if err != nil || err2 != nil || to < at {
+					t.Fatalf("%s:%d: hl_lines %q", path, b.from, n)
+				}
+				for ; at <= to; at++ {
+					b.hl = append(b.hl, at)
+				}
+			}
+		}
+		for i++; i < len(lines) && lines[i] != b.indent+"```"; i++ {
+			b.lines = append(b.lines, strings.TrimPrefix(lines[i], b.indent))
 		}
 		if i == len(lines) {
 			t.Fatalf("%s:%d: the block does not end", path, b.from)
@@ -153,7 +180,7 @@ func runDocument(t *testing.T, path, bin string) {
 		}
 		of++
 		commands := b.lines
-		for len(commands) > 0 && (strings.HasPrefix(commands[0], "cd ") || strings.HasPrefix(commands[0], "#")) {
+		for len(commands) > 0 && slices.ContainsFunc([]string{"cd ", "git clone ", "#"}, func(p string) bool { return strings.HasPrefix(commands[0], p) }) {
 			commands = commands[1:]
 		}
 		if len(commands) == 0 {
@@ -214,51 +241,55 @@ func runDocument(t *testing.T, path, bin string) {
 	}
 }
 
-// TestDocumentsInBothLanguages holds a document and its Japanese version to the same commands and
-// the same code: the comments may be in each language, and what ritsu ringi init writes and what is
-// asked for in a language may differ.
+// TestDocumentsInBothLanguages holds a document and its Japanese version to the same blocks, in the
+// same order: the same commands and the same code, but for what is said in a language (the comments,
+// the strings, the names of the project ritsu ringi init makes).
 func TestDocumentsInBothLanguages(t *testing.T) {
-	comment := regexp.MustCompile(`\s*(?:#|//) .*$`)
-	// what is asked for in a language, and the words of a language in the place of a value
-	perLanguage := regexp.MustCompile(`ritsu ringi init|lang=(en|ja)|^export [A-Z_]+='`)
-	inEnglish := strings.NewReplacer(`'Accept-Language: ja'`, `'Accept-Language: en'`, ` -lang ja`, ` -lang en`, `"ja"`, `"en"`, `"営業担当 1"`, `"Sales staff 1"`)
+	// what is said or asked for in a language
+	perLanguage := regexp.MustCompile(`ritsu ringi init|^export RITSU_LANG=|^export [A-Z_]+=''`)
+	inEnglish := strings.NewReplacer(`shinsei`, `approvals`, `-lang ja`, `-lang en`, `lang=ja`, `lang=en`)
 	placeholder := regexp.MustCompile(`<[^<>]+>`)
-	var docs []string
-	for _, pattern := range []string{"../*.md", "../*/*.md", "../*/*/*.md"} {
-		found, _ := filepath.Glob(pattern)
-		for _, p := range found {
-			if !strings.HasSuffix(p, ".ja.md") && !strings.Contains(p, "/testdata/") && !strings.HasPrefix(p, "../examples/") {
-				docs = append(docs, p)
+	bare := func(b docBlock) (out []string) {
+		for _, l := range b.lines {
+			l = strings.TrimRight(unsaid(inEnglish.Replace(l), b.lang), " \t")
+			if l != "" && !perLanguage.MatchString(l) {
+				out = append(out, placeholder.ReplaceAllString(l, "<…>"))
 			}
 		}
+		return out
 	}
-	compared := 0
-	for _, doc := range docs {
+	// the blocks of a document, without those that only choose the language of its commands
+	blocksOf := func(path string) (out []docBlock) {
+		_, blocks := docBlocks(t, path)
+		for _, b := range blocks {
+			if b.lang != "sh" || len(bare(b)) > 0 || !strings.HasPrefix(b.lines[0], "export RITSU_LANG=") {
+				out = append(out, b)
+			}
+		}
+		return out
+	}
+	compared, documents := 0, 0
+	for _, doc := range allDocuments(t) {
+		if strings.HasSuffix(doc, ".ja.md") {
+			continue
+		}
 		if _, err := os.Stat(japanese(doc)); err != nil {
 			t.Errorf("%s has no Japanese version", doc)
 			continue
 		}
-		_, en := docBlocks(t, doc)
-		_, ja := docBlocks(t, japanese(doc))
+		documents++
+		en, ja := blocksOf(doc), blocksOf(japanese(doc))
 		if len(en) != len(ja) {
 			t.Errorf("%s has %d blocks, its Japanese version %d", doc, len(en), len(ja))
 			continue
 		}
 		for i := range en {
-			if en[i].lang != ja[i].lang {
-				t.Errorf("%s:%d is %q, %s:%d is %q", doc, en[i].from, en[i].lang, japanese(doc), ja[i].from, ja[i].lang)
+			if en[i].lang != ja[i].lang || en[i].title != inEnglish.Replace(ja[i].title) {
+				t.Errorf("%s:%d is %q of %q, %s:%d is %q of %q", doc, en[i].from, en[i].lang, en[i].title, japanese(doc), ja[i].from, ja[i].lang, ja[i].title)
 				continue
 			}
-			if en[i].lang != "sh" && en[i].lang != "go" {
+			if !slices.Contains([]string{"sh", "go", "sql"}, en[i].lang) {
 				continue
-			}
-			bare := func(b docBlock) (out []string) {
-				for _, l := range b.lines {
-					if l = strings.TrimRight(comment.ReplaceAllString(l, ""), " "); l != "" && !perLanguage.MatchString(l) {
-						out = append(out, placeholder.ReplaceAllString(inEnglish.Replace(l), "<…>"))
-					}
-				}
-				return out
 			}
 			compared++
 			if a, b := bare(en[i]), bare(ja[i]); !slices.Equal(a, b) {
@@ -266,7 +297,35 @@ func TestDocumentsInBothLanguages(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("%d blocks of commands and code of %d documents are the same in both languages", compared, len(docs))
+	t.Logf("%d blocks of commands and code of %d documents are the same in both languages", compared, documents)
+}
+
+// unsaid is a line of code without its comment and without what is in its quotes.
+func unsaid(line, lang string) string {
+	var out strings.Builder
+	var quote byte
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if quote != 0 {
+			if c == '\\' && quote == '"' {
+				i++
+			} else if c == quote {
+				out.WriteByte(c)
+				quote = 0
+			}
+			continue
+		}
+		if i == 0 || line[i-1] == ' ' || line[i-1] == '\t' { // a comment begins after a space
+			if strings.HasPrefix(line[i:], "# ") && lang == "sh" || strings.HasPrefix(line[i:], "// ") && lang == "go" || strings.HasPrefix(line[i:], "-- ") && lang == "sql" {
+				break
+			}
+		}
+		if c == '"' || c == '\'' || c == '`' && lang == "go" {
+			quote = c
+		}
+		out.WriteByte(c)
+	}
+	return out.String()
 }
 
 // docShell is the shell of a document's commands, and the server they are sent to.

@@ -1,320 +1,299 @@
-# The API, with curl
+# Call the API from a program
 
-This page takes a request from its making to its decision through the HTTP API, and then goes through
-the answers, the lists, the searches and the administration. The commands run on the example server.
-A server of your own has the same paths for its own request types; `requests/openapi.json`, which
-`ritsu gen` writes, describes them one by one. Japanese: [api.ja.md](api.ja.md).
+What the pages do, the HTTP API does too. Use it to make requests from another system of your company, or to read
+whether one has been approved. Japanese: [api.ja.md](api.ja.md).
 
-In the API, a request someone made is a *ticket*, and a request type is a *kind*.
+To be told when a request has been approved, do not read the API again and again: [start work after an
+approval](flows.md), or [change how notices are sent](notices.md).
 
-## Start the server
+This page uses the project of [the tutorial](start.md), and takes a request from its form to its approval with
+curl. It needs curl and jq.
 
-In `examples/`, with Go 1.26 or later, curl and jq:
+Every operation on requests is in `requests/openapi.json` (OpenAPI 3.1). ritsu makes it from the request types, so
+it has the types and the ranges of the fields too.
+
+In the API, one request is a ticket (`ticket`). The request type is `kind` in URLs and arguments, and `request`
+in the tickets of the answers.
+
+## Whose operation it is
+
+An operation of the API is always someone's. How the server finds that person depends on how it was started.
+
+| Server | Whose operation it is |
+|---|---|
+| Started with no flags | The person in the header `X-Person`, with the roles in `X-Roles`, separated by commas. Only from your own computer |
+| With `-dev-login` | The person chosen on the page of the trial sign-in (a cookie) |
+| With your organization's sign-in | The person who signed in (the cookie of a browser) |
+| One you put together yourself | The person found in the way you wrote |
+
+A program with no one to sign in cannot call the API of a server with your organization's sign-in as it is. For
+programs, put the server together yourself, and let it take their tokens ([Take the tokens of
+programs](embedding.md#2-take-the-tokens-of-programs)).
+
+From here on, this page uses the first. In the directory of the project, start the server with no flags.
 
 ```sh
 go run ./cmd/server
 ```
 
-The requests are kept in memory. Who sends a request is the header `X-Person`, a person's ID in the
-organization's data, with their roles in `X-Roles`. It checks no one, so the server takes it only on
-an address of your own computer, and only on requests sent to one: a page of another site that makes
-your browser send requests here finds no one. On a server for people, the same calls carry a
-session's cookie instead ([Signing in](../README.md#signing-in)).
+## From a request to its approval
 
-## From the making to the decision
+### Make a request
 
-[drive.sh](../examples/drive.sh) makes an expense request and takes it to its decision. In another
-terminal, in `examples/`:
+Make a purchase request as Sales staff 1 (s1201). A POST has a JSON body, and a number for that operation
+(`Idempotency-Key`). The number can be any string, different for each operation.
 
 ```sh
-./drive.sh
-```
-
-```
-1. What e1201 (on the sales staff of Section 1A) may submit:
-   account  Account request
-   account_ja  アカウントの申請
-   contract  Contract review
-   contract_ja  契約の確認
-   expense  Expense request
-   expense_ja  経費の申請
-   leave  Leave request
-   leave_ja  休暇の申請
-   purchase  Purchase ringi
-   purchase_ja  購買の稟議
-2. e1201 attaches the receipts, and asks for a trip to Fukuoka, 118,000 yen:
-   ticket 01M89783QJ6FRF0K259NXW4W9H: in_progress, at the stage first
-3. What e1101 (the manager of Section 1A) waits for:
-   01M89783QJ6FRF0K259NXW4W9H  expense  first
-4. e1101 approves it:
-   in_progress, at the stage decide
-5. e3101 (the head of Sales Department 1) approves what was shown before e1101's approval:
-   refused, stale: `approve` was made on the ticket at round 1, stage 1 of the ticket, 0 edits, and it is at round 1, stage 2 of the ticket, 0 edits now: the ticket is to be shown again
-6. e3101 decides it on what is shown now:
-   approved
-7. The ticket's history, as e1201 sees it:
-   submitted  e1201  
-   approved  e1101  
-   approved  e3101  Have a good trip
-   ticket approved    
-8. e1201 asks for a day trip of 12,000 yen, which the agent decides:
-   approved: submitted, agent asked, agent ok, ticket approved
-```
-
-The server's log shows what went out after each save: the notices (where a server of yours sends
-mail), the flow `pay` that each approved expense starts, and the agent that decided the day trip.
-Each notice is written in the language of the person it goes to: the one the organization's data
-gives them, else the language of the kind.
-
-```
-level=INFO msg=notice notice=waiting to="e1101 e1101@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783QJ6FRF0K259NXW4W9H：承認待ち body=経費の申請（01M89783QJ6FRF0K259NXW4W9H）は、あなたの承認を待っています（ステップ：first）。 ticket=01M89783QJ6FRF0K259NXW4W9H stage=first
-level=INFO msg=notice notice=waiting to="e3101 e3101@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783QJ6FRF0K259NXW4W9H：承認待ち body=経費の申請（01M89783QJ6FRF0K259NXW4W9H）は、あなたの承認を待っています（ステップ：decide）。 ticket=01M89783QJ6FRF0K259NXW4W9H stage=decide
-level=INFO msg="flow launched" flow=pay kind=expense ticket=01M89783QJ6FRF0K259NXW4W9H run=01M89783QJ6FRF0K259NXW4W9H/1/17
-level=INFO msg=notice notice=decided to="e1201 e1201@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783QJ6FRF0K259NXW4W9H：結果 body=経費の申請（01M89783QJ6FRF0K259NXW4W9H）は、結果が出ました。 ticket=01M89783QJ6FRF0K259NXW4W9H stage=""
-level=INFO msg="agent asked" flow=travel_decision kind=expense ticket=01M89783SSWWJ5M5EA80VAPNNH stage=decide note=false
-level=INFO msg="agent answered" flow=travel_decision ticket=01M89783SSWWJ5M5EA80VAPNNH verdict=ok outcome=ok
-level=INFO msg="flow launched" flow=pay kind=expense ticket=01M89783SSWWJ5M5EA80VAPNNH run=01M89783SSWWJ5M5EA80VAPNNH/1/12
-level=INFO msg=notice notice=decided to="e1201 e1201@example.com" lang=ja kind=expense title=経費の申請 title_lang=ja subject=【経費の申請】01M89783SSWWJ5M5EA80VAPNNH：結果 body=経費の申請（01M89783SSWWJ5M5EA80VAPNNH）は、結果が出ました。 ticket=01M89783SSWWJ5M5EA80VAPNNH stage=""
-```
-
-Start the server with `-verdict doubt` and the agent hands the day trip to the manager instead.
-
-## One call at a time
-
-e1203 makes a leave request. A POST has a body in `application/json` and a key of its own
-(`Idempotency-Key`): sent again with the same key, it is done once, and answered the same.
-
-```sh
-curl -s -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1203' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-1' \
-  -d '{"form": {"kind": "paid", "first_day": "2026-12-28", "days": 2, "reason": "A trip home"}}' > made.json
+curl -s -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-1' \
+  -d '{"form": {"amount": 120000, "purpose": "A laptop for the new member"}}' > made.json
 jq -c '.ticket | {id, status, stage, revision}' made.json
 TICKET=$(jq -r '.ticket.id' made.json)
 REVISION=$(jq -c '.ticket.revision' made.json)
 ```
 
 ```
-{"id":"01M89785T0X2VT6RJDS6BBBKV7","status":"in_progress","stage":"manager","revision":{"edits":0,"round":1,"stage":0}}
+{"id":"01M89M0RBPS2H5M8HF082BPSN9","status":"in_progress","stage":"manager","revision":{"edits":0,"round":1,"stage":0}}
 ```
 
-e1101 finds it among what waits for them, and approves it as it was shown (`revision`):
+`id` is the number of the request, and `stage` the stage it is at. `revision` says how far the request has come.
+The next operation uses it.
+
+### Read what waits, and approve it
+
+The manager of Sales Section 1 (s1101) finds it in the list of what waits for them, and approves it. An approval
+has the `revision` of when it was read.
 
 ```sh
-curl -s localhost:8080/waiting -H 'X-Person: e1101' | jq -c '.tickets[] | {id, request, stage}'
-curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: e1101' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-2' \
-  -d "{\"revision\": $REVISION, \"comment\": \"Enjoy\"}" | jq -c '.ticket | {status, revision}'
+curl -s localhost:8080/waiting -H 'X-Person: s1101' | jq -c '.tickets[] | {id, request, stage}'
+curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: s1101' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: ok-1' \
+  -d "{\"revision\": $REVISION, \"comment\": \"Go ahead\"}" | jq -c '.ticket | {status, stage, revision}'
 ```
 
 ```
-{"id":"01M89785T0X2VT6RJDS6BBBKV7","request":"leave","stage":"manager"}
-{"status":"approved","revision":{"edits":0,"round":1,"stage":null}}
+{"id":"01M89M0RBPS2H5M8HF082BPSN9","request":"purchase","stage":"manager"}
+{"status":"in_progress","stage":"head","revision":{"edits":0,"round":1,"stage":1}}
 ```
 
-The same call with the same key is answered as the first was, and changes nothing:
+It went to the next stage, the head of Sales (s1001).
 
-```sh
-curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: e1101' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-2' \
-  -d "{\"revision\": $REVISION, \"comment\": \"Enjoy\"}" | jq -c '.ticket | {status, revision}'
-```
+### Send the same operation again
 
-```
-{"status":"approved","revision":{"edits":0,"round":1,"stage":null}}
-```
-
-What the rules refuse is answered 409, with which rule it is, why, and the place of the form it is
-about:
+When the connection is cut and you cannot tell whether the operation was carried out, send it again with the same
+`Idempotency-Key`. It is carried out only once, and the first answer comes back.
 
 ```sh
-curl -s -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1203' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: one-3' \
-  -d '{"form": {"kind": "paid", "first_day": "2026-12-28", "days": 0}}' | jq .
+curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: s1101' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: ok-1' \
+  -d "{\"revision\": $REVISION, \"comment\": \"Go ahead\"}" | jq -c '.ticket | {status, stage, revision}'
+```
+
+```
+{"status":"in_progress","stage":"head","revision":{"edits":0,"round":1,"stage":1}}
+```
+
+### When it is not taken
+
+An operation the rules do not allow is answered 409, with the reason. Here the head of Sales approves with the
+`revision` read before the manager's approval.
+
+```sh
+curl -s -X POST localhost:8080/tickets/$TICKET/approve -H 'X-Person: s1001' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: ok-2' \
+  -d "{\"revision\": $REVISION}" | jq .
 ```
 
 ```json
 {
-  "refused": "form",
-  "text": "`0` is outside the range of `days` (`>=1 <=20`)",
-  "text_ja": "`0` は、`days` の範囲（`>=1 <=20`）の外です",
-  "at": "days"
+  "refused": "stale",
+  "text": "`approve` was made on the ticket at round 1, stage 1 of the ticket, 0 edits, and it is at round 1, stage 2 of the ticket, 0 edits now: the ticket is to be shown again",
+  "text_ja": "`approve` はチケットの 1 回目、1 番目のステップ、直し 0 回のときのものですが、チケットは今 1 回目、2 番目のステップ、直し 0 回です。チケットを見せ直してください",
+  "at": null
 }
 ```
 
-### The answers
+`refused` is the kind of reason ([Why something is refused](refusals.md)). Here, read the request again, and send
+the operation with its new `revision` and a new `Idempotency-Key`. When the reason is a value of the form, `at` is
+its field.
+
+```sh
+curl -s -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-2' \
+  -d '{"form": {"amount": 0, "purpose": "A laptop for the new member"}}' | jq -c '{refused, text, at}'
+```
+
+```
+{"refused":"form","text":"`0JPY` is outside the range of `amount` (`>=1JPY <=10_000_000JPY`)","at":"amount"}
+```
+
+### Read a request and its history
+
+Someone who may see a request reads it, with its history, at `GET /tickets/{id}`. Others are answered 404.
+
+```sh
+curl -s localhost:8080/tickets/$TICKET -H 'X-Person: s1201' | jq -c '.history[] | {did, stage, by, comment}'
+curl -s -w ' %{http_code}\n' localhost:8080/tickets/$TICKET -H 'X-Person: s1202'
+```
+
+```
+{"did":"submitted","stage":null,"by":"s1201","comment":null}
+{"did":"approved","stage":"manager","by":"s1101","comment":"Go ahead"}
+{"error":"no such ticket"} 404
+```
+
+## The operations
+
+| What | Call |
+|---|---|
+| List the request types one can make a request of | `GET /requests` |
+| List the requests that wait for one, and one's own | `GET /waiting`, `GET /mine` |
+| Read a request and its history | `GET /tickets/{id}` |
+| Make a request, submit it again | `POST /requests/{kind}/tickets`, `POST /requests/{kind}/tickets/{id}/resubmit` |
+| Fill in the fields an approver fills in | `POST /requests/{kind}/tickets/{id}/edit` |
+| Approve, reject, send back | `POST /tickets/{id}/approve`, `…/reject`, `…/send_back` |
+| Take back an approval (until the next stage has answered) | `POST /tickets/{id}/retract` |
+| Add an approver, hand a place over | `POST /tickets/{id}/add_approver`, `…/hand_over` |
+| Put on hold, go on | `POST /tickets/{id}/pause`, `…/resume` |
+| Comment | `POST /tickets/{id}/comment` |
+| Withdraw, discard | `POST /tickets/{id}/withdraw`, `…/discard` |
+| Read the organization's data, and a list of choices | `GET /organization`, `GET /masters/{file}/{master}` |
+| Find people, teams and choices by words | `GET /find/people`, `GET /find/teams`, `GET /find/masters/{file}/{master}` |
+| Attach a file | `POST /files` (there is an example in [the README of the pages](../web/README.md#with-curl)) |
+
+`requests/openapi.json` says what goes in each body. An operation that no request type uses is not in it. Who may
+do which is as on the pages.
+
+## The answers
 
 | Status | Body | When |
 |---|---|---|
-| 200 | `{"ticket": …}`, for an operation on a ticket | it is done |
-| 400 | `{"error": …}` | the body is not read, or a POST has no key, or the key was used for another operation |
-| 401 | `{"error": …}` | no one is signed in |
-| 404 | `{"error": …}` | there is no such ticket, or the person may not see it |
-| 409 | `{"refused": …, "text": …, "text_ja": …, "at": …}` | the rules refuse it. `at` is the place of the form it is about (`items[1].price` in a row), or null |
-| 413, 415 | `{"error": …}` | the body is too large; it is not JSON |
-| 429 | `{"error": …}` | too many of them; `Retry-After` says when, if waiting helps |
-| 500 | `{"error": …}` | the server failed, and logged why |
+| 200 | `{"ticket": …}` for an operation on a request | It was carried out |
+| 400 | `{"error": …}` | The body cannot be read. A POST has no `Idempotency-Key`. The same number was used for another operation |
+| 401 | `{"error": …}` | No one is signed in |
+| 403 | `{"error": …}` | It was sent by a browser with a page of another site open |
+| 404 | `{"error": …}` | There is no such request, the person may not see it, the request type has no version in use now, or there is no such URL |
+| 409 | `{"refused": …, "text": …, "text_ja": …, "at": …}` | The rules do not allow it. `at` is the field of the form it comes from (`items[1].price` in a row), or null |
+| 413, 415 | `{"error": …}` | The body is too large, or is not JSON |
+| 429 | `{"error": …}` | Too many. When it is enough to wait, `Retry-After` says how long |
+| 500 | `{"error": …}` | The server failed. Its log says why. You may send it again with the same number |
 
-A refusal is kept with its key too: the same key is refused the same, so a corrected call takes a
-key of its own. [The design](../DESIGN.md), 7.1, has every case.
+An answer of 409 is kept with its number too. When you put the operation right and send it again, give it a new
+number. A number and its answer are kept for 30 days.
 
-### The operations
+## Read the rest of a list
 
-| To | Call |
+`GET /waiting` and `GET /mine` answer the newest first, up to 50 at a time without `limit`.
+
+| Argument | What it means |
 |---|---|
-| list the kinds one may make, or read what waits and one's own | `GET /requests`, `GET /waiting`, `GET /mine` |
-| read a ticket and its history | `GET /tickets/{id}` |
-| make a request, or make again one sent back | `POST /requests/{kind}/tickets`, `POST /requests/{kind}/tickets/{id}/resubmit` |
-| fill in or correct the fields an approver gives | `POST /requests/{kind}/tickets/{id}/edit` |
-| answer at a stage | `POST /tickets/{id}/approve`, `…/reject`, `…/send_back` |
-| take one's own approval back, while the next stage has no answer | `POST /tickets/{id}/retract` |
-| add an approver, or hand one's place over | `POST /tickets/{id}/add_approver`, `…/hand_over` |
-| comment | `POST /tickets/{id}/comment` |
-| stop and start a ticket's deadlines | `POST /tickets/{id}/pause`, `…/resume` |
-| withdraw a request, or discard one sent back | `POST /tickets/{id}/withdraw`, `…/discard` |
-| read the organization, or a master's rows | `GET /organization`, `GET /masters/{file}/{master}` |
-| attach a file | `POST /files` ([with curl](../web/README.md#with-curl)) |
+| `kind` | Only one request type |
+| `status` | Only one status (`/mine` only) |
+| `limit` | How many at a time (1 to 100) |
+| `before` | Only those older than the request of this number |
 
-Who may do each is the gate's and the kind's to say. [The pages and the screens](../web/README.md)
-and [the agents' tools](../mcp/README.md) run the same operations.
-
-## The lists
-
-`GET /waiting` lists the tickets that wait for the person, and `GET /mine` the person's own requests,
-the newest first. `kind` keeps one kind, and on `/mine`, `status` one state. A page has `limit`
-tickets (1 to 100, 50 when not given); `more` says whether others follow, and `before`, the ID of the
-last one, asks for them:
+When `more` of the answer is `true`, there are more. Put the number of the last request in `before`, and read
+again.
 
 ```sh
-curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: e1201' | jq -c '{shown: [.tickets[] | [.id, .request, .status]], more}'
-LAST=$(curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: e1201' | jq -r '.tickets[-1].id')
-curl -s "localhost:8080/mine?limit=1&before=$LAST" -H 'X-Person: e1201' | jq -c '{shown: [.tickets[] | [.id, .request, .status]], more}'
+curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: s1201' | jq -c '{shown: [.tickets[] | [.id, .request, .status]], more}'
 ```
 
 ```
-{"shown":[["01M89783SSWWJ5M5EA80VAPNNH","expense","approved"]],"more":true}
-{"shown":[["01M89783QJ6FRF0K259NXW4W9H","expense","approved"]],"more":false}
+{"shown":[["01M89M0RBPS2H5M8HF082BPSN9","purchase","in_progress"]],"more":false}
 ```
 
-## What a form works out
+## Have it work out a form filled in part
 
-`POST /requests/{kind}/worked` says what the form of a kind works out of the values given so far, as
-the pages and the screens do: whether a field that depends on others is shown or required, and each
-total (null while it is not decided). It keeps nothing. `POST /requests/{kind}/tickets/{id}/worked`
-does the same for an approver's corrections.
+Before a request is made, it can work out its total, and which fields the other values show and require. It keeps
+nothing, so it needs no `Idempotency-Key`.
 
 ```sh
-curl -s -w '\n' -X POST localhost:8080/requests/expense/worked -H 'X-Person: e1201' -H 'Content-Type: application/json' \
-  -d '{"form": {"category": "travel", "items": [{"what": "Flight to Fukuoka and back", "price": 64000}]}}'
-curl -s -w '\n' -X POST localhost:8080/requests/expense/worked -H 'X-Person: e1201' -H 'Content-Type: application/json' \
-  -d '{"form": {"category": "purchase", "items": [{"what": "A desk lamp", "price": 4800}]}}'
+curl -s -w '\n' -X POST localhost:8080/requests/purchase/worked -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -d '{"form": {"amount": 120000}}'
 ```
 
 ```
-{"fields":{"amount":{"value":64000},"receipt":{"required":true},"trip_to":{"shown":true}}}
-{"fields":{"amount":{"value":4800},"receipt":{"required":false},"trip_to":{"shown":false}}}
+{"fields":{}}
 ```
 
-## Finding people, teams and rows
+A purchase request has nothing to work out, so it is empty. For [the example of an expense with a
+total](../examples/project/expense.ringi), it is like
+`{"fields":{"amount":{"value":64000},"receipt":{"required":true},"trip_to":{"shown":true}}}`. What an approver fills
+in is at `POST /requests/{kind}/tickets/{id}/worked`.
 
-`GET /find/people`, `GET /find/teams` and `GET /find/masters/{file}/{master}` find the values a form
-chooses among by words, the closest first. They take `q` (the words), `limit` (1 to 100, 20 when not
-given), `lang` (`en` or `ja`) and, for the rows of a master, `on` (the day they may be chosen on).
+## Find people and teams
+
+The value of a field that chooses a person can be found by a part of their name, the nearest first.
 
 ```sh
-curl -s -w '\n' 'localhost:8080/find/people?q=sales&limit=3&lang=en' -H 'X-Person: e1201'
-curl -s -w ' %{http_code}\n' 'localhost:8080/find/people?q=sales' -H 'X-Person: x9999'
+curl -s -w '\n' -G localhost:8080/find/people --data-urlencode 'q=Sales' -d 'limit=2&lang=en' -H 'X-Person: s1201'
 ```
 
 ```
-{"found":[{"value":"e1201","name":"Sales staff 1","label":"Sales staff 1 (e1201)"},{"value":"e1203","name":"Sales staff 3","label":"Sales staff 3 (e1203)"},{"value":"e0101","name":"Head of Sales Division","label":"Head of Sales Division (e0101)"}],"more":true}
-{"error":"the organization is read by its people only, and x9999 is not in the version in effect on 2026-11-25"} 404
+{"found":[{"value":"s1201","name":"Sales staff 1","label":"Sales staff 1 (s1201)"},{"value":"s1202","name":"Sales staff 2","label":"Sales staff 2 (s1202)"}],"more":true}
 ```
 
-The people and the teams are found by the people of the organization only, as the second answer says.
+## Make a request for someone else
 
-## The administration
+Someone who may make requests for a person makes one with that person's ID as `requester` in the body. Who may is
+in `proxies.csv` of the organization's data ([Set proxies](organization.md#set-proxies)). Here Sales staff 2 may
+make requests for Sales staff 1.
 
-An administrator switches the versions of the kinds, imports new data of the organization, and reads
-the record of both with what was done to each ticket. The pages under `/pages/admin/` do it, and so
-does the API. The gate says who may: in the examples, `workflow_admin` administers the kinds their
-own department owns, `system_admin` everything, and `auditor` reads every record and changes
-nothing. Start the server again, so that the numbers below are as they were at first:
+```csv title="project/org/proxies.csv"
+person,proxy,kind,from,to,requests
+s1201,s1202,submit,2026-04-01,,purchase
+```
+
+Start the server again, and make a request as Sales staff 2.
 
 ```sh
 go run ./cmd/server
 ```
 
-| To | Call |
+```sh
+curl -s -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1202' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: for-1' \
+  -d '{"requester": "s1201", "form": {"amount": 30000, "purpose": "Books for the section"}}' | jq -c '.ticket | {requester, made_by, stage}'
+```
+
+```
+{"requester":"s1201","made_by":"s1202","stage":"manager"}
+```
+
+The approvers come from the team of the requester (`requester`). To let a program make requests for others, add a
+person for the program to the organization's data, and let that person make them.
+
+## Administer it
+
+What the pages for administrators do, the API does too. Act as someone with a role.
+
+| What | Call |
 |---|---|
-| list the kinds one may switch, with their versions | `GET /admin/kinds` |
-| switch a version | `POST /admin/kinds/{kind}/versions/{version}` |
-| check new data of the organization, and read what it changes | `POST /admin/organization/drafts`, `GET /admin/organization/drafts/{id}` |
-| import what was checked | `POST /admin/organization/imports` |
-| read the record | `GET /admin/records`, `GET /admin/records.csv` |
+| List the request types and their versions | `GET /admin/kinds` |
+| Change the day a version starts, or stop it | `POST /admin/kinds/{kind}/versions/{version}` |
+| Send the organization's data to be checked, and read what came of it | `POST /admin/organization/drafts`, `GET /admin/organization/drafts/{id}` |
+| Import the data that was checked | `POST /admin/organization/imports` |
+| Read the record | `GET /admin/records`, `GET /admin/records.csv` |
 
-e6001, the head of Human Resources, lists what they may switch, switches the second version of `leave`
-to start on 2027-05-01, and reads the record as CSV:
+Stop the purchase request. `number` is `start.number` of the version in the list. If someone switched it before
+you, the numbers differ, and it is not taken.
 
 ```sh
-curl -s localhost:8080/admin/kinds -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' |
-  jq -c '.kinds[] | {name, current, versions: [.versions[] | {version, usable, start: .start.how}]}'
-curl -s -X POST localhost:8080/admin/kinds/leave/versions/2 -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' \
+curl -s localhost:8080/admin/kinds -H 'X-Person: s1001' -H 'X-Roles: system_admin' |
+  jq -c '.kinds[] | {name, current, versions: [.versions[] | {version, start: .start.how, number: .start.number}]}'
+curl -s -X POST localhost:8080/admin/kinds/purchase/versions/1 -H 'X-Person: s1001' -H 'X-Roles: system_admin' \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: switch-1' \
-  -d '{"start": "2027-05-01", "reason": "Start with the payroll month", "number": 0}' |
-  jq -c '.record | {what, kind, version, before, after, person, reason}'
-curl -s localhost:8080/admin/records.csv -H 'X-Person: e6001' -H 'X-Roles: workflow_admin'
+  -d '{"start": "never", "reason": "The rules are under review", "number": 0}' | jq -c '.record | {what, kind, version, person, reason}'
+curl -s -w ' %{http_code}\n' -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1201' \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-3' -d '{"form": {"amount": 120000, "purpose": "A desk"}}'
 ```
 
 ```
-{"name":"leave","current":1,"versions":[{"version":1,"usable":{"from":"2026-04-01","through":null},"start":"description"},{"version":2,"usable":{"from":"2027-04-01","through":null},"start":"description"}]}
-{"name":"leave_ja","current":1,"versions":[{"version":1,"usable":{"from":"2026-04-01","through":null},"start":"description"},{"version":2,"usable":{"from":"2027-04-01","through":null},"start":"description"}]}
-{"what":"kind","kind":"leave","version":2,"before":{"how":"description","at":1806505200,"day":"2027-04-01"},"after":{"how":"day","at":1809097200,"day":"2027-05-01"},"person":"e6001","reason":"Start with the payroll month"}
-﻿at,line,what,ticket,kind,version,number,person,via,event,did,stage,by,proxy_of,to,comment,note,before,after,reason
-2026-11-25T10:00:00+09:00,01M89785ZNRFX2Y9DKT0137W94,kind,,leave,2,,e6001,api,,,,,,,,,"{""how"":""description"",""at"":1806505200,""day"":""2027-04-01""}","{""how"":""day"",""at"":1809097200,""day"":""2027-05-01""}",Start with the payroll month
+{"name":"purchase","current":1,"versions":[{"version":1,"start":"description","number":0}]}
+{"what":"kind","kind":"purchase","version":1,"person":"s1001","reason":"The rules are under review"}
+{"error":"no version of purchase is in effect now, and none is to start"} 404
 ```
 
-`number` is the version's `start.number` as the list says it (0 here). A switch sent with a number
-read before another administrator's switch is refused as `stale`, and changes nothing. The CSV begins
-with a byte order mark, so that a spreadsheet reads it as UTF-8.
-
-With `-dev-login`, the page of signing in has a link for each role of the examples: press one, and
-then choose the person.
-
-### While no version is in effect
-
-A kind with no version in effect has no form to fill. e6001 switches version 1 of `leave` off, while
-version 2 starts on 2027-05-01. A request of it is then 404: with that day, to a person who may make
-it from then; as a path there is not, to anyone else.
-
-```sh
-curl -s -X POST localhost:8080/admin/kinds/leave/versions/1 -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: switch-2' \
-  -d '{"start": "never", "reason": "Version 2 replaces it", "number": 0}' | jq -c '.kind.current'
-curl -s -w '\n' -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1201' -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: leave-1' -d '{"form": {"kind": "paid"}}'
-curl -s -w '\n' -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e0001' -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: leave-2' -d '{"form": {"kind": "paid"}}'
-```
-
-```
-null
-{"error":"no version of leave is in effect now: it may be requested from 2027-05-01","from":"2027-05-01"}
-{"error":"no such path"}
-```
-
-The pages, the screens and the agents' tools say the same day. [The design](../DESIGN.md), 13, says
-what each operation of the administration checks, what the gate is asked, and what the record holds.
-
-## With PostgreSQL
-
-With `-db`, the tickets and the attachments go to a database, and so do the examples' books: the
-server makes their tables, and gives each department a budget of 50,000,000 yen and each person 20
-days of leave. The expense above holds 118,000 yen of the budget of Sales Department 1 when it is
-made, and posts it when it is approved.
-
-```sh
-go run ./cmd/server -dev-login -db "postgres://localhost:5432/ringi"
-```
-
-Without `-db`, `-files <dir>` keeps the attachments in a directory instead of memory. The two do not
-go together.
+The requests in progress go on to their end. This server keeps everything in memory, so it is as it was when it is
+started again.

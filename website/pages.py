@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Writes the pages of the site, pages/en and pages/ja, from the documents of the repository.
 
-Each document is a page, in English and in Japanese: README.md is the home page, docs/api.md the page
-api, web/README.md the page web, DESIGN.md the page design and web/DESIGN.md the page design/web. A
-link to another document leads to its page, and a link to any other file of the repository to the file
-on GitHub. The sentence that names the document in the other language is left out, as every page has a
-switch for it, and so is the one of the README that names the site.
+README.md is the home page, and each document of docs/ is a page: docs/api.md the page api, and
+docs/use/approver.md the page use/approver. Each is in English and in Japanese. A link to one of them
+leads to its page, and a link to any other file of the repository to the file on GitHub: the READMEs of
+the packages, the designs. The sentence that names the document in the other language is left out, as
+every page has a switch for it, and so is the one of the README that names the site.
 
 The documents are read as GitHub reads them, too. What the site's Markdown would show in another way
 stops this, naming the line, and so does a break in a sentence of Japanese, which shows as a space.
@@ -25,22 +25,22 @@ SUFFIX = {"en": ".md", "ja": ".ja.md"}
 
 # What a page leaves out: the sentences that name the document in the other language, and the site.
 LEFT_OUT = {
-    "en": re.compile(r"\s*\bJapanese:\s+\[[^\]]+\]\([^)\s]+\.ja\.md\)\.|The documents are on \[the site\]\([^)]+\) too\.\n"),
-    "ja": re.compile(r"英語版?(?:は |：)\[[^\]]+\]\([^)\s]+\.md\)(?: です)?。|文書は\[サイト\]\([^)]+\)でも読めます。\n"),
+    "en": re.compile(r"\s*\bJapanese:\s+\[[^\]]+\]\([^)\s]+\.ja\.md\)\.|These documents are on\s+\[the\s+site\]\([^)]+\) too\.\n"),
+    "ja": re.compile(r"英語版は \[[^\]]+\]\([^)\s]+\.md\) です。|これらの文書は、\[サイト\]\([^)]+\)でも読めます。\n"),
 }
 # A code span, or where a link, a picture or a tag leads.
 TARGET = re.compile(r"(?P<code>(`+)(?!`).+?(?<!`)\2(?!`))|(?P<link>\]\((?P<to>[^)\s]+)\))|(?P<src>\bsrc=\"(?P<file>[^\"]+)\")", re.S)
-FENCE = re.compile(r"(?ms)^```.*?^```[ ]*$")
+FENCE = re.compile(r"(?ms)^(?P<indent> *)```.*?^(?P=indent)```[ ]*$")
 ITEM = re.compile(r" {0,3}(?P<mark>[-*+]|\d+[.)]) ")
 
 
 def documents() -> list[str]:
-    """The English documents, each of which has a Japanese one beside it."""
+    """The documents that are pages, in English, each of which has a Japanese one beside it."""
     files = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "*.md"],
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "README.md", "README.ja.md", "docs/*.md"],
         cwd=REPO, check=True, capture_output=True, text=True,
     ).stdout.split()
-    files = [f for f in files if not f.startswith("examples/") and "/testdata/" not in f and (REPO / f).exists()]
+    files = [f for f in files if (REPO / f).exists()]
     english = [f for f in files if not f.endswith(".ja.md")]
     for f in english:
         if f.removesuffix(".md") + ".ja.md" not in files:
@@ -52,27 +52,24 @@ def documents() -> list[str]:
 
 def page_of(document: str) -> str:
     """The page of an English document, as a path in pages/en and pages/ja."""
-    directory, name = os.path.split(document)
-    match name:
-        case "README.md":
-            return f"{directory}.md" if directory else "index.md"
-        case "DESIGN.md":
-            return f"design/{directory}.md" if directory else "design/index.md"
-        case _:
-            return f"{'' if directory == 'docs' else directory + '/'}{name.lower()}".lstrip("/")
+    return "index.md" if document == "README.md" else document.removeprefix("docs/")
 
 
 def problems(text: str, language: str) -> list[tuple[int, str]]:
     """The lines that GitHub reads as one thing and the site's Markdown as another, and, in Japanese,
     the ones that break a sentence, as a break shows as a space."""
     out: list[tuple[int, str]] = []
-    state = ""  # what the line before is: "paragraph", "item", "after" (an empty line after an item), "fence"
+    state = ""  # what the line before is: "paragraph", "item", "after" (an empty line after an item)
     kind = ""  # of the items of the list
+    fence = None  # the state a block of code goes back to
     for n, line in enumerate(text.split("\n"), 1):
         item = ITEM.match(line)
-        if line.startswith("```"):
-            state = "" if state == "fence" else "fence"
-        elif state == "fence":
+        if line.strip().startswith("```"):
+            if fence is not None:
+                state, fence = fence, None
+            else:
+                fence = "after" if line.startswith("    ") else ""
+        elif fence is not None:
             continue
         elif not line.strip():
             state = "after" if state in ("item", "after") else ""
@@ -93,7 +90,7 @@ def problems(text: str, language: str) -> list[tuple[int, str]]:
         elif state == "after" and line.startswith(" ") and not line.startswith("    "):
             out.append((n, "a second paragraph of an item is indented by 4"))
         else:
-            state = "" if line.startswith(("#", "|")) else "paragraph"
+            state = "" if line.lstrip().startswith(("#", "|")) else "paragraph"
     return out
 
 
@@ -131,9 +128,7 @@ def write(document: str, language: str, pages: dict[str, str]) -> None:
         if m["link"]:
             return f"]({target(m['to'])})"
         if m["src"]:
-            # a tag's path is read as it is, from the page's URL: one directory deeper than the file
-            to = target(m["file"])
-            return f'src="{to if page.endswith("index.md") else os.path.join("..", to)}"'
+            return f'src="{target(m["file"])}"'
         return m[0]
 
     parts: list[str] = []
@@ -161,6 +156,8 @@ def main() -> None:
     for document in pages:
         for language in SUFFIX:
             write(document, language, pages)
+    for language in SUFFIX:
+        shutil.copyfile(HERE / "extra.css", HERE / "pages" / language / "extra.css")
     print(f"pages/en and pages/ja: {len(pages)} pages each")
 
 

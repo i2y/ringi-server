@@ -17,7 +17,7 @@ import (
 	"github.com/i2y/ringi-server/servertest"
 )
 
-// TestShots takes the pictures of the pages that the README shows, in English and in Japanese, into
+// TestShots takes the pictures of the pages that the documents show, in English and in Japanese, into
 // the directory RINGI_SHOTS names (../docs/images): without it, nothing is taken. It needs
 // RINGI_BROWSER, as the tests of the pages in a browser do (browser_test.go).
 func TestShots(t *testing.T) {
@@ -30,8 +30,110 @@ func TestShots(t *testing.T) {
 	}
 }
 
+// TestGuideShots takes the pictures of the tutorial, of the project its pages make: it needs ritsu
+// too, as TestGuides does.
+func TestGuideShots(t *testing.T) {
+	dir := os.Getenv("RINGI_SHOTS")
+	if dir == "" {
+		t.Skip("RINGI_SHOTS names no directory to take the pictures into")
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(os.Getenv("RITSU"), filepath.Join(bin, "ritsu")); err != nil {
+		t.Fatal(err)
+	}
+	for _, lang := range []string{"en", "ja"} {
+		t.Run(lang, func(t *testing.T) {
+			project := plainProject(t, bin, lang)
+			words := func(en, ja string) string {
+				if lang == "ja" {
+					return ja
+				}
+				return en
+			}
+			what := map[string]string{"in-amount": "120000", "in-purpose": words("A laptop for the new member", "新しいメンバーのノートパソコン")}
+			take := func(doc, project string, pictures func(b *tab, at func(person, path string))) {
+				sh := newGuideShell(t, bin, lang, t.TempDir())
+				sh.project = project
+				sh.run("cd " + project)
+				sh.start(doc, "server", []string{"-dev-login"})
+				defer sh.stopAll()
+				b := openBrowser(t, "http://127.0.0.1:"+sh.ports["8080"], inLanguage(lang)...)
+				screen(b)
+				pictures(b, func(person, path string) {
+					b.do("Network.setCookie", map[string]any{"name": "ringi-dev-person", "value": person, "url": b.base + "/"})
+					if status := b.open(person, path+"?lang="+lang); status != 200 {
+						t.Fatalf("%s: %d", path, status)
+					}
+				})
+			}
+			take("docs/start.md", project, func(b *tab, at func(person, path string)) {
+				at("s1201", "/pages/requests/purchase/new")
+				b.fill(what)
+				picture(b, dir, "start-form", lang, "")
+				if b.moved(func() { b.click(`button[value="button.submit"]`, 1) }) == "" {
+					t.Fatal("the request was not made")
+				}
+				at("s1101", b.text("location.pathname"))
+				picture(b, dir, "start-card", lang, "")
+			})
+			changed := runGuide(t, "docs/change.md", words("docs/change.md", "docs/change.ja.md"), lang, bin, t.TempDir(), project, project, false)
+			take("docs/change.md", changed, func(b *tab, at func(person, path string)) {
+				at("s1201", "/pages/requests/purchase/new")
+				what["in-amount"] = "600000"
+				b.fill(what)
+				b.until(`document.querySelector("#field-in-quote")?.innerText.includes(` + fmt.Sprintf("%q", words("required", "必須")) + `)`)
+				picture(b, dir, "change-form", lang, "")
+			})
+		})
+	}
+}
+
+// inLanguage are the arguments that make the browser write its own words (a file's button, a date) in
+// the language: Chrome reads the first on Linux, and macOS the others, whose last is to Chrome the page
+// it opens, which no test looks at.
+func inLanguage(lang string) []string {
+	return []string{"--lang=" + lang, "-AppleLanguages", "(" + lang + ")"}
+}
+
+// screen sets the screen the pictures are taken on.
+func screen(b *tab) {
+	b.do("Emulation.setDeviceMetricsOverride", map[string]any{"width": shotWidth, "height": 900, "deviceScaleFactor": 1.5, "mobile": false})
+	b.do("Emulation.setEmulatedMedia", map[string]any{"features": []map[string]string{{"name": "prefers-color-scheme", "value": "light"}}})
+}
+
+const shotWidth = 840
+
+// picture takes a picture of the page the browser shows, from its top (or the element #shot-from), to
+// its end, or to a little above the element of the selector until.
+func picture(b *tab, dir, name, lang, until string) {
+	b.t.Helper()
+	b.eval(`document.activeElement.blur()`, nil)
+	var at struct{ Top, Bottom float64 }
+	b.eval(fmt.Sprintf(`(() => { const el = %q && document.querySelector(%q), from = document.querySelector("#shot-from"); const top = from ? Math.floor(from.getBoundingClientRect().top + scrollY - 16) : 0; return {top, bottom: Math.ceil(el ? el.getBoundingClientRect().top + scrollY - 8 : document.querySelector("main").getBoundingClientRect().bottom + scrollY + 16)}; })()`, until, until), &at)
+	var got struct{ Data string }
+	json.Unmarshal(b.do("Page.captureScreenshot", map[string]any{"format": "webp", "quality": 82, "captureBeyondViewport": true,
+		"clip": map[string]any{"x": 0, "y": at.Top, "width": shotWidth, "height": at.Bottom - at.Top, "scale": 1}}), &got)
+	raw, err := base64.StdEncoding.DecodeString(got.Data)
+	if err != nil || len(raw) == 0 {
+		b.t.Fatalf("%s: %d bytes, %v", name, len(raw), err)
+	}
+	file := name + "." + lang + ".webp"
+	if err := os.WriteFile(filepath.Join(dir, file), raw, 0o644); err != nil {
+		b.t.Fatal(err)
+	}
+	b.t.Logf("%s: %d bytes, %d x %.0f", file, len(raw), shotWidth, at.Bottom-at.Top)
+}
+
 func shots(t *testing.T, lang, dir string) {
-	srv, h := newWeb(t, webSetup{Store: memstore.New(), At: monday, Files: &servertest.Files{}, Auth: personOf{}, Gate: &Gate{}})
+	p, err := Package()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := Version2()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, h := newWeb(t, webSetup{Store: memstore.New(), At: monday, Files: &servertest.Files{}, Auth: personOf{}, Gate: &Gate{}, Packages: []*server.Package{p, p2}})
 	// The kinds written in the other language are switched off, so that the pages list those of one.
 	kind := func(name string) string {
 		if lang == "ja" {
@@ -52,40 +154,23 @@ func shots(t *testing.T, lang, dir string) {
 	}
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
-	b := openBrowser(t, ts.URL)
+	b := openBrowser(t, ts.URL, inLanguage(lang)...)
 	words := func(en, ja string) string {
 		if lang == "ja" {
 			return ja
 		}
 		return en
 	}
-	// shot takes a picture of a page, as far down as the element of the selector until: the parts a
-	// browser writes in a language of its own (a file's button, a date) are below it.
+	screen(b)
 	shot := func(name, person, path, until string, before func()) {
 		t.Helper()
-		const width = 840
-		b.do("Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": 900, "deviceScaleFactor": 1.5, "mobile": false})
-		b.do("Emulation.setEmulatedMedia", map[string]any{"features": []map[string]string{{"name": "prefers-color-scheme", "value": "light"}}})
 		if status := b.open(person, path); status != 200 {
 			t.Fatalf("%s: %d", path, status)
 		}
 		if before != nil {
 			before()
 		}
-		var height float64
-		b.eval(fmt.Sprintf(`(() => { const el = %q && document.querySelector(%q); return Math.ceil(el ? el.getBoundingClientRect().top + scrollY : document.querySelector("main").getBoundingClientRect().bottom + scrollY + 16); })()`, until, until), &height)
-		var got struct{ Data string }
-		json.Unmarshal(b.do("Page.captureScreenshot", map[string]any{"format": "webp", "quality": 82, "captureBeyondViewport": true,
-			"clip": map[string]any{"x": 0, "y": 0, "width": width, "height": height, "scale": 1}}), &got)
-		raw, err := base64.StdEncoding.DecodeString(got.Data)
-		if err != nil || len(raw) == 0 {
-			t.Fatalf("%s: %d bytes, %v", name, len(raw), err)
-		}
-		file := name + "." + lang + ".webp"
-		if err := os.WriteFile(filepath.Join(dir, file), raw, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("%s: %d bytes, %d x %.0f", file, len(raw), width, height)
+		picture(b, dir, name, lang, until)
 	}
 	submit := func(person, name, key string, form map[string]any) string {
 		t.Helper()
@@ -108,11 +193,18 @@ func shots(t *testing.T, lang, dir string) {
 		"trip_to": words("Fukuoka", "福岡"), "receipt": receipt})
 	submit("e1203", "leave", "shot-leave", map[string]any{"kind": "paid", "first_day": "2026-12-21", "days": 2, "reason": words("A family visit", "帰省のため")})
 	shot("home", "e1101", "/pages/?lang="+lang, "", nil)
-	shot("form", "e1201", "/pages/requests/"+kind("expense")+"/new?lang="+lang, "#field-in-used_on", func() {
+	shot("form", "e1201", "/pages/requests/"+kind("expense")+"/new?lang="+lang, "", func() {
 		b.fill(map[string]string{"in-category": "travel", "in-items-0-what": words("Flight to Fukuoka and back", "福岡までの往復の航空券"), "in-items-0-price": "64,000",
 			"in-purpose": words("A visit to a customer in Fukuoka", "福岡のお客様への訪問")})
 		b.until(`document.querySelector("#field-in-amount")?.textContent.includes("64,000")`)
 	})
 	shot("card", "e1101", "/pages/tickets/"+trip+"?lang="+lang, "", nil)
-	shot("organization", "e7001:system_admin", "/pages/admin/organization?lang="+lang, "form.upload", nil)
+	shot("organization", "e7001:system_admin", "/pages/admin/organization?lang="+lang, "main > p.note", nil)
+	shot("kinds", "e7001:system_admin", "/pages/admin/kinds?lang="+lang, "#shot-until", func() {
+		var marked string
+		b.eval(fmt.Sprintf(`(() => { const s = [...document.querySelectorAll("section.kind")].find((s) => s.querySelector("h2").textContent.includes("(%s)")); if (!s) return "no kind in " + document.querySelector("main").innerText.slice(0, 300); s.id = "shot-from"; const forms = s.querySelectorAll("form"); if (forms.length < 2) return "" + forms.length + " forms"; forms[1].id = "shot-until"; return ""; })()`, kind("leave")), &marked)
+		if marked != "" {
+			t.Fatal(marked)
+		}
+	})
 }

@@ -1,102 +1,31 @@
 package examples
 
-// The Go code of docs/embedding.md, so that it compiles and runs: TestDocumentsGo holds the document
-// to these functions, and TestEmbedded runs the last two.
+// The Go code of the documents that shows a part of a server of one's own, so that it compiles and
+// runs: TestDocumentsGo holds the documents to it.
 
 import (
 	"context"
-	"log/slog"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/mcp"
 	"github.com/i2y/ringi-server/memstore"
-	"github.com/i2y/ringi-server/oidc"
-	"github.com/i2y/ringi-server/postgres"
-	"github.com/i2y/ringi-server/serve"
 	"github.com/i2y/ringi-server/servertest"
 	"github.com/i2y/ringi-server/web"
 )
 
-func withTools(ctx context.Context, st *serve.Stores, cfg server.Config) error {
-	st.Handle("/mcp", func(srv *server.Server) (http.Handler, error) {
-		tools, err := mcp.New(srv, mcp.Config{})
-		if err != nil {
-			return nil, err
-		}
-		return tools.Handler(mcp.HTTP{Person: serve.Person}) // the person the sign-in found
-	})
-	return st.Serve(ctx, cfg, nil)
-}
-
-func serveAll(ctx context.Context, log *slog.Logger) error {
-	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-	store, err := postgres.New(ctx, pool, "ringi") // makes the tables, or raises them
-	if err != nil {
-		return err
-	}
-	keys, err := oidc.ParseKeys(os.Getenv("RINGI_SESSION_KEYS"))
-	if err != nil {
-		return err
-	}
-	var srv *server.Server
-	people := func(ctx context.Context) ([]server.OrgPerson, error) { return oidc.PeopleOf(ctx, srv) }
-	signIn, err := oidc.New(ctx, oidc.Config{
-		Issuer: "https://id.example.com", ClientID: "ringi", ClientSecret: os.Getenv("RINGI_OIDC_CLIENT_SECRET"),
-		RedirectURL: "https://ringi.example.com/login/callback",
-		Keys:        keys,
-		Map:         oidc.Roles(oidc.ByEmail(people), "roles"), // the roles of the claim "roles"
-		Revocations: store,                                     // a sign-out holds in every process
-	})
-	if err != nil {
-		return err
-	}
-	pkg, err := Package() // what ritsu gen wrote, loaded with server.Load
-	if err != nil {
-		return err
-	}
-	srv, err = server.New(server.Config{
-		Packages:      []*server.Package{pkg},
-		Store:         store,
-		Files:         store.Files(), // the attachments
-		Authenticator: signIn,        // who sends a request
-		Gate:          &Gate{Log: log},
-		Organization:  Organization(),
-		Books:         Books{Pool: pool},
-		Logger:        log,
-	})
-	if err != nil {
-		return err
-	}
-	if err := srv.ImportOrganization(ctx); err != nil {
-		return err
-	}
-	go srv.Run(ctx) // the timers, and what is still to be sent
-
-	h, err := web.New(srv, web.Config{ // the pages, the screens and the attachments, in front of the API
-		Require: signIn.Require, LoginURL: signIn.LoginURL, SignOut: "/logout", Logger: log,
-	})
-	if err != nil {
-		return err
-	}
-	signIn.Mount(h) // /login, its callback and /logout, behind the same guards
-	hs := &http.Server{Addr: "127.0.0.1:8080", Handler: h, ReadHeaderTimeout: 5 * time.Second}
-	return hs.ListenAndServe() // behind a proxy that serves https
-}
+// docs/embedding.md
 
 func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server, error) {
-	cfg.Authenticator = web.ProxyHeader{Secret: secret} // 32 characters or more, which only the proxy knows
+	cfg.Authenticator = web.ProxyHeader{Secret: secret} // 32 characters or more, that only the proxy knows
 	srv, err := server.New(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -105,7 +34,47 @@ func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server
 	return h, srv, err
 }
 
-// TestEmbedded runs behindProxy: the proxy's headers name the person only with its secret.
+// Tokens finds programs by their tokens, and everyone else by SignIn.
+type Tokens struct {
+	SignIn server.Authenticator
+	People map[string]string // the SHA-256 of a token, in hexadecimal, and the ID of the person who acts
+}
+
+// Authenticate answers whose request it is.
+func (t Tokens) Authenticate(r *http.Request) (server.Person, error) {
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return t.SignIn.Authenticate(r)
+	}
+	sum := sha256.Sum256([]byte(token))
+	id, ok := t.People[hex.EncodeToString(sum[:])]
+	if !ok {
+		return server.Person{}, server.ErrNoPerson // answered 401
+	}
+	return server.Person{ID: id}, nil
+}
+
+// docs/agents.md
+
+func verify(ctx context.Context, token string, r *http.Request) (mcp.Token, error) {
+	p, expires, err := lookUp(ctx, token) // yours: checks the token, and answers whose it is
+	if err != nil {
+		return mcp.Token{}, fmt.Errorf("%w: %v", server.ErrNoPerson, err) // answered 401
+	}
+	return mcp.Token{Person: p, Expires: expires}, nil
+}
+
+// lookUp is the part of verify the document leaves to its reader.
+func lookUp(_ context.Context, token string) (server.Person, time.Time, error) {
+	if token != "a program's token" {
+		return server.Person{}, time.Time{}, errors.New("no such token")
+	}
+	return server.Person{ID: "e1201"}, time.Now().Add(time.Hour), nil
+}
+
+// TestEmbedded runs behindProxy: the proxy's headers name the person only with its secret. Then it
+// runs Tokens in front of the proxy's: a program's token names its person, and one it does not know
+// names no one.
 func TestEmbedded(t *testing.T) {
 	pkg, err := Package()
 	if err != nil {
@@ -136,6 +105,31 @@ func TestEmbedded(t *testing.T) {
 			t.Errorf("with the secret %q: %d, want %d", c.secret, w.Code, c.want)
 		}
 	}
-	// the other two are held to compile
-	_, _ = withTools, serveAll
+	sum := sha256.Sum256([]byte("a program's token"))
+	a := Tokens{SignIn: web.ProxyHeader{Secret: secret}, People: map[string]string{hex.EncodeToString(sum[:]): "e1201"}}
+	for _, c := range []struct {
+		header, value, person string
+	}{
+		{"Authorization", "Bearer a program's token", "e1201"},
+		{"Authorization", "Bearer another", ""},
+		{"X-Ringi-Proxy-Secret", secret, "e1101"},
+		{"", "", ""},
+	} {
+		r := httptest.NewRequest("GET", "/waiting", nil)
+		r.Header.Set("X-Ringi-Person", "e1101")
+		r.Header.Set("X-Ringi-Roles", "staff")
+		if c.header != "" {
+			r.Header.Set(c.header, c.value)
+		}
+		p, err := a.Authenticate(r)
+		if p.ID != c.person || (err == nil) != (c.person != "") {
+			t.Errorf("with %s %q: %+v, %v, want %q", c.header, c.value, p, err, c.person)
+		}
+	}
+	if p, err := verify(t.Context(), "a program's token", nil); err != nil || p.Person.ID != "e1201" {
+		t.Errorf("the agents' token: %+v, %v", p, err)
+	}
+	if _, err := verify(t.Context(), "another", nil); !errors.Is(err, server.ErrNoPerson) {
+		t.Errorf("a token of no one: %v", err)
+	}
 }

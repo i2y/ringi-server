@@ -29,7 +29,7 @@ def nav(config: str) -> list[str]:
         out: list[str] = []
         for entry in entries:
             for to in entry.values():
-                out += pages(to) if isinstance(to, list) else [to] if to.endswith(".md") else []
+                out += pages(to) if isinstance(to, list) else [] if "://" in to else [to]
         return out
 
     return pages(tomllib.loads((HERE / config).read_text())["project"]["nav"])

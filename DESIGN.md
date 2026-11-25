@@ -745,9 +745,10 @@ the examples' module. The test in `scaffold/` writes a project in each language 
 of options (none, `--mcp`, `--temporal`, both) with the `ritsu` on PATH (or the one `RITSU` names),
 points it at this repository's modules with `replace` (the three, those the options need), and,
 with no network, runs `go mod tidy`, `go generate` (which must change nothing), `go vet` and the
-project's tests: the code `init` writes is tested against the framework as it is here. `TestReadme`
-runs the commands of the README that start a project, in both languages, and holds what they print
-to what it shows. With no ritsu, both skip, saying so. `TestPublishedModules` reads the three
+project's tests: the code `init` writes is tested against the framework as it is here. `TestGuides`, in the
+examples' module, runs the tutorial and the guides of `docs/` in such projects, in both languages:
+their commands, the files they write and change, and what they print. With no ritsu, both skip,
+saying so. `TestPublishedModules` reads the three
 modules' `go.mod`, with no ritsu: none of them requires or replaces a module of this repository but
 the three.
 

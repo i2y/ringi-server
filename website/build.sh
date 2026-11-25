@@ -11,6 +11,10 @@
 set -eu
 cd "$(dirname "$0")"
 .venv/bin/python pages.py
+# The page cache is keyed on the Markdown, not on what renders it, so a change to a lexer would leave
+# every cached page as it was.
+rm -rf .cache
+export PYTHONPATH="$PWD/tools${PYTHONPATH:+:$PYTHONPATH}" # the lexers that colour ritsu's languages
 .venv/bin/zensical build --clean --strict
 .venv/bin/zensical build --clean --strict -f zensical.ja.toml
 .venv/bin/python finish.py

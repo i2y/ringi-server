@@ -44,7 +44,7 @@ The handler serves these routes, and passes every other request to the API:
 The person is the one the server's `Authenticator` finds. With a sign-in that keeps a session
 (package `oidc`), `Config.Require` sends a browser with no session to sign in and back, and each
 page has a button to sign out. Behind a proxy that signs people in, `web.ProxyHeader` takes the
-person from the proxy's headers ([how](../docs/embedding.md#behind-a-proxy-that-signs-people-in)).
+person from the proxy's headers ([how](../docs/embedding.md#3-a-proxy-signs-people-in)).
 
 ## The pages
 
@@ -76,8 +76,8 @@ go run ./cmd/server -files ./files
 ```
 
 The header `X-Person` says who sends a request: it is for your own computer, and checks no one
-([Signing in](../README.md#signing-in)). Open <http://localhost:8080/> for the pages themselves with
-`-dev-login` ([Try it in five minutes](../README.md#try-it-in-five-minutes)). The commands below go
+([Three ways to sign in](../docs/sign-in.md#three-ways-to-sign-in)). Open <http://localhost:8080/> for the pages themselves with
+`-dev-login` ([Try it](../README.md#try-it)). The commands below go
 in another terminal, in one directory of yours; the IDs differ each time.
 
 **A page** loads its style sheet and script from the server, under its own policy:
@@ -318,7 +318,7 @@ curl -s -H 'X-Person: e1201' 'http://127.0.0.1:8080/a2ui/mine/expense?lang=en' \
 ```
 
 **A kind with no version in effect.** After e6001 switches version 1 of leave off (version 2 starts
-on 2027-04-01; see [the administration](../docs/api.md#the-administration)), a new leave request has
+on 2027-04-01; see [the administration](../docs/api.md#administer-it)), a new leave request has
 no form. A person who may make it from that day gets the screen that says the day, with the way back
 to the start page. For anyone else there is no such kind:
 

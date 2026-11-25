@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="356" viewBox="0 0 900 356" role="img" aria-labelledby="t d" lang="en">
+<title id="t">The states of a request</title><desc id="d">A submitted request is in progress. It can be put on hold and taken off hold. An approver&#x27;s send-back or the requester&#x27;s withdrawal returns it to the requester, who submits it again or discards it. It ends approved, rejected, expired or withdrawn.</desc>
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; font-size: 13px; fill: #334155; }
+.h { font-weight: 700; font-size: 15px; fill: #0f172a; }
+.s { font-weight: 700; font-size: 13.5px; fill: #0f172a; }
+.n { font-weight: 700; font-size: 14px; fill: #ffffff; }
+.k { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: #1d4ed8; }
+.l { font-size: 12.5px; fill: #475569; }
+.ground { fill: #f8fafc; }
+.box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2; }
+.main { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 1.8; }
+.good { fill: #f0fdf4; stroke: #15803d; stroke-width: 1.4; }
+.end { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.2; }
+.dot { fill: #1d4ed8; }
+.arrow { stroke: #64748b; stroke-width: 1.6; fill: none; }
+.back { stroke: #64748b; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+.head { fill: #64748b; }
+@media (prefers-color-scheme: dark) {
+text { fill: #cbd5e1; } .h, .s { fill: #f1f5f9; } .n { fill: #0f172a; } .k { fill: #93c5fd; } .l { fill: #cbd5e1; }
+.ground { fill: #0f172a; } .box { fill: #1e293b; stroke: #475569; } .main { fill: #172554; stroke: #93c5fd; }
+.good { fill: #052e16; stroke: #4ade80; } .end { fill: #1e293b; stroke: #64748b; } .dot { fill: #93c5fd; }
+.arrow, .back { stroke: #94a3b8; } .head { fill: #94a3b8; }
+}
+</style>
+<defs><marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<rect class="ground" width="900" height="356" rx="14"/>
+<path class="arrow" d="M28 74L196 74" marker-end="url(#head)"/>
+<text class="l" x="112" y="64" text-anchor="middle">submit</text>
+<rect class="main" x="198" y="40" width="220" height="68" rx="10"/>
+<text class="s" x="308.0" y="70.0" text-anchor="middle">In progress</text>
+<text class="k" x="308.0" y="90.0" text-anchor="middle">in_progress</text>
+<rect class="box" x="28" y="250" width="180" height="64" rx="10"/>
+<text class="s" x="118.0" y="278.0" text-anchor="middle">On hold</text>
+<text class="k" x="118.0" y="298.0" text-anchor="middle">paused</text>
+<rect class="box" x="290" y="250" width="220" height="64" rx="10"/>
+<text class="s" x="400.0" y="278.0" text-anchor="middle">With the requester</text>
+<text class="k" x="400.0" y="298.0" text-anchor="middle">with_requester</text>
+<rect class="good" x="676" y="24" width="196" height="56" rx="10"/>
+<text class="s" x="774.0" y="48.0" text-anchor="middle">Approved</text>
+<text class="k" x="774.0" y="68.0" text-anchor="middle">approved</text>
+<rect class="end" x="676" y="98" width="196" height="56" rx="10"/>
+<text class="s" x="774.0" y="122.0" text-anchor="middle">Rejected</text>
+<text class="k" x="774.0" y="142.0" text-anchor="middle">rejected</text>
+<rect class="end" x="676" y="172" width="196" height="56" rx="10"/>
+<text class="s" x="774.0" y="196.0" text-anchor="middle">Expired</text>
+<text class="k" x="774.0" y="216.0" text-anchor="middle">expired</text>
+<rect class="end" x="676" y="256" width="196" height="56" rx="10"/>
+<text class="s" x="774.0" y="280.0" text-anchor="middle">Withdrawn</text>
+<text class="k" x="774.0" y="300.0" text-anchor="middle">withdrawn</text>
+<path class="arrow" d="M232 108L232 180L118 180L118 248" marker-end="url(#head)"/>
+<path class="back" d="M146 250L146 206L258 206L258 110" marker-end="url(#head)"/>
+<text class="l" x="40" y="166" text-anchor="start">put on, off hold</text>
+<path class="arrow" d="M330 108L330 248" marker-end="url(#head)"/>
+<text class="l" x="340" y="138" text-anchor="start">sent back</text>
+<text class="l" x="340" y="155" text-anchor="start">or withdrawn</text>
+<path class="back" d="M470 250L470 90L420 90" marker-end="url(#head)"/>
+<text class="l" x="462" y="226" text-anchor="end">submit again</text>
+<path class="arrow" d="M418 52L674 52" marker-end="url(#head)"/>
+<text class="l" x="548" y="43" text-anchor="middle">approved at the last stage</text>
+<path class="arrow" d="M418 70L560 70L560 126L674 126" marker-end="url(#head)"/>
+<text class="l" x="570" y="117" text-anchor="start">rejected</text>
+<path class="arrow" d="M418 84L540 84L540 194L674 194" marker-end="url(#head)"/>
+<text class="l" x="550" y="185" text-anchor="start">the deadline passes</text>
+<path class="arrow" d="M510 270L598 270L598 214L674 214" marker-end="url(#head)"/>
+<path class="arrow" d="M510 292L674 292" marker-end="url(#head)"/>
+<text class="l" x="548" y="310" text-anchor="start">discarded</text>
+</svg>

@@ -1,5 +1,5 @@
 # The English pages of the site, https://i2y.github.io/ringi-server/. pages.py writes pages/en from
-# the documents; a page it writes that the nav does not list stops the build (check.py), as does one
+# the documents; a page it writes that the nav does not list stops the build (finish.py), as does one
 # the nav of the Japanese pages (zensical.ja.toml) does not.
 [project]
 site_name = "ringi-server"
@@ -14,32 +14,51 @@ repo_name = "i2y/ringi-server"
 docs_dir = "pages/en"
 site_dir = "build"
 use_directory_urls = true
+extra_css = ["extra.css"]
 
 nav = [
-  { "ringi-server" = "index.md" },
-  { "The API, with curl" = "api.md" },
-  { "Running a server" = "operations.md" },
-  { "Your own route or server" = "embedding.md" },
-  { "The parts" = [
-    { "Pages, screens, attachments" = "web.md" },
-    { "Screens" = "screens.md" },
-    { "Plain HTML pages" = "screens/page.md" },
-    { "Signing in" = "oidc.md" },
-    { "Agents' tools" = "mcp.md" },
-    { "Flows and agents' steps" = "temporal.md" },
+  { "What ringi-server is" = "index.md" },
+  { "Getting started" = [
+    { "1. Run it, and approve a request" = "start.md" },
+    { "2. Change the request type" = "change.md" },
+    { "3. Send the notices by mail" = "mail.md" },
   ] },
-  { "Changing the framework" = "contributing.md" },
-  { "Design" = [
-    { "The server" = "design/index.md" },
-    { "Pages, screens, attachments" = "design/web.md" },
-    { "Screens" = "design/screens.md" },
-    { "Plain HTML pages" = "design/screens/page.md" },
-    { "Signing in" = "design/oidc.md" },
-    { "Agents' tools" = "design/mcp.md" },
-    { "Flows" = "design/temporal.md" },
+  { "How it works, and its words" = "concepts.md" },
+  { "For the people who use it" = [
+    { "Making a request" = "use/requester.md" },
+    { "Approving a request" = "use/approver.md" },
+    { "Administering" = "use/admin.md" },
   ] },
-  { "Go reference" = "https://pkg.go.dev/github.com/i2y/ringi-server" },
-  { "ringi, the language" = "https://i2y.github.io/ritsu/ringi/" },
+  { "Guides" = [
+    { "Add and change request types" = "types.md" },
+    { "Choose from a list in a form" = "lists.md" },
+    { "Prepare the organization's data" = "organization.md" },
+    { "Set the business days" = "calendar.md" },
+    { "Connect the sign-in" = "sign-in.md" },
+    { "Decide who may do what" = "permissions.md" },
+    { "Change how notices are sent" = "notices.md" },
+    { "Check budgets and days of leave" = "books.md" },
+    { "Start work after an approval" = "flows.md" },
+    { "Have an agent check requests" = "agent-steps.md" },
+    { "Let agents make and approve requests" = "agents.md" },
+    { "Call the API from a program" = "api.md" },
+    { "Make screens of your own" = "screens.md" },
+    { "Embed it in a program of your own" = "embedding.md" },
+    { "Test it" = "testing.md" },
+  ] },
+  { "Running it for people" = [
+    { "Prepare it and start it" = "operations.md" },
+    { "Backups and raising versions" = "maintenance.md" },
+    { "Watch it, and when something is wrong" = "troubleshooting.md" },
+  ] },
+  { "Reference" = [
+    { "Flags and settings" = "reference.md" },
+    { "Why something is refused" = "refusals.md" },
+    { "Parts and packages" = "parts.md" },
+    { "Go reference" = "https://pkg.go.dev/github.com/i2y/ringi-server" },
+    { "Design" = "https://github.com/i2y/ringi-server/blob/main/DESIGN.md" },
+    { "The language ringi" = "https://i2y.github.io/ritsu/ringi/" },
+  ] },
 ]
 
 [[project.extra.alternate]]
@@ -56,10 +75,12 @@ lang = "ja"
 variant = "modern"
 language = "en"
 icon.repo = "fontawesome/brands/github"
+# navigation.sections   the groups of pages open in the sidebar, under their names
 # navigation.footer     previous / next at the foot of every page
 # navigation.top        a back-to-top button on long pages
 # content.code.copy     a copy button on every code block
 features = [
+  "navigation.sections",
   "navigation.footer",
   "navigation.top",
   "content.code.copy",
@@ -91,3 +112,11 @@ slugify = { object = "pymdownx.slugs.slugify", kwds = { case = "lower" } }
 pygments_lang_class = true
 
 [project.markdown_extensions.pymdownx.superfences]
+
+# Colour the code of ritsu's languages with the lexers of tools/, which are ritsu's own: ```ringi,
+# ```gate, ```flow and ```book. Naming a module here is how it gets imported, and importing it is what
+# registers its lexer with Pygments; build.sh puts tools/ on PYTHONPATH.
+[project.markdown_extensions.ringilexer]
+[project.markdown_extensions.gatelexer]
+[project.markdown_extensions.flowlexer]
+[project.markdown_extensions.booklexer]

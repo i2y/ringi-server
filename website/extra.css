@@ -1,0 +1,21 @@
+/* A name in code in a table stays whole on a wide screen: Markdown gives a table's columns no widths, so
+   a name was cut in two to leave room for the sentences beside it. On a phone there is no room. */
+@media screen and (min-width: 60em) {
+  .md-typeset table code {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  .md-typeset td:first-child:nth-last-child(2) {
+    min-width: 10rem;
+  }
+  .md-typeset td:first-child:nth-last-child(n + 3) code {
+    white-space: nowrap;
+  }
+}
+
+/* Two pictures side by side in a table can be read on a phone: the table scrolls. */
+@media screen and (max-width: 59.9375em) {
+  .md-typeset td img {
+    min-width: 14rem;
+  }
+}

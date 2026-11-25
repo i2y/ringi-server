@@ -1,5 +1,5 @@
 # The Japanese pages of the site, https://i2y.github.io/ringi-server/ja/. pages.py writes pages/ja from
-# the documents; a page it writes that the nav does not list stops the build (check.py), as does one
+# the documents; a page it writes that the nav does not list stops the build (finish.py), as does one
 # the nav of the English pages (zensical.toml) does not.
 [project]
 site_name = "ringi-server"
@@ -14,32 +14,51 @@ repo_name = "i2y/ringi-server"
 docs_dir = "pages/ja"
 site_dir = "build/ja"
 use_directory_urls = true
+extra_css = ["extra.css"]
 
 nav = [
-  { "ringi-server" = "index.md" },
-  { "API を curl で試す" = "api.md" },
-  { "サーバーを動かす" = "operations.md" },
-  { "自分のルートとサーバー" = "embedding.md" },
-  { "部品" = [
-    { "ページ、画面、添付ファイル" = "web.md" },
-    { "画面" = "screens.md" },
-    { "素の HTML のページ" = "screens/page.md" },
-    { "ログイン" = "oidc.md" },
-    { "エージェントのツール" = "mcp.md" },
-    { "flow とエージェントのステップ" = "temporal.md" },
+  { "ringi-server とは" = "index.md" },
+  { "はじめる" = [
+    { "1. 動かして、申請を承認する" = "start.md" },
+    { "2. 申請の種類を書き換える" = "change.md" },
+    { "3. 通知をメールで送る" = "mail.md" },
   ] },
-  { "フレームワークを直す" = "contributing.md" },
-  { "設計" = [
-    { "サーバー" = "design/index.md" },
-    { "ページ、画面、添付ファイル" = "design/web.md" },
-    { "画面" = "design/screens.md" },
-    { "素の HTML のページ" = "design/screens/page.md" },
-    { "ログイン" = "design/oidc.md" },
-    { "エージェントのツール" = "design/mcp.md" },
-    { "flow" = "design/temporal.md" },
+  { "しくみと言葉" = "concepts.md" },
+  { "使う人の手引き" = [
+    { "申請する" = "use/requester.md" },
+    { "承認する" = "use/approver.md" },
+    { "管理する" = "use/admin.md" },
   ] },
-  { "Go のリファレンス（英語）" = "https://pkg.go.dev/github.com/i2y/ringi-server" },
-  { "言語 ringi" = "https://i2y.github.io/ritsu/ja/ringi/" },
+  { "目的別の手引き" = [
+    { "申請の種類を足す、変える" = "types.md" },
+    { "フォームの選択肢を一覧から読む" = "lists.md" },
+    { "組織のデータを用意する" = "organization.md" },
+    { "営業日と祝日を決める" = "calendar.md" },
+    { "ログインをつなぐ" = "sign-in.md" },
+    { "だれが何をしてよいかを決める" = "permissions.md" },
+    { "通知の送り方を変える" = "notices.md" },
+    { "予算や休暇の残りを確かめる" = "books.md" },
+    { "承認のあとの処理を始める" = "flows.md" },
+    { "承認の経路でエージェントに確かめさせる" = "agent-steps.md" },
+    { "エージェントに申請と承認をさせる" = "agents.md" },
+    { "プログラムから API を呼ぶ" = "api.md" },
+    { "自分の画面を作る" = "screens.md" },
+    { "自分のプログラムに組み込む" = "embedding.md" },
+    { "試験する" = "testing.md" },
+  ] },
+  { "本番で動かす" = [
+    { "用意して起動する" = "operations.md" },
+    { "バックアップと版の上げ方" = "maintenance.md" },
+    { "監視する、困ったとき" = "troubleshooting.md" },
+  ] },
+  { "調べる" = [
+    { "フラグと設定" = "reference.md" },
+    { "受け付けない理由" = "refusals.md" },
+    { "部品とパッケージ" = "parts.md" },
+    { "Go のリファレンス（英語）" = "https://pkg.go.dev/github.com/i2y/ringi-server" },
+    { "設計書" = "https://github.com/i2y/ringi-server/blob/main/DESIGN.ja.md" },
+    { "言語 ringi" = "https://i2y.github.io/ritsu/ja/ringi/" },
+  ] },
 ]
 
 [[project.extra.alternate]]
@@ -56,10 +75,12 @@ lang = "ja"
 variant = "modern"
 language = "ja"
 icon.repo = "fontawesome/brands/github"
+# navigation.sections   the groups of pages open in the sidebar, under their names
 # navigation.footer     previous / next at the foot of every page
 # navigation.top        a back-to-top button on long pages
 # content.code.copy     a copy button on every code block
 features = [
+  "navigation.sections",
   "navigation.footer",
   "navigation.top",
   "content.code.copy",
@@ -91,3 +112,11 @@ slugify = { object = "pymdownx.slugs.slugify", kwds = { case = "lower" } }
 pygments_lang_class = true
 
 [project.markdown_extensions.pymdownx.superfences]
+
+# Colour the code of ritsu's languages with the lexers of tools/, which are ritsu's own: ```ringi,
+# ```gate, ```flow and ```book. Naming a module here is how it gets imported, and importing it is what
+# registers its lexer with Pygments; build.sh puts tools/ on PYTHONPATH.
+[project.markdown_extensions.ringilexer]
+[project.markdown_extensions.gatelexer]
+[project.markdown_extensions.flowlexer]
+[project.markdown_extensions.booklexer]

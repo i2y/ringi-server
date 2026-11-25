@@ -1,43 +1,69 @@
-# 自分のルートと、自分で作るサーバー
+# 自分のプログラムに組み込む
 
-プロジェクトのコマンドは、ふつう、自分の部品をパッケージ `serve` に渡せば足ります（[プロジェクトが用意するもの](../README.ja.md#プロジェクトが用意するもの)）。このページは、足りない場合のためのものです。そのサーバーに自分のルートを足す、パッケージ `serve` を使わずにサーバーを作る、人をログインさせるプロキシの後ろに置く、の三つです。英語版は [embedding.md](embedding.md) です。
+`ritsu ringi init` が作るサーバーのコマンド（`cmd/server`）は、パッケージ `serve` を使います。`serve` は、データベースを開き、ログインを用意し、ページを出し、期限のタイマーを動かすところまでをまとめて行います。ほとんどの場合は、これで足ります。英語版は [embedding.md](embedding.md) です。
 
-コードは、例と一緒にコンパイルしています（[examples/embedding_test.go](../examples/embedding_test.go)）。`Package`、`Gate`、`Organization`、`Books` は、`examples/` にあるような、プロジェクト自身のものです。
+次のときは、`serve` を使わずに、サーバーを自分で組み立てます。
 
-## パッケージ serve のサーバーにルートを足す
+| したいこと | 読むところ |
+|---|---|
+| すでにある Go のプログラムの中で動かす。データベースの接続を共有する | [1. サーバーを組み立てる](#1-サーバーを組み立てる) |
+| 社内のほかのプログラムに、トークンで API を使わせる | 1 と [2. プログラムのトークンを受け付ける](#2-プログラムのトークンを受け付ける) |
+| 手前のプロキシがログインさせた人を、そのまま使う | 1 と [3. プロキシがログインさせる](#3-プロキシがログインさせる) |
 
-`Stores.Handle` は、プロジェクトのルートをサーバーに足します。たとえば、`/mcp` に置くエージェントのツールです。
+ページや API のルートを足すだけなら、`serve` のままでできます（[ルートを足す](screens.ja.md#ルートを足す)）。
 
-```go
-func withTools(ctx context.Context, st *serve.Stores, cfg server.Config) error {
-	st.Handle("/mcp", func(srv *server.Server) (http.Handler, error) {
-		tools, err := mcp.New(srv, mcp.Config{})
-		if err != nil {
-			return nil, err
-		}
-		return tools.Handler(mcp.HTTP{Person: serve.Person}) // the person the sign-in found
-	})
-	return st.Serve(ctx, cfg, nil)
+## 1. サーバーを組み立てる
+
+[1. 動かして、申請を承認する](start.ja.md)で作ったプロジェクトの `cmd/server/main.go` を、次のものに替えます。プロジェクトの部品（`Parts`）はそのまま使い、`serve` が用意していた三つ（申請を置く場所、添付ファイルを置く場所、ログイン）を足します。
+
+```go title="cmd/server/main.go"
+// server は、パッケージ serve を使わずに組み立てた、申請のサーバー。
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/oidc"
+	"github.com/i2y/ringi-server/postgres"
+	"github.com/i2y/ringi-server/web"
+
+	"example.com/acme/shinsei"
+)
+
+func main() {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if err := run(log); err != nil {
+		server.LogStop(log, "the server stopped", err)
+		os.Exit(1)
+	}
 }
-```
 
-ルートは、ページと同じ検査とログインの後ろに置かれます。だれもログインしていないリクエストには、ルートに届く前に 401 を返します。エージェントがすることは、その人がすることになり、ページのときと同じように gate に尋ねます。フレームワークのパス（ページ、画面、添付ファイル、API、ログイン）は使えません。使うと、サーバーは起動する前に、どのパスかを示して止まります（[設計](../DESIGN.ja.md)の 2.6）。
+func run(log *slog.Logger) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-## パッケージ serve を使わないサーバー
-
-パッケージ `serve` は、Store を開き、ログインを用意し、API の手前にページを置き、タイマーを動かします。同じことを Go で書くと、次のようになります。
-
-```go
-func serveAll(ctx context.Context, log *slog.Logger) error {
+	// 申請と添付ファイルを置く PostgreSQL
 	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
-	store, err := postgres.New(ctx, pool, "ringi") // makes the tables, or raises them
+	store, err := postgres.New(ctx, pool, "ringi") // 表を作る。古ければ新しくする
 	if err != nil {
 		return err
 	}
+
+	// 会社のログイン
 	keys, err := oidc.ParseKeys(os.Getenv("RINGI_SESSION_KEYS"))
 	if err != nil {
 		return err
@@ -48,57 +74,164 @@ func serveAll(ctx context.Context, log *slog.Logger) error {
 		Issuer: "https://id.example.com", ClientID: "ringi", ClientSecret: os.Getenv("RINGI_OIDC_CLIENT_SECRET"),
 		RedirectURL: "https://ringi.example.com/login/callback",
 		Keys:        keys,
-		Map:         oidc.Roles(oidc.ByEmail(people), "roles"), // the roles of the claim "roles"
-		Revocations: store,                                     // a sign-out holds in every process
+		Map:         oidc.Roles(oidc.ByEmail(people), "roles"), // 役割は、クレーム roles にある
+		Revocations: store,                                     // ログアウトを、どのプロセスでも効かせる
 	})
 	if err != nil {
 		return err
 	}
-	pkg, err := Package() // what ritsu gen wrote, loaded with server.Load
+
+	// プロジェクトの部品に、申請と添付ファイルを置く場所、ログインを足す
+	cfg, err := shinsei.Parts(log)
 	if err != nil {
 		return err
 	}
-	srv, err = server.New(server.Config{
-		Packages:      []*server.Package{pkg},
-		Store:         store,
-		Files:         store.Files(), // the attachments
-		Authenticator: signIn,        // who sends a request
-		Gate:          &Gate{Log: log},
-		Organization:  Organization(),
-		Books:         Books{Pool: pool},
-		Logger:        log,
-	})
+	cfg.Store, cfg.Files = store, store.Files()
+	cfg.Authenticator = signIn
+	srv, err = server.New(cfg)
 	if err != nil {
 		return err
 	}
+	shinsei.Started(cfg, srv)
 	if err := srv.ImportOrganization(ctx); err != nil {
 		return err
 	}
-	go srv.Run(ctx) // the timers, and what is still to be sent
+	go srv.Run(ctx) // 期限のタイマーを動かし、通知などを送る
 
-	h, err := web.New(srv, web.Config{ // the pages, the screens and the attachments, in front of the API
+	// ページ、画面、添付ファイルを、API の手前に置く
+	h, err := web.New(srv, web.Config{
 		Require: signIn.Require, LoginURL: signIn.LoginURL, SignOut: "/logout", Logger: log,
 	})
 	if err != nil {
 		return err
 	}
-	signIn.Mount(h) // /login, its callback and /logout, behind the same guards
-	hs := &http.Server{Addr: "127.0.0.1:8080", Handler: h, ReadHeaderTimeout: 5 * time.Second}
-	return hs.ListenAndServe() // behind a proxy that serves https
+	signIn.Mount(h) // /login、/login/callback、/logout
+
+	// https を受けるプロキシの後ろで待ち受ける
+	hs := &http.Server{
+		Addr: "127.0.0.1:8080", Handler: h, MaxHeaderBytes: 64 << 10,
+		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second,
+		WriteTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute,
+	}
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		<-ctx.Done()
+		last, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		hs.Shutdown(last) // 応答の途中のリクエストを待つ
+	}()
+	if err := hs.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	<-drained
+	return nil
 }
 ```
 
-`server.New` は部品を受け取ってサーバーを作ります。この時点では、まだどこにもつなぎません。`ImportOrganization` は、組織のデータを読んで確かめます。`Run` は、コンテキストが終わるまで、タイマーを動かし、これから送るものを送ります。一つのデータベースで、いくつのプロセスが動かしてもかまいません。`web.New` は、ページと画面と添付ファイルを、ブラウザに必要な検査と一緒に、API の手前に置きます。`Server` そのものは、API だけを出す `http.Handler` です。
+```sh
+go mod tidy
+go vet ./...
+```
 
-パッケージ `serve` は、このほかに、一緒に使えない設定を確かめ、リクエストにかかる時間を制限し、順に終了します。することの一覧は、[設計](../DESIGN.ja.md)の 2.5 と 2.6 にあります。
+| 呼ぶもの | すること |
+|---|---|
+| `postgres.New` | 申請を置く表を用意する |
+| `oidc.New` | 会社のログインにつなぐ |
+| `server.New` | 部品を受け取ってサーバーを作る。この時点では、まだ何にもつながない |
+| `shinsei.Started` | できたサーバーを、要る部品に渡す（[チュートリアル](mail.ja.md)のメールの部品など） |
+| `ImportOrganization` | 組織のデータを読み、検査して取り込む |
+| `Run` | 期限のタイマーを動かし、通知などを送る。`ctx` が終わるまで続ける。プロセスがいくつあってもよい |
+| `web.New` | ページ、画面、添付ファイルを、API の手前に置く |
 
-## 人をログインさせるプロキシの後ろで
+`h` は `http.Handler` なので、ほかのハンドラーと一緒に動かせます。ただし、ページのリンクは `/pages/` から始まるので、ホスト名の根（`/`）に置きます。`/ringi/` のようなパスの下には置けません。
 
-`web.ProxyHeader` は、プロキシが付けたヘッダーから人を取ります。信用するのは、プロキシだけが知る秘密が付いたリクエストだけです。
+ページが要らなければ、`web.New` を使わず、`srv` をそのまま `http.Handler` として使います。API だけのサーバーになります。
+
+`serve` を使わないときは、次のことを自分で守ります。
+
+- ほかのコンピューターから届くアドレスでは、本人を確かめるログインだけを使う。
+- ログインのクッキーは https でだけ送られるので、https で出す。
+- 上のコードのように、リクエストにかける時間を区切り、止めるときは応答の途中のリクエストを待つ。
+
+## 2. プログラムのトークンを受け付ける
+
+人がログインしないプログラムには、プログラムごとのトークンを渡します。リクエストのヘッダー `Authorization` にトークンがあれば、それに対応させた人の操作にし、なければ会社のログインで人を見つけます。
+
+```go title="tokens.go"
+package shinsei
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"net/http"
+	"strings"
+
+	server "github.com/i2y/ringi-server"
+)
+
+// Tokens は、プログラムをトークンで、ほかの人を SignIn で見つける。
+type Tokens struct {
+	SignIn server.Authenticator
+	People map[string]string // トークンの SHA-256（16 進）と、操作する人の ID
+}
+
+// Authenticate は、だれのリクエストかを答える。
+func (t Tokens) Authenticate(r *http.Request) (server.Person, error) {
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return t.SignIn.Authenticate(r)
+	}
+	sum := sha256.Sum256([]byte(token))
+	id, ok := t.People[hex.EncodeToString(sum[:])]
+	if !ok {
+		return server.Person{}, server.ErrNoPerson // 401 になる
+	}
+	return server.Person{ID: id}, nil
+}
+```
+
+トークンを作ります。一行目の値はプログラムに渡し、二行目の値（SHA-256）だけをサーバーに書きます。
+
+```sh
+TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')
+echo "$TOKEN"
+printf %s "$TOKEN" | shasum -a 256 | cut -d ' ' -f 1
+```
+
+`cmd/server/main.go` の `Authenticator` を替えます。`b0001` は、プログラムのための人の ID です。組織のデータに、ほかの社員と同じように足しておきます。
+
+```go title="cmd/server/main.go" hl_lines="2-4"
+	cfg.Store, cfg.Files = store, store.Files()
+	cfg.Authenticator = shinsei.Tokens{SignIn: signIn, People: map[string]string{
+		"2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881": "b0001",
+	}}
+	srv, err = server.New(cfg)
+```
+
+```sh
+go vet ./...
+```
+
+プログラムは、トークンを付けて API を呼びます。
+
+```sh
+curl -s https://ringi.example.com/waiting -H "Authorization: Bearer $TOKEN"
+```
+
+プログラムにできるのは、その人にできることだけです。社員の代わりに申請させるには、その人を申請の代理にします（[社員の代わりに申請する](api.ja.md#社員の代わりに申請する)）。`web.Config` の `Require` は、ページを開いたブラウザをログインへ送るだけなので、トークンを付けた API の呼び出しは止めません。
+
+トークンを替えるときは、新しいトークンの SHA-256 を足してサーバーを起動し直し、プログラムを新しいトークンに切り替えてから、古いものを消します。
+
+ほかの方法で人を見つけるときも、同じ形の関数を書きます。リクエストを受け取り、人の ID と役割を返します。
+
+## 3. プロキシがログインさせる
+
+会社のプロキシがすでに人をログインさせているなら、プロキシが付けるヘッダーから人を見つけます。`web.ProxyHeader` は、プロキシだけが知っている秘密が付いたリクエストだけを信用します。上の `run` の「会社のログイン」の部分が要らなくなり、`server.New` と `web.New` のところは次のようになります。組織のデータの取り込みと `Run` は、上と同じです。
 
 ```go
 func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server, error) {
-	cfg.Authenticator = web.ProxyHeader{Secret: secret} // 32 characters or more, which only the proxy knows
+	cfg.Authenticator = web.ProxyHeader{Secret: secret} // プロキシだけが知っている、32 文字以上の文字列
 	srv, err := server.New(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -108,4 +241,12 @@ func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server
 }
 ```
 
-プロキシは、クライアントが送ってきた同じ名前のヘッダーを取り除いたうえで、どのリクエストにも三つのヘッダーを付けます。`X-Ringi-Proxy-Secret`、`X-Ringi-Person`（組織のデータにある人の ID）、`X-Ringi-Roles`（役割をコンマで区切ったもの。なければ空）です。秘密がないリクエストと、同じヘッダーが二つあるリクエストは、だれのリクエストにもならず、401 です。詳しくは [`web` の設計](../web/DESIGN.ja.md)の 3.1 にあります。
+プロキシには、すべてのリクエストに次の三つのヘッダーを付ける設定をします。クライアントが送ってきた同じ名前のヘッダーは、取り除きます。
+
+| ヘッダー | 値 |
+|---|---|
+| `X-Ringi-Proxy-Secret` | 秘密。32 文字以上 |
+| `X-Ringi-Person` | 組織のデータにある人の ID |
+| `X-Ringi-Roles` | 役割をコンマで区切ったもの。なければ空 |
+
+秘密がないリクエストと、同じヘッダーが二つあるリクエストは、だれのものでもないとして 401 を返します。

@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="440" viewBox="0 0 900 440" role="img" aria-labelledby="t d" lang="ja">
+<title id="t">ボタンを押すと起きること</title><desc id="d">サーバーは、だれが押したかを確かめ、してよいかを gate に尋ね、どうなるかを作られたコードに尋ね、すべてを一つのトランザクションで保存して応答する。通知はそのあとで送り、済むまでやり直す。</desc>
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; font-size: 13px; fill: #334155; }
+.h { font-weight: 700; font-size: 15px; fill: #0f172a; }
+.s { font-weight: 700; font-size: 13.5px; fill: #0f172a; }
+.n { font-weight: 700; font-size: 14px; fill: #ffffff; }
+.k { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: #1d4ed8; }
+.l { font-size: 12.5px; fill: #475569; }
+.ground { fill: #f8fafc; }
+.box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2; }
+.main { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 1.8; }
+.good { fill: #f0fdf4; stroke: #15803d; stroke-width: 1.4; }
+.end { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.2; }
+.dot { fill: #1d4ed8; }
+.arrow { stroke: #64748b; stroke-width: 1.6; fill: none; }
+.back { stroke: #64748b; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+.head { fill: #64748b; }
+@media (prefers-color-scheme: dark) {
+text { fill: #cbd5e1; } .h, .s { fill: #f1f5f9; } .n { fill: #0f172a; } .k { fill: #93c5fd; } .l { fill: #cbd5e1; }
+.ground { fill: #0f172a; } .box { fill: #1e293b; stroke: #475569; } .main { fill: #172554; stroke: #93c5fd; }
+.good { fill: #052e16; stroke: #4ade80; } .end { fill: #1e293b; stroke: #64748b; } .dot { fill: #93c5fd; }
+.arrow, .back { stroke: #94a3b8; } .head { fill: #94a3b8; }
+}
+</style>
+<defs><marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<rect class="ground" width="900" height="440" rx="14"/>
+<rect class="box" x="24" y="72" width="170" height="64" rx="10"/>
+<text class="s" x="109" y="99" text-anchor="middle">営業一課長</text>
+<text class="l" x="109" y="119" text-anchor="middle">「承認する」を押す</text>
+<path class="arrow" d="M194 104L244 104" marker-end="url(#head)"/>
+<rect class="main" x="246" y="24" width="372" height="392" rx="10"/>
+<text class="h" x="264" y="51" text-anchor="start">サーバー</text>
+<circle class="dot" cx="278" cy="96" r="13"/>
+<text class="n" x="278" y="101" text-anchor="middle">1</text>
+<text class="s" x="304" y="92" text-anchor="start">だれか</text>
+<text class="t" x="304" y="112" text-anchor="start">ログインしている人</text>
+<path class="arrow" d="M278 111L278 150" marker-end="url(#head)"/>
+<rect class="box" x="676" y="68" width="200" height="56" rx="10"/>
+<text class="s" x="692" y="92" text-anchor="start">ログイン</text>
+<text class="l" x="692" y="111" text-anchor="start">会社のプロバイダー</text>
+<path class="arrow" d="M618 96L674 96" marker-end="url(#head)"/>
+<circle class="dot" cx="278" cy="166" r="13"/>
+<text class="n" x="278" y="171" text-anchor="middle">2</text>
+<text class="s" x="304" y="162" text-anchor="start">してよいか</text>
+<text class="t" x="304" y="182" text-anchor="start">この申請を、いま承認してよい人か</text>
+<path class="arrow" d="M278 181L278 220" marker-end="url(#head)"/>
+<rect class="box" x="676" y="138" width="200" height="56" rx="10"/>
+<text class="s" x="692" y="162" text-anchor="start">gate</text>
+<text class="l" x="692" y="181" text-anchor="start">権限。.gate のファイル</text>
+<path class="arrow" d="M618 166L674 166" marker-end="url(#head)"/>
+<circle class="dot" cx="278" cy="236" r="13"/>
+<text class="n" x="278" y="241" text-anchor="middle">3</text>
+<text class="s" x="304" y="232" text-anchor="start">どうなるか</text>
+<text class="t" x="304" y="252" text-anchor="start">次はどのステップで、だれが答えるか</text>
+<path class="arrow" d="M278 251L278 290" marker-end="url(#head)"/>
+<rect class="box" x="676" y="208" width="200" height="56" rx="10"/>
+<text class="s" x="692" y="232" text-anchor="start">作られたコード</text>
+<text class="l" x="692" y="251" text-anchor="start">.ringi のファイルから</text>
+<path class="arrow" d="M618 236L674 236" marker-end="url(#head)"/>
+<circle class="dot" cx="278" cy="306" r="13"/>
+<text class="n" x="278" y="311" text-anchor="middle">4</text>
+<text class="s" x="304" y="302" text-anchor="start">まとめて保存する</text>
+<text class="t" x="304" y="322" text-anchor="start">申請、履歴、このあとすること</text>
+<path class="arrow" d="M278 321L278 360" marker-end="url(#head)"/>
+<rect class="box" x="676" y="278" width="200" height="56" rx="10"/>
+<text class="s" x="692" y="302" text-anchor="start">PostgreSQL</text>
+<text class="l" x="692" y="321" text-anchor="start">一つのトランザクション</text>
+<path class="arrow" d="M618 306L674 306" marker-end="url(#head)"/>
+<circle class="dot" cx="278" cy="376" r="13"/>
+<text class="n" x="278" y="381" text-anchor="middle">5</text>
+<text class="s" x="304" y="372" text-anchor="start">そのあとにする</text>
+<text class="t" x="304" y="392" text-anchor="start">通知などを、済むまでやり直す</text>
+<rect class="box" x="676" y="348" width="200" height="56" rx="10"/>
+<text class="s" x="692" y="372" text-anchor="start">メール、チャット、flow</text>
+<text class="l" x="692" y="391" text-anchor="start">自分でつなぐ部品</text>
+<path class="arrow" d="M618 376L674 376" marker-end="url(#head)"/>
+<rect class="box" x="24" y="282" width="170" height="64" rx="10"/>
+<text class="s" x="109" y="309" text-anchor="middle">ページに次の</text>
+<text class="s" x="109" y="329" text-anchor="middle">ステップが出る</text>
+<path class="arrow" d="M246 314L196 314" marker-end="url(#head)"/>
+</svg>

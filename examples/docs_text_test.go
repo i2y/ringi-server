@@ -9,6 +9,7 @@ import (
 	"flag"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"io"
 	"io/fs"
@@ -117,9 +118,9 @@ func TestDocumentsLinks(t *testing.T) {
 	t.Logf("%d links of the documents lead somewhere", checked)
 }
 
-// TestDocumentsGo holds the Go code of the documents to files that are compiled: the README's to the
-// examples' command, docs/embedding.md's to the functions of embedding_test.go, and the checks
-// CONTRIBUTING.md lists to the package conformance.
+// TestDocumentsGo holds the Go code of the documents TestGuides does not compile in a project to code
+// that is compiled: a part of a server of one's own to embedding_test.go, a type of the framework to
+// the framework's, and the checks CONTRIBUTING.md lists to the package conformance.
 func TestDocumentsGo(t *testing.T) {
 	read := func(path string) string {
 		b, err := os.ReadFile(path)
@@ -128,34 +129,44 @@ func TestDocumentsGo(t *testing.T) {
 		}
 		return string(b)
 	}
-	goBlocks := func(path string) (out []docBlock) {
+	goBlocks := func(path string, which func(docBlock) bool) (out []docBlock) {
 		_, blocks := docBlocks(t, path)
 		for _, b := range blocks {
-			if b.lang == "go" {
+			if b.lang == "go" && which(b) {
 				out = append(out, b)
 			}
 		}
 		if len(out) == 0 {
-			t.Errorf("%s has no Go code", path)
+			t.Errorf("%s has no Go code to hold", path)
 		}
 		return out
 	}
-	// the README's lines are in the command, in their order (the command sets the clock besides)
-	command := strings.Split(read("cmd/server/main.go"), "\n")
-	for _, b := range goBlocks("../README.md") {
-		at := 0
-		for _, l := range b.lines {
-			i := slices.Index(command[at:], l)
-			if i < 0 {
-				t.Errorf("../README.md: cmd/server/main.go has no line %q after its line %d", l, at)
-				continue
+	untitled := func(b docBlock) bool { return b.title == "" }
+	own := read("embedding_test.go")
+	for path, which := range map[string]func(docBlock) bool{
+		"../docs/embedding.md": func(b docBlock) bool { return b.title == "" || b.title == "tokens.go" },
+		"../docs/agents.md":    untitled,
+	} {
+		for _, b := range goBlocks(path, which) {
+			code := b.text()
+			if _, after, ok := strings.Cut(code, "\n)\n\n"); ok && strings.HasPrefix(code, "package ") {
+				code = after // without the file's package and imports
 			}
-			at += i + 1
+			if !strings.Contains(own, code) {
+				t.Errorf("%s:%d: embedding_test.go does not have this code", path, b.from)
+			}
 		}
 	}
-	for _, b := range goBlocks("../docs/embedding.md") {
-		if !strings.Contains(read("embedding_test.go"), b.text()) {
-			t.Errorf("../docs/embedding.md:%d: embedding_test.go does not have this code", b.from)
+	framework := typesOf(t, read("../swap.go"))
+	for _, path := range []string{"../docs/notices.md", "../docs/parts.md"} {
+		for _, doc := range []string{path, japanese(path)} {
+			for _, b := range goBlocks(doc, untitled) {
+				for name, is := range typesOf(t, "package x\n"+b.text()) {
+					if framework[name] != is {
+						t.Errorf("%s:%d: the framework's %s is %s, and here it is %s", doc, b.from, name, framework[name], is)
+					}
+				}
+			}
 		}
 	}
 	// the checks of the package conformance, each in the table and in the code
@@ -166,7 +177,7 @@ func TestDocumentsGo(t *testing.T) {
 	}
 	contributing := read("../CONTRIBUTING.md")
 	var code strings.Builder
-	for _, b := range goBlocks("../CONTRIBUTING.md") {
+	for _, b := range goBlocks("../CONTRIBUTING.md", untitled) {
 		code.WriteString(b.text())
 	}
 	checks := 0
@@ -194,8 +205,64 @@ func TestDocumentsGo(t *testing.T) {
 	}
 }
 
-// TestDocumentsFlags: the flags the documents name are a server's, and the guide for running one
-// names each flag a server for people takes.
+// typesOf are the types a file of Go declares, each with the names and the types of its fields or its
+// methods, whatever its comments and its layout.
+func typesOf(t *testing.T, src string) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", src, 0)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, src)
+	}
+	written := func(e ast.Expr) string {
+		var b strings.Builder
+		if err := printer.Fprint(&b, fset, e); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	out := map[string]string{}
+	for _, d := range f.Decls {
+		g, ok := d.(*ast.GenDecl)
+		if !ok || g.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range g.Specs {
+			s := spec.(*ast.TypeSpec)
+			var fields *ast.FieldList
+			switch x := s.Type.(type) {
+			case *ast.StructType:
+				fields = x.Fields
+			case *ast.InterfaceType:
+				fields = x.Methods
+			default:
+				out[s.Name.Name] = written(s.Type)
+				continue
+			}
+			var all []string
+			for _, field := range fields.List {
+				for _, n := range field.Names {
+					all = append(all, n.Name+" "+written(field.Type))
+				}
+			}
+			out[s.Name.Name] = strings.Join(all, "; ")
+		}
+	}
+	return out
+}
+
+// guidePages are the pages of docs, in both languages.
+func guidePages(t *testing.T) (pages []string) {
+	for _, doc := range allDocuments(t) {
+		if strings.HasPrefix(doc, "../docs/") {
+			pages = append(pages, doc)
+		}
+	}
+	return pages
+}
+
+// TestDocumentsFlags: the flags the documents name are a server's, and the reference has each flag a
+// server takes.
 func TestDocumentsFlags(t *testing.T) {
 	var f serve.Flags
 	set := flag.NewFlagSet("server", flag.ContinueOnError)
@@ -203,24 +270,22 @@ func TestDocumentsFlags(t *testing.T) {
 	f.Register(set)
 	known := map[string]bool{}
 	set.VisitAll(func(f *flag.Flag) { known[f.Name] = true })
-	examples := map[string]bool{"verdict": true} // the examples' command's own
+	others := map[string]bool{
+		"verdict":  true, // the examples' command's own
+		"temporal": true, // of the projects ritsu ringi init --temporal makes
+		"w":        true, // of Temporal's CLI
+	}
 	named := regexp.MustCompile("`-([a-z]+(?:-[a-z]+)*)[` ]")
-	for _, doc := range []string{"../README.md", "../docs/operations.md", "../docs/api.md", "../docs/embedding.md"} {
-		for _, path := range []string{doc, japanese(doc)} {
-			for _, m := range named.FindAllStringSubmatch(prose(t, path), -1) {
-				if !known[m[1]] && !examples[m[1]] {
-					t.Errorf("%s names the flag -%s, and a server has none", path, m[1])
-				}
+	for _, path := range append(guidePages(t), "../README.md", "../README.ja.md") {
+		for _, m := range named.FindAllStringSubmatch(prose(t, path), -1) {
+			if !known[m[1]] && !others[m[1]] {
+				t.Errorf("%s names the flag -%s, and a server has none", path, m[1])
 			}
 		}
 	}
-	for _, path := range []string{"../docs/operations.md", japanese("../docs/operations.md")} {
+	for _, path := range []string{"../docs/reference.md", "../docs/reference.ja.md"} {
 		text := prose(t, path)
 		for name := range known {
-			switch name {
-			case "dev-login", "files": // for trying a server, and for one without a database
-				continue
-			}
 			if !strings.Contains(text, "`-"+name+"`") {
 				t.Errorf("%s does not say the flag -%s", path, name)
 			}
@@ -228,8 +293,9 @@ func TestDocumentsFlags(t *testing.T) {
 	}
 }
 
-// TestDocumentsLog: each line of the log the guide says to watch is one the code logs, and each
-// error it lists for a server that does not start is one the code answers.
+// TestDocumentsLog: each line of the log the documents say to watch is one the code logs, and each
+// error they list for a server that does not start is one the code answers: its words between the
+// places of a "…", where they are not another program's.
 func TestDocumentsLog(t *testing.T) {
 	var code strings.Builder
 	err := filepath.WalkDir("..", func(path string, d fs.DirEntry, err error) error {
@@ -252,10 +318,10 @@ func TestDocumentsLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := regexp.MustCompile("`msg=\"([^\"]+)\"`")
-	for _, doc := range []string{"../docs/operations.md", japanese("../docs/operations.md")} {
+	for _, doc := range guidePages(t) {
 		found := message.FindAllStringSubmatch(prose(t, doc), -1)
-		if len(found) < 8 {
-			t.Errorf("%s says %d lines of the log", doc, len(found))
+		if n := len(found); n < 8 && strings.Contains(doc, "troubleshooting") {
+			t.Errorf("%s says %d lines of the log", doc, n)
 		}
 		for _, m := range found {
 			if !strings.Contains(code.String(), strconv.Quote(m[1])) {
@@ -265,39 +331,44 @@ func TestDocumentsLog(t *testing.T) {
 	}
 }
 
-// TestDocumentsNumbers holds the limits and the times the guide says to the code's.
+// TestDocumentsNumbers holds the limits and the times the documents say to the code's.
 func TestDocumentsNumbers(t *testing.T) {
 	day := 24 * time.Hour
 	for _, c := range []struct {
-		en, ja string
-		is     bool
+		doc, en, ja string
+		is          bool
 	}{
-		{"| An attachment | 10 MiB | `MaxFile`", "| 添付ファイル一つ | 10 MiB |", web.DefaultMaxFile == 10<<20},
-		{"| Attachments a person uploaded that no request holds | 50 | `UploadsPerPerson`", "添付ファイル | 50 | `UploadsPerPerson`", server.DefaultUploadsPerPerson == 50},
-		{"| 10 seconds | `CommentEvery`", "| 10 秒 | `CommentEvery`", server.DefaultCommentEvery == 10*time.Second},
-		{"| 100, 25 | `CommentsPerTicket`, `CommentsPerPerson`", "| 100、25 | `CommentsPerTicket`、`CommentsPerPerson`",
-			server.DefaultCommentsPerTicket == 100 && server.DefaultCommentsPerPerson == 25},
-		{"| An attachment no request holds | 7 days |", "| どの申請も持たない添付ファイル | 7 日 |", server.DefaultUploadsKept == 7*day},
-		{"by its key | 30 days:", "| 操作のキーと応答 | 30 日。", server.DefaultOperationsKept == 30*day},
-		{"| An upload of the organization's data | 64 MiB | `MaxOrganization`", "| 組織のデータのアップロード | 64 MiB | `MaxOrganization`", server.DefaultMaxOrganization == 64<<20},
-		{"| Imports of new data of the organization | 20 a day | `ImportsPerDay`", "| 組織の新しいデータの取り込み | 1 日 20 回 | `ImportsPerDay`", server.DefaultImportsPerDay == 20},
-		{"checked and not imported | a day |", "取り込んでいない、組織のデータ | 1 日 |", server.DefaultDraftsKept == day},
-		{"| A session | 12 hours from signing in, 2 hours unused |", "| セッション | ログインから 12 時間、使わないまま 2 時間 |",
-			oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
-		{"when it starts and every hour", "起動のときと 1 時間ごとに", server.DefaultSweepEvery == time.Hour},
+		{"reference", "| `CommentEvery` | How long a person waits before another comment on the same request | 10 seconds |", "| `CommentEvery` | 同じ人が、同じ申請に続けてコメントできる間隔 | 10 秒 |", server.DefaultCommentEvery == 10*time.Second},
+		{"reference", "| `CommentsPerTicket` | How many comments one request takes | 100 |", "| `CommentsPerTicket` | 一件の申請に付けられるコメントの数 | 100 |", server.DefaultCommentsPerTicket == 100},
+		{"reference", "| `CommentsPerPerson` | How many of them one person makes | 25 |", "| `CommentsPerPerson` | そのうち、一人が付けられる数 | 25 |", server.DefaultCommentsPerPerson == 25},
+		{"reference", "| `UploadsPerPerson` | How many attachments of one person no request holds | 50 |", "| `UploadsPerPerson` | 一人がアップロードした、どの申請も持たない添付ファイルの数 | 50 |", server.DefaultUploadsPerPerson == 50},
+		{"reference", "| `UploadsKept` | How long an attachment no request holds is kept | 7 days |", "| `UploadsKept` | どの申請も持たない添付ファイルを残す期間 | 7 日 |", server.DefaultUploadsKept == 7*day},
+		{"reference", "| `OperationsKept` | How long the number of an operation and its answer are kept | 30 days |", "| `OperationsKept` | 操作の番号と応答を残す期間 | 30 日 |", server.DefaultOperationsKept == 30*day},
+		{"reference", "| `MaxOrganization` | The largest upload of the organization's data | 64 MiB |", "| `MaxOrganization` | 組織のデータのアップロードの上限 | 64 MiB |", server.DefaultMaxOrganization == 64<<20},
+		{"reference", "| `DraftsKept` | How long the organization's data that was only checked is kept | a day |", "| `DraftsKept` | 確かめただけの組織のデータを残す期間 | 1 日 |", server.DefaultDraftsKept == day},
+		{"reference", "| `ImportsPerDay` | How often new data of the organization is imported in 24 hours | 20 |", "| `ImportsPerDay` | 24 時間に取り込める、組織の新しいデータの回数 | 20 |", server.DefaultImportsPerDay == 20},
+		{"reference", "| `SweepEvery` | How often what is past its time is deleted | an hour |", "| `SweepEvery` | 期間の過ぎたものを消す間隔 | 1 時間 |", server.DefaultSweepEvery == time.Hour},
+		{"reference", "| An attachment | 10 MiB | `MaxFile` of `web.Config` |", "| 添付ファイル一つ | 10 MiB | `web.Config` の `MaxFile` |", web.DefaultMaxFile == 10<<20},
+		{"reference", "| A session | 12 hours from signing in, 2 hours unused |", "| セッション | ログインから 12 時間、使わないまま 2 時間 |", oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
+		{"maintenance", "when it starts and every hour", "起動のときと 1 時間ごとに", server.DefaultSweepEvery == time.Hour},
+		{"maintenance", "| An attachment no request holds | 7 days |", "| どの申請も持たない添付ファイル | 7 日 |", server.DefaultUploadsKept == 7*day},
+		{"maintenance", "| The number of an operation and its answer | 30 days.", "| 操作の番号と応答 | 30 日。", server.DefaultOperationsKept == 30*day},
+		{"maintenance", "| Data of the organization that was checked and not imported | a day |", "| 確かめただけで取り込んでいない、組織のデータ | 1 日 |", server.DefaultDraftsKept == day},
+		{"sign-in", "12 hours after signing in, or after 2 hours unused", "ログインから 12 時間か、使わないまま 2 時間", oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
+		{"troubleshooting", "12 hours after signing in, or after 2 hours unused", "ログインから 12 時間か、使わないまま 2 時間", oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
 	} {
 		if !c.is {
 			t.Errorf("the code's number is another than %q says", c.en)
 		}
-		for doc, says := range map[string]string{"../docs/operations.md": c.en, "../docs/operations.ja.md": c.ja} {
-			if !strings.Contains(prose(t, doc), says) {
+		for doc, says := range map[string]string{"../docs/" + c.doc + ".md": c.en, "../docs/" + c.doc + ".ja.md": c.ja} {
+			if !strings.Contains(strings.Join(strings.Fields(prose(t, doc)), " "), says) {
 				t.Errorf("%s does not say %q", doc, says)
 			}
 		}
 	}
 }
 
-// TestDocumentsSQL runs the SQL of the guide on the tables the server makes.
+// TestDocumentsSQL runs the SQL of the documents on the tables the server makes.
 func TestDocumentsSQL(t *testing.T) {
 	url := os.Getenv("RINGI_TEST_DATABASE")
 	if url == "" {
@@ -316,7 +387,7 @@ func TestDocumentsSQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	ran := 0
-	for _, doc := range []string{"../docs/operations.md", japanese("../docs/operations.md")} {
+	for _, doc := range guidePages(t) {
 		_, blocks := docBlocks(t, doc)
 		for _, b := range blocks {
 			if b.lang != "sql" {
