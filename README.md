@@ -1,18 +1,19 @@
 # ringi-server
 
-ringi-server is a Go framework for building a company's system of requests and approvals.
+ringi-server is a Go framework for building a company's system of requests and approvals. *Ringi* is the
+Japanese word for deciding by passing a request from one approver to the next.
 
 For each kind of request, such as purchases, expenses and leave, you write one file that says what to
 fill in and who approves it. With ringi-server, that file becomes a server that does what it says. Staff
-make requests and approve them in a browser. The server finds the approvers, sends the notices, keeps
+make requests and approve them in a browser. The server finds the approvers, sends the notices, watches
 the deadlines, and keeps the history.
 
 Japanese: [README.ja.md](README.ja.md).
 
 ## What you write
 
-The main part of a purchase request. What it says of sending a request back and of withdrawing it is
-left out here.
+This is the main part of a purchase request. The lines about sending a request back and withdrawing it
+are left out here.
 
 ```ringi title="project/purchase.ringi"
 form
@@ -38,7 +39,7 @@ every stage
 | `form` | What the requester fills in: an amount from 1 to 10,000,000 yen, and a purpose of up to 500 characters |
 | `route` | The order of the approvals: the manager, then the head of the department |
 | `who` | How each approver is found: the manager of the person who makes the request, and the head of their department. Who that is comes from your organization's data on the day the request reaches them |
-| `every stage` | The deadline: an answer by the end of the third business day. With none after two business days, the approver is reminded. A request past its deadline ends |
+| `every stage` | The deadline: an answer by the end of the third business day. If there is none after two business days, the approver is reminded. A request past its deadline ends |
 
 The file is in a language called ringi. The command [ritsu](https://github.com/i2y/ritsu) checks it, and
 makes from it the Go code that takes a request through its approvals. The file can also say that a larger
@@ -96,8 +97,8 @@ Some things it cannot do:
 1. You write the request types, the organization's data and the permissions as files.
 2. ritsu checks that they fit together and leave nothing out, and makes Go code that decides how each
    request goes on.
-3. ringi-server runs that code as a server. Whom a request goes to next and when it ends is not decided
-   by the server: it asks the code that was made.
+3. ringi-server runs that code as a server. The server does not decide whom a request goes to next, or
+   when it ends: it asks the code that was made.
 
 For real use it needs PostgreSQL and your organization's sign-in (a service of OpenID Connect). The server
 is one executable file, and you can run as many of it as you like. Temporal is needed only when it runs
@@ -141,8 +142,8 @@ ringi-server and ritsu go together like this.
 |---|---|---|---|
 | v0.1.0 | 0.56.0 | 3 | The first version |
 
-The contract is the number of the rules by which ritsu's code and the server hand things to each other.
-Given code of another number, the server says so and does not start. [Raising
+The contract is the form of what ritsu's code and the server pass to each other, and it has a number. A
+server given code of another number says so, and does not start. [Raising
 versions](docs/maintenance.md#raising-versions) says how to go from one to the next.
 
 ## License

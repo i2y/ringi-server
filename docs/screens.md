@@ -1,6 +1,6 @@
 # Make screens of your own
 
-The colors and the logo of the server's pages cannot be changed. To decide how things look yourself, to show the
+The colours and the logo of the server's pages cannot be changed. To decide how things look yourself, to show the
 numbers in your company's portal, or to approve in an application of your own, take one of these. Japanese:
 [screens.ja.md](screens.ja.md).
 

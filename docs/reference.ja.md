@@ -14,7 +14,7 @@
 | `-dev-login` | 試用のログインを使う。だれとして使うかをページで選ぶ。本人を確かめないので、自分のコンピューターのアドレスでしか動かない |
 | `-oidc-issuer` | 会社のログインの issuer の URL |
 | `-oidc-client-id` | クライアント ID |
-| `-oidc-client-secret` | クライアントのシークレット。ほかの利用者に見えないよう、環境変数 `RINGI_OIDC_CLIENT_SECRET` で渡すほうがよい |
+| `-oidc-client-secret` | クライアントシークレット。ほかの利用者に見えないよう、環境変数 `RINGI_OIDC_CLIENT_SECRET` で渡すほうがよい |
 | `-oidc-redirect-url` | ログインのサービスから戻ってくる URL。`https://<ホスト>/login/callback` |
 | `-oidc-roles-claim` | 人の役割が入る、ID トークンのクレーム。指定しなければ、だれも役割を持たない |
 | `-oidc-scopes` | `openid`、`email`、`profile` のほかに求めるスコープ。空白で区切る |

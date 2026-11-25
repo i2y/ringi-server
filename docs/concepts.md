@@ -20,7 +20,7 @@ After a change in `project/`, you check it with `ritsu check project` and make t
 The server has no rules of approval of its own. It asks the code that was made how each request goes on.
 So the rules are the same whether someone acts on the pages, through the API or with an agent.
 
-The form of what the code and the server hand to each other is called the **contract**. The contract has a
+The form of what the code and the server pass to each other is called the **contract**. The contract has a
 number, and a server given code of another number does not start.
 
 ## A request type, and one request
@@ -132,7 +132,7 @@ what starts them.
 
 ## What decides who may do what
 
-Three things decide, each something of its own.
+Three things decide, and each decides something different.
 
 | What decides | What it decides | For example |
 |---|---|---|
@@ -227,5 +227,5 @@ same thing has the same number (its key).
 | gate | The file that says who may do what, and the code made from it | gate、`Gate` |
 | book | What counts what is left of a budget or of days of leave. An amount is held when a request is made, and settled when it is approved | 帳簿、`Books` |
 | flow | The steps of the work that runs after an approval, or in a stage | flow、`Flows` |
-| contract | The form of what the code that was made and the server hand to each other | 約束、contract |
+| contract | The form of what the code that was made and the server pass to each other | 約束、contract |
 | provider | The OpenID Connect server that runs your organization's sign-in | プロバイダー、provider |

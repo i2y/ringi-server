@@ -113,9 +113,9 @@ who
 `manager of requester` is the manager of the person who made the request. The server finds them in the
 company's data:
 
-1. `s1201,sales_1,staff,yes` in `members.csv` says that Sales staff 1 belongs to Sales Section 1
+1. `members.csv` has the line `s1201,sales_1,staff,yes`: Sales staff 1 belongs to Sales Section 1
    (`sales_1`).
-2. `sales_1,Sales Section 1,営業一課,section,sales,s1101` in `teams.csv` says that the head of Sales
+2. `teams.csv` has the line `sales_1,Sales Section 1,営業一課,section,sales,s1101`: the head of Sales
    Section 1 is s1101, its manager.
 
 `head of requester.department` is the head of the department the requester is in. The department above

@@ -69,7 +69,7 @@ type Config struct {
 
 ### 2.1 画面のルートの答え
 
-A2UI 1.0 のメッセージを、レンダラが受け取る順（`createSurface`、`updateDataModel`、`updateComponents`）に並べた JSON の配列です。`Content-Type: application/json`、`Cache-Control: no-store`。配列はパッケージ `screens` が埋めたとおりで、このパッケージはメッセージを書き換えません。A2UI 1.0 より前の名前を読むレンダラには、`?names=old` で `Screen.WithOldNames` の形を返します（ringi の DESIGN 13.5）。
+A2UI 1.0 のメッセージを、レンダラーが受け取る順（`createSurface`、`updateDataModel`、`updateComponents`）に並べた JSON の配列です。`Content-Type: application/json`、`Cache-Control: no-store`。配列はパッケージ `screens` が埋めたとおりで、このパッケージはメッセージを書き換えません。A2UI 1.0 より前の名前を読むレンダラーには、`?names=old` で `Screen.WithOldNames` の形を返します（ringi の DESIGN 13.5）。
 
 | 画面 | 埋める物 |
 |---|---|
@@ -95,7 +95,7 @@ A2UI 1.0 のメッセージを、レンダラが受け取る順（`createSurface
 
 ### 2.2 ボタンの操作
 
-本文は、ボタンが押されたときにレンダラが送るメッセージ（`{"version": "1.0", "action": {…}}`）で、`application/json`（か `application/a2ui+json`）です。ほかのタイプは 415 です。ハンドラーはメッセージを読み（`screens.ParseAction`）、サーフェスの種類の画面（チケットへの操作なら、チケットのバージョンの画面）を選び、操作にし（`Set.Operation`。冪等キーもここで作る）、本人として実行します（`Server.Do`。監査ログのために `Via: "screens"` を付ける）。読めないメッセージ、どの画面の物でもないメッセージ、そのイベントを送らないボタンのメッセージは 400 です。
+本文は、ボタンが押されたときにレンダラーが送るメッセージ（`{"version": "1.0", "action": {…}}`）で、`application/json`（か `application/a2ui+json`）です。ほかのタイプは 415 です。ハンドラーはメッセージを読み（`screens.ParseAction`）、サーフェスの種類の画面（チケットへの操作なら、チケットのバージョンの画面）を選び、操作にし（`Set.Operation`。冪等キーもここで作る）、本人として実行します（`Server.Do`。監査ログのために `Via: "screens"` を付ける）。読めないメッセージ、どの画面の物でもないメッセージ、そのイベントを送らないボタンのメッセージは 400 です。
 
 答えは JSON のオブジェクトで、HTTP のステータスは API の答えと同じです。
 
@@ -116,7 +116,7 @@ A2UI 1.0 のメッセージを、レンダラが受け取る順（`createSurface
 
 パッケージの画面は、それぞれ自分のカタログと関数を持ちます（`Set.Asset`）。ritsu がパッケージの種類と一緒に生成した物で、画面を描く部品と、フォームがする確かめです。種類のある版の画面とページは、その版が入っているパッケージの物を使います。いちばん新しいパッケージの物は `/a2ui/catalog.json` と `/a2ui/functions.js` に、そのページのファイルは `/pages/assets/` にあります。パッケージが一つだけのサーバーが、そのパッケージの物を出すアドレスと同じです。ほかのパッケージの物は、それぞれ自分のアドレス `/a2ui/{files}/` と `/pages/assets/{files}/` にあります。`{files}` は、その `catalog.json` と `functions.js` の SHA-256 の、16 進の最初の 16 桁です。そのパッケージの種類のページは、ここからスクリプトを読み込みます（その `page.js` は、横の `functions.js` を import します）。どのファイルも、その `Content-Type`、強い `ETag`、`Cache-Control: no-cache` を付けて出します。`If-None-Match` がその ETag なら、本文なしの 304 です。だれのデータも持たないので、人がいなくても答えます。ほかの `{files}` や、ほかの名前は 404 です。
 
-画面の答えは、その画面を描くカタログを `Link` ヘッダーで言います（`</a2ui/…/catalog.json>; rel="describedby"; type="application/json"`）。その横の `functions.js` で、画面の確かめを動かします。レンダラは一つの ID にカタログを一つしか持たないので、二つのパッケージの画面が一つのカタログの ID を別々のファイルに付けると、一方のパッケージの画面が、もう一方の部品で描かれてしまいます。`New` はそれを断ります（`*CatalogConflict`）。エラーは、二つのパッケージ（`Config.Packages` の順に 1 から数える）とその種類、ID、すること（どちらかを、自分のカタログの ID で作り直す。`ritsu gen --catalog`）を、英語と日本語で言います（`CatalogConflict.In`）。画面が一つの ID を同じファイルに付けるパッケージは受け付けます。
+画面の答えは、その画面を描くカタログを `Link` ヘッダーで言います（`</a2ui/…/catalog.json>; rel="describedby"; type="application/json"`）。その横の `functions.js` で、画面の確かめを動かします。レンダラーは一つの ID にカタログを一つしか持たないので、二つのパッケージの画面が一つのカタログの ID を別々のファイルに付けると、一方のパッケージの画面が、もう一方の部品で描かれてしまいます。`New` はそれを断ります（`*CatalogConflict`）。エラーは、二つのパッケージ（`Config.Packages` の順に 1 から数える）とその種類、ID、すること（どちらかを、自分のカタログの ID で作り直す。`ritsu gen --catalog`）を、英語と日本語で言います（`CatalogConflict.In`）。画面が一つの ID を同じファイルに付けるパッケージは受け付けます。
 
 ## 3. 検査と制限
 
@@ -192,7 +192,7 @@ signIn.Mount(h) // GET /login、GET /login/callback、POST /logout を Handler.H
 
 ### 5.1 名前で値を探す
 
-`GET /a2ui/find/people`、`GET /a2ui/find/teams`、`GET /a2ui/find/masters/{file}/{master}` は、選ぶ部品が `?q=` の言葉で探す値を返します。今日有効な組織の版の人かチーム、またはマスタの今日選べる行です。答え方は API の探す操作（`find_people`、`find_teams`、`find_master_<file>_<master>`。ringi の DESIGN 13.2）と同じで、API と同じ関数（`Server.FindValues`）で答えます。引数を読む順も、見つかる値とその順も同じで、200 と 400 の本文はバイトまで API と同じです。レンダラの `PersonPicker`（`of` は `person` か `team`）と `MasterPicker`（`master` は `masters/` のあとのパス）は、画面の `/find` にあるアドレスの下で探します（ringi の DESIGN 13.2、13.8）。ハンドラーは、埋めるフォームとカードのどれにも、そこに `web.FindPath`（`/a2ui/find`）を入れます（2.1 節）。ページのスクリプトも、画面の `/find` から同じアドレスを読んで探します。ページの候補と同じく、ログインしている人に答えます（いなければ 401）。答えるのは ID かキーと名前で、メールアドレスは返しません（アドレスは `get_organization` が、その版の人にだけ返します）。
+`GET /a2ui/find/people`、`GET /a2ui/find/teams`、`GET /a2ui/find/masters/{file}/{master}` は、選ぶ部品が `?q=` の言葉で探す値を返します。今日有効な組織の版の人かチーム、またはマスタの今日選べる行です。答え方は API の探す操作（`find_people`、`find_teams`、`find_master_<file>_<master>`。ringi の DESIGN 13.2）と同じで、API と同じ関数（`Server.FindValues`）で答えます。引数を読む順も、見つかる値とその順も同じで、200 と 400 の本文はバイトまで API と同じです。レンダラーの `PersonPicker`（`of` は `person` か `team`）と `MasterPicker`（`master` は `masters/` のあとのパス）は、画面の `/find` にあるアドレスの下で探します（ringi の DESIGN 13.2、13.8）。ハンドラーは、埋めるフォームとカードのどれにも、そこに `web.FindPath`（`/a2ui/find`）を入れます（2.1 節）。ページのスクリプトも、画面の `/find` から同じアドレスを読んで探します。ページの候補と同じく、ログインしている人に答えます（いなければ 401）。答えるのは ID かキーと名前で、メールアドレスは返しません（アドレスは `get_organization` が、その版の人にだけ返します）。
 
 ```
 GET /a2ui/find/people?q=staff+3&lang=en
@@ -240,7 +240,7 @@ ID は 16 バイトの乱数を 32 文字の小文字の 16 進で書いた物�
 {"error": "you have 50 uploaded files that no request holds yet, as many as the server keeps for one person: attach them to requests, or wait until the oldest is deleted (a file no request holds is deleted 7 days after it is uploaded)"}
 ```
 
-レンダラの `FileAttachment` は、画面の `/upload` にあるアドレス（ringi の DESIGN 13.2、13.8）にファイルを送り、返った `id` を値に入れます。ハンドラーは `/upload` に `web.UploadPath`（`/files`。2.1 節）を入れます。ファイルを預からないサーバー（`server.Config.Files` が無い）では `/upload` は null のままで、`POST /files` には 404（`the server keeps no files`）を返します。ページのフォームは、ファイルをフォームと一緒に送ります。`Handler.Keeper` が、それを同じやり方で本人の物として預かります。同じページから送り直された物は、一度だけ預かります（9.3 節）。`Handler.Keep` は、自前のフォームで送られたファイルを、そのつど新しく預かります。
+レンダラーの `FileAttachment` は、画面の `/upload` にあるアドレス（ringi の DESIGN 13.2、13.8）にファイルを送り、返った `id` を値に入れます。ハンドラーは `/upload` に `web.UploadPath`（`/files`。2.1 節）を入れます。ファイルを預からないサーバー（`server.Config.Files` が無い）では `/upload` は null のままで、`POST /files` には 404（`the server keeps no files`）を返します。ページのフォームは、ファイルをフォームと一緒に送ります。`Handler.Keeper` が、それを同じやり方で本人の物として預かります。同じページから送り直された物は、一度だけ預かります（9.3 節）。`Handler.Keep` は、自前のフォームで送られたファイルを、そのつど新しく預かります。
 
 ### 6.3 だれがファイルを指定でき、だれがダウンロードできるか
 

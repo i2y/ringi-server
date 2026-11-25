@@ -23,7 +23,7 @@ func (e *CatalogConflict) In(lang string) string {
 	first, second := strconv.Itoa(e.First), strconv.Itoa(e.Second)
 	if lang == "ja" {
 		return "パッケージ " + first + "（" + strings.Join(e.FirstKinds, "、") + "）とパッケージ " + second + "（" + strings.Join(e.SecondKinds, "、") +
-			"）の画面が、中身の違うカタログに同じ ID（" + e.ID + "）を付けています。レンダラは ID ごとに一つのカタログしか持てないので、どちらかのパッケージを別の ID で作り直してください（ritsu gen の --catalog）。"
+			"）の画面が、中身の違うカタログに同じ ID（" + e.ID + "）を付けています。レンダラーは ID ごとに一つのカタログしか持てないので、どちらかのパッケージを別の ID で作り直してください（ritsu gen の --catalog）。"
 	}
 	return "the screens of package " + first + " (" + strings.Join(e.FirstKinds, ", ") + ") and package " + second + " (" + strings.Join(e.SecondKinds, ", ") +
 		") give one ID, " + e.ID + ", to catalogs of other files. A renderer keeps one catalog by its ID: make one of the packages again with an ID of its own (ritsu gen --catalog)."

@@ -5,8 +5,8 @@ AI agents can make requests, look for those that wait, and answer them. Japanese
 An agent acts as the person who uses it. It can do what that person can, and the permissions and the rules of the
 requests hold as they do on the pages. The history has that person's name.
 
-What an agent calls, its tools, the server makes from the request types. They are called over the Model Context
-Protocol (MCP), which connects agents to other programs.
+An agent calls tools, which the server makes from the request types. It calls them over the Model Context Protocol
+(MCP), which connects agents to other programs.
 
 To have an agent answer one stage of the route, see [Have an agent check requests](agent-steps.md).
 

@@ -65,7 +65,7 @@ claims
 | `route` | The stages of the approval, from the top down. A line is the name of a stage, and who answers it |
 | `who` | How those who answer are found. The second column of `route` is a name from here |
 | `every stage` | What holds in every stage. An answer is due by the end of the third business day. After two business days, a reminder goes out at 9:00. A request past its deadline ends. With no one to answer, it goes to the person above |
-| `ticket` | What can be done with a request. Everyone but the president may make one. No one approves their own. A person who is the approver of two stages approves once for both. It may be sent back twice, is made again within 5 business days, and may be withdrawn until it is decided |
+| `ticket` | What can be done with a request. Everyone but the president may make one. No one approves their own. A person who is the approver of two stages approves once for both. It may be sent back twice, is submitted again within 5 business days, and may be withdrawn until it is decided |
 | `claims` | What is to hold at all times: here, that every request ends within 28 business days |
 
 After it come the examples, which begin with `scenario`, and the Japanese words (`labels ja`). The stages
@@ -231,7 +231,7 @@ error[ringi E401]: project/purchase.ringi:41:3: The claim `ends_in_time` says ev
 Under `claims` are the things that are to hold at all times. It said here that every request ends within
 28 business days. With three stages, going through the route once takes up to 9 business days. A request
 may be sent back twice, so it goes through the route three times at the most: 27 business days. In between,
-the server waits up to 5 business days, twice, for the request to be made again: 37 in all. ritsu calls
+the server waits up to 5 business days, twice, for the request to be submitted again: 37 in all. ritsu calls
 going through the route once a round.
 
 If 37 business days will do, correct the claim. If that is too long, shorten the deadlines. Here, correct

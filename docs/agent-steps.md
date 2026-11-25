@@ -64,7 +64,7 @@ flow
 
 ## 3. Put it in the route
 
-Write the request for a trip. The lines in color are for the agent.
+Write the request for a trip. The lines in colour are for the agent.
 
 ```ringi title="project/trip.ringi" hl_lines="7 14 18 19 39 40 47-49 56 58 59"
 request trip v1 "Trip request"

@@ -72,7 +72,7 @@ type AuditLog interface {
 
 | パッケージ、モジュール | 中身 |
 |---|---|
-| `server`（モジュールの根） | 申請を受け付けて進めるサーバー。HTTP の API と、同じ操作をする Go の関数 |
+| `server`（モジュールのいちばん上） | 申請を受け付けて進めるサーバー。HTTP の API と、同じ操作をする Go の関数 |
 | `serve` | サーバーのコマンドを作る。フラグ、データベース、ログイン、HTTP のサーバー |
 | [`web`](../web/README.ja.md) | ページ、画面、添付ファイルを HTTP で出す |
 | [`screens`](../screens/README.ja.md)、[`screens/page`](../screens/page/README.ja.md) | A2UI の画面と、HTML のページを作る |
