@@ -755,22 +755,23 @@ the three.
 ### 2.8 Publishing a version
 
 The three modules are published at one version, with three tags (`vX.Y.Z`, `mcp/vX.Y.Z`,
-`temporal/vX.Y.Z`). In this repository `mcp` and `temporal` require the framework at `v0.0.0` and
-replace it by `../`. A project that requires `mcp` or `temporal` and not the framework is given
-the framework at the version their go.mod files require, and no `v0.0.0` can be fetched; so before
-the tags, that require is raised to the version. The replace stays, as it serves work in this
-repository alone: the go command reads the replace directives of the main module only, and `mcp`
-and `temporal` have no commands for `go install`, which refuses a module with a replace. A module's
-zip holds the files of its directory, and of the repository's root the file named `LICENSE` alone;
-this repository's licenses are `LICENSE-APACHE` and `LICENSE-MIT`, so `mcp/` and `temporal/` hold
-copies of them (files: a link is left out of a zip), and `TestLicensesOfTheModules` checks that they
-are the root's, byte for byte. Before the tags, the modules are checked as a project fetches them,
-from a file proxy made of the commit to tag, with no network and no replace: a module that requires
-`mcp` alone and one that requires `temporal` alone are tidied, built and vetted, the projects
-`ritsu ringi init` writes (with `--mcp`, and with `--mcp --temporal`) are tidied, generated, vetted
-and tested, and each module's zip holds both licenses. Made of this repository as it is, with the
-require left at `v0.0.0`, the modules that require `mcp` or `temporal` alone cannot be tidied, and
-with it raised every check passes.
+`temporal/vX.Y.Z`). In this repository `mcp`, `temporal` and the examples require the framework at
+the version to come and replace it by `../`. A project that requires `mcp` or `temporal` and not the
+framework is given the framework at the version their go.mod files require, which must be one that
+can be fetched; so before the tags, that require is raised to the version (the examples' too: the go
+command does not build them with a lower one than `mcp` requires). The replace stays, as it serves
+work in this repository alone: the go command reads the replace directives of the main module only,
+and `mcp` and `temporal` have no commands for `go install`, which refuses a module with a replace. A
+module's zip holds the files of its directory, and of the repository's root the file named `LICENSE`
+alone; this repository's licenses are `LICENSE-APACHE` and `LICENSE-MIT`, so `mcp/` and `temporal/`
+hold copies of them (files: a link is left out of a zip), and `TestLicensesOfTheModules` checks that
+they are the root's, byte for byte. Before the tags, the modules are checked as a project fetches
+them, from a file proxy made of the commit to tag, with no network and no replace: a module that
+requires `mcp` alone and one that requires `temporal` alone are tidied, built and vetted, the
+projects `ritsu ringi init` writes (with `--mcp`, and with `--mcp --temporal`) are tidied,
+generated, vetted and tested, and each module's zip holds both licenses. With the require left at a
+version that is not published, the modules that require `mcp` or `temporal` alone cannot be tidied,
+and with it raised every check passes.
 
 ## 3. One event, in order
 

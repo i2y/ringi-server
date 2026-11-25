@@ -149,10 +149,10 @@ and by the tests, and ritsu writes the same `go/` and `requests/` with either mo
 The framework is three modules, published at one version with three tags: `vX.Y.Z`, `mcp/vX.Y.Z`
 and `temporal/vX.Y.Z`. Before tagging:
 
-1. In `mcp/go.mod` and `temporal/go.mod`, raise the require of the framework to the version
-   (`go mod edit -require=github.com/i2y/ringi-server@vX.Y.Z`). A project that requires `mcp` or
-   `temporal` and not the framework is given the framework at the version these files require, and
-   `v0.0.0`, which they require in this repository, cannot be fetched. Keep their
+1. In `mcp/go.mod`, `temporal/go.mod` and `examples/go.mod`, raise the require of the framework to
+   the version (`go mod edit -require=github.com/i2y/ringi-server@vX.Y.Z`). A project that requires
+   `mcp` or `temporal` and not the framework is given the framework at the version these files
+   require, so it must be one that can be fetched. Keep their
    `replace github.com/i2y/ringi-server => ../`: the go command reads the replace directives of the
    main module only, and `mcp` and `temporal` have no commands for `go install`, which refuses a
    module with a replace.

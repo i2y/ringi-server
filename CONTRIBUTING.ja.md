@@ -123,7 +123,7 @@ RINGI_DOCS=write go test -run 'TestDocuments$' .
 
 フレームワークは三つのモジュールで、同じ版を三つのタグで公開します。`vX.Y.Z`、`mcp/vX.Y.Z`、`temporal/vX.Y.Z` です。タグを付ける前に、次のことをします。
 
-1. `mcp/go.mod` と `temporal/go.mod` で、フレームワークの require をその版に上げる（`go mod edit -require=github.com/i2y/ringi-server@vX.Y.Z`）。`mcp` か `temporal` だけを要求するプロジェクトは、これらのファイルが要求する版のフレームワークを受け取る。このリポジトリで書いてある `v0.0.0` は、取得できない。`replace github.com/i2y/ringi-server => ../` は残す。go コマンドは main モジュールの replace だけを読み、`mcp` と `temporal` には、replace のあるモジュールを断る `go install` で入れるコマンドがない。
+1. `mcp/go.mod`、`temporal/go.mod`、`examples/go.mod` で、フレームワークの require をその版に上げる（`go mod edit -require=github.com/i2y/ringi-server@vX.Y.Z`）。`mcp` か `temporal` だけを要求するプロジェクトは、これらのファイルが要求する版のフレームワークを受け取るので、取得できる版でなければならない。`replace github.com/i2y/ringi-server => ../` は残す。go コマンドは main モジュールの replace だけを読み、`mcp` と `temporal` には、replace のあるモジュールを断る `go install` で入れるコマンドがない。
 2. `mcp/` と `temporal/` にある `LICENSE-APACHE` と `LICENSE-MIT` の写しを残す（リンクでなくファイル）。go コマンドは、サブディレクトリのモジュールの zip に、ルートの `LICENSE` という名前のファイルしか写さない。`TestLicensesOfTheModules` が、ルートのものと同じことを確かめる。
 3. プロジェクトが取得するのと同じ形で確かめる。タグを付けるコミットから作ったファイルのプロキシ（`GOPROXY=file://…`）で、ネットワークも replace もなしに、`mcp` だけを要求するモジュールと `temporal` だけを要求するモジュールを tidy、build、vet する。`ritsu ringi init` が `--mcp` と、`--mcp --temporal` で書くプロジェクトを、tidy、generate、vet、test する。どのモジュールの zip にも、二つのライセンスのファイルがあることを見る。
 4. [README.ja.md](README.ja.md#版) と README.md の表に、その版と、組になる ritsu と約束の版を足す。
