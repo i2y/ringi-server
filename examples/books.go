@@ -73,15 +73,34 @@ func (b Books) Call(ctx context.Context, tx any, c server.BookCall) (server.Book
 	return server.BookAnswer{Outcome: r.Outcome, Reason: r.Reason}, err
 }
 
+// makeBooks runs the books' SQL under a lock of the database: PostgreSQL fails one of two processes
+// that replace a function at the same time.
+func makeBooks(ctx context.Context, pool *pgxpool.Pool) error {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	const lock = "hashtextextended('ringi-server examples: the books', 0)"
+	if _, err := conn.Exec(ctx, "select pg_advisory_lock("+lock+")"); err != nil {
+		return err
+	}
+	defer conn.Exec(context.WithoutCancel(ctx), "select pg_advisory_unlock("+lock+")")
+	for _, sql := range []string{budgetSQL, leaveSQL} {
+		if _, err := conn.Exec(ctx, sql); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SetUpBooks makes the books' schemas and functions in the database (the SQL can run any number of
 // times), then gives each department of the organization a budget for the year and each person
 // their days of leave. Each allocation and grant is made once: made again, it is done_before, and
 // one made before with another amount stays as it was (the book answers key_conflict).
 func SetUpBooks(ctx context.Context, pool *pgxpool.Pool, tenant, year string, budgetYen, leaveDays int64) error {
-	for _, sql := range []string{budgetSQL, leaveSQL} {
-		if _, err := pool.Exec(ctx, sql); err != nil {
-			return err
-		}
+	if err := makeBooks(ctx, pool); err != nil {
+		return err
 	}
 	data, err := Organization().Read(ctx, server.OrgLayout{Data: "org"})
 	if err != nil {

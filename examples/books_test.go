@@ -17,6 +17,39 @@ import (
 	"github.com/i2y/ringi-server/servertest"
 )
 
+// TestBooksSetUpAtOnce sets the books up in several processes that start at once on one database, as
+// far as a test does: from several pools. None fails, and each department has its budget once.
+func TestBooksSetUpAtOnce(t *testing.T) {
+	url := os.Getenv("RINGI_TEST_DATABASE")
+	if url == "" {
+		t.Skip("RINGI_TEST_DATABASE names no PostgreSQL database")
+	}
+	tenant := fmt.Sprintf("at-once-%d", time.Now().UnixNano())
+	const processes = 6
+	errs := make(chan error, processes)
+	start := make(chan struct{})
+	for range processes {
+		pool, err := pgxpool.New(t.Context(), url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(pool.Close)
+		if err := pool.Ping(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			<-start
+			errs <- SetUpBooks(t.Context(), pool, tenant, "2026", 1_000_000, 20)
+		}()
+	}
+	close(start)
+	for range processes {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
 // TestBooksPostgres runs the books chobo generated in the PostgreSQL store's transaction: a hold
 // is kept with its move, a refusal of a book is a refusal of the event, and a post at the decision
 // takes the amount. With Config.BooksApart, the calls go on the pool, each in a transaction of its
