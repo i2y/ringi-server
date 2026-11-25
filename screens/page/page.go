@@ -2,10 +2,11 @@
 // request form, the approval card, the list and the history, for any browser, with JavaScript or
 // without. It reads the forms a browser posts from them into the operations of the API.
 //
-// It is built on the screens module: the core fills each screen's data (Set.Form, Set.Card,
-// Set.List, Set.History, names through the same Lookup), and a posted form becomes an action the
-// core makes into the operation and its idempotency key (Set.Operation). It keeps nothing and asks
-// no one. DESIGN.md says how.
+// It is built on package screens, which fills each screen's data (Set.Form, Set.Card, Set.List,
+// Set.History, names through the same Lookup). A posted form becomes an action, which screens makes
+// into the operation and its idempotency key (Set.Operation). It keeps nothing and asks no one.
+//
+// Package web uses it. README.md shows how to call it, and DESIGN.md says how it works.
 package page
 
 import (

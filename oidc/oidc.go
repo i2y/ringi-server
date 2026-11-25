@@ -1,7 +1,10 @@
-// Package oidc signs people in through the organization's OpenID Connect provider, keeps who they
-// are in a session, and tells the framework who sends each request: an Authenticator of the
+// Package oidc signs people in through the organization's OpenID Connect provider. It keeps who they
+// are in a session, and tells the framework who sends each request: it has an Authenticator of the
 // framework (server.Authenticator), the routes of signing in and out, and a wrapper for the pages
-// that need a person. See DESIGN.md.
+// that need a person.
+//
+// Package serve uses it. https://i2y.github.io/ringi-server/sign-in/ says how to connect a provider,
+// and DESIGN.md how it works.
 package oidc
 
 import (

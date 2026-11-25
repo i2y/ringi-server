@@ -1,8 +1,37 @@
-// Package server is a server framework for the requests and approvals ritsu generates. It keeps the
-// tickets of the kinds of request in a generated package, rings their timers, does the things to do
-// they answer, and serves the API of the package's openapi.json as an http.Handler.
+// Package server is a framework for servers of requests and approvals.
 //
-// See DESIGN.md for the design and README.md to run it.
+// The rules of a company's requests (what to fill in, who approves, when it is due) are files in
+// ringi, one of ritsu's languages, and ritsu makes Go code from them. A [Server] runs that code. For
+// each thing a person does, it asks the [Gate] whether they may, asks the code what becomes of the
+// request, and saves that in its [Store]. Then it does what follows: it sends the notices
+// ([Notifier]), starts the work after an approval ([Flows]), and rings the timers of the reminders
+// and the deadlines.
+//
+// In this package, a request type is a kind, and one request that was made is a ticket.
+//
+// # Using it
+//
+// The command "ritsu ringi init" writes a project that uses the framework, and
+// https://i2y.github.io/ringi-server/ has a tutorial and the guides. A project lists what it gives the
+// server in a [Config]:
+//
+//	p, err := server.Load(ticketkinds.Contract, ticketkinds.Lang, ticketkinds.Kinds, requests)
+//	…
+//	cfg := server.Config{
+//		Packages:     []*server.Package{p}, // the code ritsu made
+//		Gate:         gate,                 // who may do what
+//		Organization: orgfiles.New(org),    // the people and the teams
+//		Notifier:     notifier,             // how the notices are sent
+//	}
+//
+// Package serve runs a server of it, with flags for the address, the database and the sign-in. In a
+// program of your own, add a Store and an [Authenticator] to the Config, and make the Server with
+// [New]. A Server is an http.Handler of the API the project's openapi.json describes, and [Server.Do]
+// does the same operations from Go. [Server.ImportOrganization] reads the organization's data, and
+// [Server.Run] rings the timers and sends the notices. Package web serves the pages in front of a
+// Server.
+//
+// DESIGN.md says how it works, and why.
 package server
 
 import (

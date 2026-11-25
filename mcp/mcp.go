@@ -1,7 +1,9 @@
 // Package mcp serves the tools ritsu generates for agents (requests/mcp/tools.json) as an MCP
 // server. A person's agent calls a tool; the call becomes one operation of the framework's
 // Server.Do, done as that person, so the gate, the revision and the refusals hold as they do for
-// the screens and the API. See DESIGN.md.
+// the screens and the API.
+//
+// https://i2y.github.io/ringi-server/agents/ says how to use it, and DESIGN.md how it works.
 //
 // The package has the name of the SDK's package; a file that uses both names the SDK's sdkmcp.
 package mcp

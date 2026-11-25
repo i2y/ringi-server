@@ -114,7 +114,7 @@ cd ringi-server/examples
 go run ./cmd/server -dev-login
 ```
 
-Open <http://localhost:8080/> in a browser, and the people of a made-up company are listed. Choose
+Open <http://127.0.0.1:8080/> in a browser, and the people of a made-up company are listed. Choose
 "Sales staff 1" and make an expense request, then sign out, choose "Manager of Section 1A", and approve
 it. The requests are in memory, and are gone when the server stops.
 

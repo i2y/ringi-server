@@ -1,9 +1,11 @@
-// Package web serves the plain HTML pages of the kinds of request, their screens and their
-// attachments over HTTP, in front of the server's API: the pages in which people make requests,
-// approve them and see their own, the A2UI screens filled with the server's data and the actions
-// of their buttons, ritsu's catalog and functions, and the files people attach, behind one set of
-// guards (the person, the protection against cross-site requests, the limits of size, and the
-// headers a browser is held to). See DESIGN.md.
+// Package web serves the pages people use in a browser, in which they make requests, approve them and
+// see their own. In front of the server's API, it also serves the A2UI screens filled with the
+// server's data and the actions of their buttons, ritsu's catalog and functions, and the files people
+// attach. All of it is behind one set of guards: the person, the protection against cross-site
+// requests, the limits of size, and the headers a browser is held to.
+//
+// Package serve uses it. https://i2y.github.io/ringi-server/screens/ says how to add routes and
+// screens of your own, README.md what each route answers, and DESIGN.md how it works.
 package web
 
 import (

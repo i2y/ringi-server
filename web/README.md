@@ -104,7 +104,7 @@ go run ./cmd/server -files ./files
 
 The header `X-Person` says who sends a request. It is for your own computer, and checks no one
 ([Three ways to sign in](../docs/sign-in.md#three-ways-to-sign-in)). To see the pages themselves, start the
-server with `-dev-login` and open <http://localhost:8080/> ([Try it](../README.md#try-it)). Run the commands
+server with `-dev-login` and open <http://127.0.0.1:8080/> ([Try it](../README.md#try-it)). Run the commands
 below in another terminal, in a directory of your own. The IDs differ each time.
 
 ### A page

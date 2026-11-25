@@ -4,8 +4,10 @@
 //
 // It keeps nothing and asks no one: the server reads the tickets, asks the gate, names the people
 // and the files, and runs the operations. Every kind of request runs through the same code, by what
-// its templates, its description (types/<kind>.json) and the API (openapi.json) say. DESIGN.md says
-// how; ringi's DESIGN 12.4 and 13 are the contract it keeps.
+// its templates, its description (types/<kind>.json) and the API (openapi.json) say.
+//
+// Package web uses it. README.md shows how to call it, and DESIGN.md says how it works; ringi's
+// DESIGN 12.4 and 13 are the contract it keeps.
 package screens
 
 import (

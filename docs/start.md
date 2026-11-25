@@ -30,12 +30,17 @@ ritsu ringi init approvals --module example.com/acme/approvals
 ```
 
 ```
-wrote 52 files in approvals (module example.com/acme/approvals): a request type, its organization and a gate in project/, the code ritsu generates from them in go/ and requests/, a server of the framework github.com/i2y/ringi-server v0.1.0 in cmd/server/, and tests. Next, run
+wrote 52 files in approvals (module example.com/acme/approvals)
+  project/        a request type, the organization's data and the permissions
+  go/, requests/  the code ritsu makes from project/
+  cmd/server/     a server of the framework github.com/i2y/ringi-server v0.1.0
+Run these:
   cd approvals
   go mod tidy
   go test ./...
   go run ./cmd/server -dev-login
-and open http://127.0.0.1:8080/pages/ in a browser. README.md says more
+Then open http://127.0.0.1:8080/pages/ in a browser
+README.md says what each file is, and how to change it
 ```
 
 `approvals` is the name of the directory it makes. `--module` takes the path of the Go module.

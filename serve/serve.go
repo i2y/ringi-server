@@ -5,6 +5,9 @@
 // project's command adds what is its own: its package, gate, organization, notices, flows, agents
 // and books.
 //
+// https://i2y.github.io/ringi-server/operations/ says how to run such a server for the people of an
+// organization, and https://i2y.github.io/ringi-server/reference/ lists its flags.
+//
 //	var f serve.Flags
 //	f.Register(flag.CommandLine)
 //	flag.Parse()

@@ -1,14 +1,20 @@
-// Package conformance has the tests that check a server against the contract ritsu generates:
-// Vectors gives every vector of the packages to a server through its API, Trials tries each
-// operation of a person among them before it is done, Concurrent sends many operations to the same
-// tickets at once and checks what the store kept, WaitingCounts checks the counts of the tickets
-// that wait for a person against the tickets, WaitingOrder checks the order of those tickets,
-// MineOrder checks the order and the counts of a person's own requests, Reminded checks that the
-// store keeps whether a stage's reminder has rung, Keeping checks the zone of the times a store
-// answers and how it forgets old operations, and Administration checks what the administration
-// keeps: the starts of the versions, the record, the drafts and the imports of the organization's
-// data. They run on any store (Trials on a server.TrialStore): write a test that calls them with a
-// function that gives an empty store of yours.
+// Package conformance has the tests that check a server against the contract ritsu generates. They
+// run on any store (Trials on a server.TrialStore): write a test that calls them with a function that
+// gives an empty store of yours.
+//
+//   - Vectors gives every vector of the packages to a server through its API.
+//   - Worked checks what each half-filled form of the vectors works out.
+//   - Trials tries each operation of a person among the vectors before it is done.
+//   - Concurrent sends many operations to the same tickets at once, and checks what the store kept.
+//   - WaitingCounts checks the counts of the tickets that wait for a person against the tickets.
+//   - WaitingOrder checks the order of those tickets.
+//   - MineOrder checks the order and the counts of a person's own requests.
+//   - Reminded checks that the store keeps whether a stage's reminder has rung.
+//   - Keeping checks the zone of the times a store answers, and how it forgets old operations.
+//   - Administration checks what the administration keeps: the starts of the versions, the record, the
+//     drafts and the imports of the organization's data.
+//
+// CONTRIBUTING.md, at the root of the module, shows a test that calls them.
 package conformance
 
 import (

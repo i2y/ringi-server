@@ -1,7 +1,10 @@
-// Package temporal runs the flows of the kinds of request on Temporal: the flows a ticket launches
-// (server.Flows), and the agents' steps and the notes a stage asks for (server.Agents), whose
-// answers it gives back to the server. The flows are the ones dandori generates for Temporal's Go
-// SDK. DESIGN.md says how it works.
+// Package temporal runs the flows of the kinds of request on Temporal: the flows a ticket launches,
+// such as a payment once it is approved (server.Flows), and the agents' steps and the notes a stage
+// asks for (server.Agents), whose answers it gives back to the server. The flows are the ones dandori
+// generates for Temporal's Go SDK.
+//
+// https://i2y.github.io/ringi-server/flows/ and https://i2y.github.io/ringi-server/agent-steps/ say
+// how to use it, and DESIGN.md how it works.
 package temporal
 
 import (

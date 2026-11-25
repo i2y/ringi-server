@@ -26,12 +26,17 @@ ritsu ringi init shinsei --module example.com/acme/shinsei --lang ja
 ```
 
 ```
-shinsei に 53 個のファイルを書きました（モジュール example.com/acme/shinsei）。project/ に申請の種類と組織と gate、go/ と requests/ にそこから ritsu が生成したコード、cmd/server/ にフレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー、それと試験です。次に:
+shinsei に 53 個のファイルを書きました（モジュール example.com/acme/shinsei）
+  project/        申請の種類、組織のデータ、権限
+  go/, requests/  project/ から ritsu が作ったコード
+  cmd/server/     フレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー
+次のコマンドを実行します:
   cd shinsei
   go mod tidy
   go test ./...
   go run ./cmd/server -dev-login
-を走らせ、ブラウザで http://127.0.0.1:8080/pages/ を開きます。続きは README.ja.md にあります
+起動したら、ブラウザで http://127.0.0.1:8080/pages/ を開きます
+ファイルの説明と変え方は README.ja.md にあります
 ```
 
 `shinsei` は、作るディレクトリの名前です。`--module` には、Go のモジュールのパスを書きます。`--lang ja` を付けたので、申請の種類も会社のデータも日本語で書かれます。
