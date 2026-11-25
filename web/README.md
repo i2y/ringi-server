@@ -1,4 +1,4 @@
-# web
+# The pages, the screens and the attachments (web)
 
 Package `web` is what browsers reach of a server: the pages on which people make requests, approve
 them and follow their own; the screens ritsu generated (A2UI), filled with the server's data, and the
@@ -6,7 +6,7 @@ actions of their buttons; ritsu's catalog and functions; and the files people at
 front of the server's API, and does for all of it what a browser needs: it finds the person, refuses
 what another site sends, limits sizes, and sets the headers.
 
-The design is in [DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md).
+[The design](DESIGN.md) says how it works, and why. Japanese: [README.ja.md](README.ja.md).
 
 ## Use
 
@@ -35,16 +35,16 @@ The handler serves these routes, and passes every other request to the API:
 | `GET /a2ui/tickets/{id}/card`, `…/form`, `…/history` | a ticket's screens |
 | `GET /a2ui/waiting/{kind}`, `/a2ui/mine/{kind}` | the same lists as screens, `?limit=` of them (50 when not given, 100 at most) after `?before=` |
 | `POST /a2ui/actions` | the screen after a button's action, which it runs |
-| `GET /a2ui/find/people`, `/a2ui/find/teams`, `/a2ui/find/masters/{file}/{master}` | the values that a part of their names or IDs finds, for the fields that choose one ([DESIGN.md](DESIGN.md), 5.1) |
+| `GET /a2ui/find/people`, `/a2ui/find/teams`, `/a2ui/find/masters/{file}/{master}` | the values that a part of their names or IDs finds, for the fields that choose one ([the design](DESIGN.md), 5.1) |
 | `GET /a2ui/catalog.json`, `/a2ui/functions.js` | ritsu's catalog and functions |
 | `POST /files` | the ID of the attachment it keeps |
 | `GET /files/{id}` | an attachment, for the person who uploaded it |
 | `GET /tickets/{ticket}/files/{id}` | an attachment a ticket holds, for the people who may see the ticket |
 
-The person is the one the server's `Authenticator` finds. With a sign-in that keeps a session (package
-`oidc`), `Config.Require` sends a browser with no session to sign in and back, and each page has a
-button to sign out. Behind a proxy that signs people in, `web.ProxyHeader` takes the person from the
-proxy's headers ([docs/embedding.md](../docs/embedding.md#behind-a-proxy-that-signs-people-in)).
+The person is the one the server's `Authenticator` finds. With a sign-in that keeps a session
+(package `oidc`), `Config.Require` sends a browser with no session to sign in and back, and each
+page has a button to sign out. Behind a proxy that signs people in, `web.ProxyHeader` takes the
+person from the proxy's headers ([how](../docs/embedding.md#behind-a-proxy-that-signs-people-in)).
 
 ## The pages
 
@@ -317,10 +317,10 @@ curl -s -H 'X-Person: e1201' 'http://127.0.0.1:8080/a2ui/mine/expense?lang=en' \
 [{"id":"01M7KSHBTFEM304GVA00FCBYEH","status":"in_progress","stage":"second"}]
 ```
 
-**A kind with no version in effect.** After e6001 switches version 1 of leave off (version 2 starts on
-2027-04-01; [docs/api.md](../docs/api.md#the-administration) says more), a new leave request has no
-form. A person who may make it from that day gets the screen that says the day, with the way back to
-the start page. For anyone else there is no such kind:
+**A kind with no version in effect.** After e6001 switches version 1 of leave off (version 2 starts
+on 2027-04-01; see [the administration](../docs/api.md#the-administration)), a new leave request has
+no form. A person who may make it from that day gets the screen that says the day, with the way back
+to the start page. For anyone else there is no such kind:
 
 ```sh
 curl -s -o /dev/null -X POST http://127.0.0.1:8080/admin/kinds/leave/versions/1 -H 'X-Person: e6001' \
@@ -377,6 +377,6 @@ Stop the server with Ctrl-C.
 
 `go test ./web` checks the stores of files, the proxy's headers and the small parts. `go test ./...`
 in `examples/` checks the routes on the examples: who gets which page, screen and button, what is
-refused, the languages, the lists a page at a time, the attachments, signing in, and the vectors made
-on the pages and on the screens. [CONTRIBUTING.md](../CONTRIBUTING.md) says what they need and what
-they show, and how the pages are tested in a browser.
+refused, the languages, the lists a page at a time, the attachments, signing in, and the vectors
+made on the pages and on the screens. [Changing the framework](../CONTRIBUTING.md) says what they
+need and what they show, and how the pages are tested in a browser.

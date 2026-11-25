@@ -1,4 +1,4 @@
-# 画面の設計
+# 設計：画面（screens）
 
 このパッケージは、ritsu がプロジェクトの申請の種類ごとに書く画面を配る。申請書、承認カード、二つの一覧（見る人の答えを待つチケットの一覧と、見る人自身の申請の一覧）、履歴、新しい ritsu で生成したパッケージの持つ `offered` の画面の A2UI 1.0 のテンプレート（`a2ui/<種類>/<画面>.<言語>.json`）と、ritsu の部品と関数のカタログ（`a2ui/catalog.json`）、関数の中身（`a2ui/functions.js`）である。することは二つで、どちらも純粋な関数である。
 
@@ -41,7 +41,7 @@ func (s *Set) Actions(kind, screen string) ([]string, error)  // 画面の /can 
 
 `Actions` は、見る人ができるかを画面が尋ねる物を並べる。その画面の `/can` のキーで、申請書では `submit`、`resubmit`、`discard`、承認カードではその種類の操作と `comment` である。二つの一覧と履歴は何も尋ねない。サーバーは、それぞれを gate に尋ね、チケットがその人からそれを受けるかを種類に尋ねて（`Server.Can`。本体の DESIGN 8.1）、その人ができる物を値を入れる関数に渡す。
 
-画面を自分で作るパッケージ（素の HTML のページの `page`。[page/DESIGN.ja.md](page/DESIGN.ja.md)）のために、読む関数がもう二つある。
+画面を自分で作るパッケージ（素の HTML のページの [`page`](page/DESIGN.ja.md)）のために、読む関数がもう二つある。
 
 ```go
 func (s *Set) Description(kind string) (json.RawMessage, error) // ritsu が書いたままの types/<kind>.json

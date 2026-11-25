@@ -1,4 +1,4 @@
-# The plain HTML pages (`screens/page`)
+# Design: the plain HTML pages (screens/page)
 
 This package shows the screens of a kind of request (the request form, the approval card, the
 lists of tickets and the history) as plain HTML, and reads the forms a browser posts from them into
@@ -19,8 +19,7 @@ package `internal/jatext`, on the standard library alone too; section 3.5).
 
 Like the core, it is pure functions: it keeps nothing, asks no one and serves nothing. The server
 reads the tickets, asks the gate, keeps the files, runs the operations and sends the pages. The
-package `web` is that part of the server over HTTP ([../../web/DESIGN.md](../../web/DESIGN.md),
-section 9).
+package `web` is that part of the server over HTTP ([its design](../../web/DESIGN.md), section 9).
 
 ## 1. The functions
 

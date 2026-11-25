@@ -1,13 +1,13 @@
-# screens
+# The screens (screens)
 
 The A2UI 1.0 screens of a ringi server's requests. ritsu writes the templates (`ritsu gen --target
 requests`). This package fills one with a ticket's values for one viewer, and turns the message a
 renderer sends when a button is pressed into the API operation it stands for. It depends on the
 standard library alone and keeps nothing, and every kind of request runs through the same code.
 
-The design: [DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md). Package `web` serves
-these screens over HTTP ([../web/README.md](../web/README.md)), so a server that uses `web` need not
-call this package itself.
+[The design](DESIGN.md) says how it works, and why. Japanese: [README.ja.md](README.ja.md). Package
+[`web`](../web/README.md) serves these screens over HTTP, so a server that uses `web` need not call
+this package itself.
 
 ## Use
 
@@ -122,9 +122,9 @@ both as a file system.
 
 ## Plain HTML
 
-Package `page` shows the same screens as plain HTML pages, and turns what the browser posts into the
-same operations. A browser needs no A2UI renderer for them, and no JavaScript
-([page/README.md](page/README.md)).
+Package [`page`](page/README.md) shows the same screens as plain HTML pages, and turns what the
+browser posts into the same operations. A browser needs no A2UI renderer for them, and no
+JavaScript.
 
 ## Tests
 

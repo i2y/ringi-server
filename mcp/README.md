@@ -1,4 +1,4 @@
-# mcp
+# The agents' tools (mcp)
 
 The agents' tools of a ringi server, over the Model Context Protocol (MCP). ritsu writes the tools of
 your request types in `requests/mcp/tools.json`, and this module serves them. A tool's call is one
@@ -6,8 +6,8 @@ operation of the framework, done as the person the agent works for: the gate, th
 and the refusals are those of the pages and the API, and the ticket's history names the person.
 
 The module is a Go module of its own, and depends on the MCP Go SDK
-(`github.com/modelcontextprotocol/go-sdk` v1.8.0). The design is in [DESIGN.md](DESIGN.md). Japanese:
-[README.ja.md](README.ja.md).
+(`github.com/modelcontextprotocol/go-sdk` v1.8.0). [The design](DESIGN.md) says how it works, and
+why. Japanese: [README.ja.md](README.ja.md).
 
 ## What an agent can do
 

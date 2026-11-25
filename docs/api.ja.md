@@ -143,7 +143,7 @@ curl -s -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1203' \
 | 429 | `{"error": …}` | 多すぎる。待てば済むときは `Retry-After` に時間がある |
 | 500 | `{"error": …}` | サーバーの失敗。理由はログにある |
 
-拒否も、キーと一緒に残ります。同じキーで送ると同じ拒否が返るので、直して送るときは別のキーを付けます。すべての場合は、[DESIGN.ja.md](../DESIGN.ja.md) の 7.1 にあります。
+拒否も、キーと一緒に残ります。同じキーで送ると同じ拒否が返るので、直して送るときは別のキーを付けます。すべての場合は、[設計](../DESIGN.ja.md)の 7.1 にあります。
 
 ### 操作
 
@@ -160,9 +160,9 @@ curl -s -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1203' \
 | チケットの期限を止める、また動かす | `POST /tickets/{id}/pause`、`…/resume` |
 | 申請を取り下げる、差し戻された申請を破棄する | `POST /tickets/{id}/withdraw`、`…/discard` |
 | 組織、マスタの行を読む | `GET /organization`、`GET /masters/{file}/{master}` |
-| ファイルを添付する | `POST /files`（[web/README.ja.md](../web/README.ja.md)） |
+| ファイルを添付する | `POST /files`（[curl で試す](../web/README.ja.md#curl-で試す)） |
 
-それぞれをだれができるかは、gate と申請の種類が決めます。画面とページは [web/README.ja.md](../web/README.ja.md) に、エージェントのツールは [mcp/README.ja.md](../mcp/README.ja.md) にあり、どちらも同じ操作を実行します。
+それぞれをだれができるかは、gate と申請の種類が決めます。[ページと画面](../web/README.ja.md)も、[エージェントのツール](../mcp/README.ja.md)も、同じ操作を実行します。
 
 ## 一覧
 
@@ -271,7 +271,7 @@ null
 {"error":"no such path"}
 ```
 
-ページ、画面、エージェントのツールも、同じ日を示します。管理の操作が確かめること、gate に尋ねること、記録に残ることは、[DESIGN.ja.md](../DESIGN.ja.md) の 13 にあります。
+ページ、画面、エージェントのツールも、同じ日を示します。管理の操作が確かめること、gate に尋ねること、記録に残ることは、[設計](../DESIGN.ja.md)の 13 にあります。
 
 ## PostgreSQL を使う
 

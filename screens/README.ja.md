@@ -1,8 +1,8 @@
-# screens
+# 画面（screens）
 
 ringi のサーバーの申請を、A2UI 1.0 の画面で見せるためのパッケージです。画面のテンプレートは ritsu が書きます（`ritsu gen --target requests`）。このパッケージは、そこにチケットの値を、見る人に合わせて入れます。ボタンが押されたときにレンダラが送るメッセージは、それに当たる API の操作に直します。依存するのは標準ライブラリだけで、何も保管しません。どの申請の種類も、同じコードで動きます。
 
-設計：[DESIGN.ja.md](DESIGN.ja.md)。英語：[README.md](README.md)。この画面を HTTP で出すのは、パッケージ `web` です（[../web/README.ja.md](../web/README.ja.md)）。`web` を使うサーバーでは、このパッケージを自分で呼ぶ必要はありません。
+しくみとその理由は、[設計](DESIGN.ja.md)にあります。英語版は [README.md](README.md) です。この画面を HTTP で出すのは、パッケージ [`web`](../web/README.ja.md) です。`web` を使うサーバーでは、このパッケージを自分で呼ぶ必要はありません。
 
 ## 使い方
 
@@ -90,7 +90,7 @@ op, err := set.Operation(a)
 
 ## 素の HTML のページ
 
-パッケージ `page` は、同じ画面を素の HTML のページで見せ、ブラウザが送ったフォームを同じ操作に直します。A2UI のレンダラがないブラウザでも、JavaScript がなくても使えます（[page/README.ja.md](page/README.ja.md)）。
+パッケージ [`page`](page/README.ja.md) は、同じ画面を素の HTML のページで見せ、ブラウザが送ったフォームを同じ操作に直します。A2UI のレンダラがないブラウザでも、JavaScript がなくても使えます。
 
 ## 試験
 

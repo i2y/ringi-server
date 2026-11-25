@@ -1,4 +1,4 @@
-# OpenID Connect でログインする（`oidc`）
+# 設計：OpenID Connect でログインする（oidc）
 
 英語：[DESIGN.md](DESIGN.md)。
 

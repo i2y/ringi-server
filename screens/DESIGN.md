@@ -1,4 +1,4 @@
-# Design of the screens
+# Design: the screens (screens)
 
 This package serves the screens ritsu writes for the kinds of request of a project: the A2UI 1.0
 templates of the request form, the approval card, the two lists (the tickets that wait for the
@@ -72,7 +72,7 @@ the ticket takes it from the viewer (`Server.Can`, the core's DESIGN 8.1), and h
 viewer may do to the fill.
 
 Two more readings are for a package that shows the screens itself, as the plain HTML pages
-(`page`, [page/DESIGN.md](page/DESIGN.md)) do:
+([`page`](page/DESIGN.md)) do:
 
 ```go
 func (s *Set) Description(kind string) (json.RawMessage, error) // types/<kind>.json as ritsu wrote it

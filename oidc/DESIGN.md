@@ -1,4 +1,4 @@
-# Design: signing in with OpenID Connect (`oidc`)
+# Design: signing in with OpenID Connect (oidc)
 
 Japanese: [DESIGN.ja.md](DESIGN.ja.md).
 

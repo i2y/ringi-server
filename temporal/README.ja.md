@@ -1,8 +1,8 @@
-# temporal
+# flow とエージェントのステップ（temporal）
 
 ringi のサーバーの申請が始める flow を、Temporal で動かすモジュールです。申請の種類が始める flow は三つあります。チケットが終わったあとに動かす flow（`launch`）、エージェントのステップ（`ask_agent`）、メモ（`ask_note`）です。flow は、dandori が Temporal の Go の SDK 向けに生成します。このモジュールは flow を始め、エージェントの答えとメモをサーバーに返します。フレームワークのモジュールが SDK に依存しないように、独立した Go のモジュールにしてあります。
 
-設計：[DESIGN.ja.md](DESIGN.ja.md)。英語：[README.md](README.md)。
+しくみとその理由は、[設計](DESIGN.ja.md)にあります。英語版は [README.md](README.md) です。
 
 ## すること
 

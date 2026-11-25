@@ -1,8 +1,8 @@
-# web
+# ページ、画面、添付ファイル（web）
 
 パッケージ `web` は、サーバーのうち、ブラウザから使う部分です。人が申請し、承認し、自分の申請を見るページ、ritsu が生成した画面（A2UI）にサーバーのデータを入れたものとそのボタンの操作、ritsu のカタログと関数、人が添付するファイルを扱います。サーバーの API の手前に置き、ブラウザに必要なことをまとめて行います。だれのリクエストかを見つけ、ほかのサイトから送られたものを拒否し、大きさを制限し、ヘッダーを付けます。
 
-設計は [DESIGN.ja.md](DESIGN.ja.md) にあります。英語版は [README.md](README.md) です。
+しくみとその理由は、[設計](DESIGN.ja.md)にあります。英語版は [README.md](README.md) です。
 
 ## 使い方
 
@@ -31,13 +31,13 @@ signIn.Mount(h) // ログインのルート。同じ検査の後ろに置く
 | `GET /a2ui/tickets/{id}/card`、`…/form`、`…/history` | チケットの画面 |
 | `GET /a2ui/waiting/{kind}`、`/a2ui/mine/{kind}` | 同じ一覧の画面。`?before=` の次から `?limit=` 件（指定がなければ 50 件、最大 100 件） |
 | `POST /a2ui/actions` | ボタンの操作を実行した、そのあとの画面 |
-| `GET /a2ui/find/people`、`/a2ui/find/teams`、`/a2ui/find/masters/{file}/{master}` | 値を選ぶフィールドのために、名前か ID の一部で探した値（[DESIGN.ja.md](DESIGN.ja.md) の 5.1） |
+| `GET /a2ui/find/people`、`/a2ui/find/teams`、`/a2ui/find/masters/{file}/{master}` | 値を選ぶフィールドのために、名前か ID の一部で探した値（[設計](DESIGN.ja.md)の 5.1） |
 | `GET /a2ui/catalog.json`、`/a2ui/functions.js` | ritsu のカタログと関数 |
 | `POST /files` | 受け取った添付ファイルの ID |
 | `GET /files/{id}` | 添付ファイル。アップロードした本人だけ |
 | `GET /tickets/{ticket}/files/{id}` | チケットが持つ添付ファイル。そのチケットを見られる人だけ |
 
-だれのリクエストかは、サーバーの `Authenticator` が見つけます。セッションを持つログイン（パッケージ `oidc`）では、`Config.Require` が、セッションのないブラウザをログインへ送り、済んだら元のページへ戻します。どのページにも、ログアウトのボタンがあります。人をログインさせるプロキシの後ろでは、`web.ProxyHeader` が、プロキシの付けたヘッダーから人を取ります（[docs/embedding.ja.md](../docs/embedding.ja.md#人をログインさせるプロキシの後ろで)）。
+だれのリクエストかは、サーバーの `Authenticator` が見つけます。セッションを持つログイン（パッケージ `oidc`）では、`Config.Require` が、セッションのないブラウザをログインへ送り、済んだら元のページへ戻します。どのページにも、ログアウトのボタンがあります。人をログインさせるプロキシの後ろでは、`web.ProxyHeader` が、プロキシの付けたヘッダーから人を取ります（[使い方](../docs/embedding.ja.md#人をログインさせるプロキシの後ろで)）。
 
 ## ページ
 
@@ -282,7 +282,7 @@ curl -s -H 'X-Person: e1201' 'http://127.0.0.1:8080/a2ui/mine/expense?lang=en' \
 [{"id":"01M7KSHBTFEM304GVA00FCBYEH","status":"in_progress","stage":"second"}]
 ```
 
-**有効な版がない申請の種類。** e6001 が休暇の第 1 版を止めると（第 2 版は 2027-04-01 からです。詳しくは [docs/api.ja.md](../docs/api.ja.md#管理)）、新しい休暇の申請にはフォームがありません。その日から出せる人には、日付とホームへの戻り先を示す画面を返します。ほかの人には、そのような種類は存在しません。
+**有効な版がない申請の種類。** e6001 が休暇の第 1 版を止めると（第 2 版は 2027-04-01 からです。詳しくは[管理](../docs/api.ja.md#管理)）、新しい休暇の申請にはフォームがありません。その日から出せる人には、日付とホームへの戻り先を示す画面を返します。ほかの人には、そのような種類は存在しません。
 
 ```sh
 curl -s -o /dev/null -X POST http://127.0.0.1:8080/admin/kinds/leave/versions/1 -H 'X-Person: e6001' \
@@ -336,4 +336,4 @@ X-Frame-Options: DENY
 
 ## 試験
 
-`go test ./web` は、ファイルの保存先、プロキシのヘッダー、小さな部品を確かめます。`examples/` の `go test ./...` は、例でルートを確かめます。だれにどのページ、画面、ボタンが出るか、何を拒否するか、言語、ページに分けた一覧、添付ファイル、ログイン、ページと画面で行うベクタです。要るものと結果、ブラウザでの試験は、[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md) にあります。
+`go test ./web` は、ファイルの保存先、プロキシのヘッダー、小さな部品を確かめます。`examples/` の `go test ./...` は、例でルートを確かめます。だれにどのページ、画面、ボタンが出るか、何を拒否するか、言語、ページに分けた一覧、添付ファイル、ログイン、ページと画面で行うベクタです。要るものと結果、ブラウザでの試験は、[フレームワークを直す、自分のサーバーを試験する](../CONTRIBUTING.ja.md)にあります。

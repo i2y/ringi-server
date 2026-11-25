@@ -1,4 +1,4 @@
-# The pages, the screens and the attachments over HTTP (`web`)
+# Design: the pages, the screens and the attachments over HTTP (web)
 
 Japanese: [DESIGN.ja.md](DESIGN.ja.md).
 

@@ -1,11 +1,11 @@
-# oidc
+# Signing in (oidc)
 
 Signing in through the organization's OpenID Connect provider: the routes of signing in and out, a
 session in a cookie, and the framework's `Authenticator`, which tells it who sends each request. The
 person is found in the organization's data by the email address the provider verified. The package
 depends on the standard library and the framework's core (the package `server`) alone.
 
-The design: [DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md).
+[The design](DESIGN.md) says how it works, and why. Japanese: [README.ja.md](README.ja.md).
 
 A server whose command is package `serve` (the one `ritsu ringi init` makes, and the example server)
 already signs people in with this package when it is given its `-oidc-…` flags

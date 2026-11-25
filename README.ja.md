@@ -68,7 +68,7 @@ go run ./cmd/server -dev-login
    ticket approved
 ```
 
-出された申請を、API とコードではチケット（ticket）と呼びます。申請の種類は kind です。API と管理を curl で一通り試す手順は、[docs/api.ja.md](docs/api.ja.md) にあります。
+出された申請を、API とコードではチケット（ticket）と呼びます。申請の種類は kind です。API と管理を一通り試す手順は、[API を curl で試す](docs/api.ja.md)にあります。
 
 ## 自分のプロジェクトを始める
 
@@ -141,7 +141,7 @@ go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
   -oidc-redirect-url https://ringi.example.com:8443/login/callback
 ```
 
-プロバイダーには、このサーバーを、シークレットを持つ認可コードフローのクライアントとして登録します。リダイレクト URI は上のもの、スコープは `openid email profile` です。ログインした人は、プロバイダーが確認済みとしているメールアドレスで、組織のデータから探します。役割は、`-oidc-roles-claim` で指定したクレームから取ります。詳しくは [oidc/README.ja.md](oidc/README.ja.md) に、人に使ってもらうサーバーの動かし方は [docs/operations.ja.md](docs/operations.ja.md) にあります。
+プロバイダーには、このサーバーを、シークレットを持つ認可コードフローのクライアントとして登録します。リダイレクト URI は上のもの、スコープは `openid email profile` です。ログインした人は、プロバイダーが確認済みとしているメールアドレスで、組織のデータから探します。役割は、`-oidc-roles-claim` で指定したクレームから取ります。詳しくは[ログイン](oidc/README.ja.md)に、そのほかに要ることは[人に使ってもらうサーバーを動かす](docs/operations.ja.md)にあります。
 
 ## プロジェクトが用意するもの
 
@@ -174,22 +174,22 @@ go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
 | 添付ファイル | `Files` | PostgreSQL、ディレクトリ（`web.NewDiskFiles`）、メモリ |
 | 履歴の写し | `AuditLog` | なし。`servertest` に試験用のものがある |
 
-それぞれの部品が守ることは、[DESIGN.ja.md](DESIGN.ja.md) の 2.3 にあります。たとえば Notifier は、同じキーの通知を一度だけ送らなければなりません。自分のルートを足す方法と、パッケージ `serve` を使わずにサーバーを作る方法は、[docs/embedding.ja.md](docs/embedding.ja.md) にあります。
+それぞれの部品が守ることは、[設計](DESIGN.ja.md)の 2.3 にあります。たとえば Notifier は、同じキーの通知を一度だけ送らなければなりません。自分のルートを足す方法と、パッケージ `serve` を使わずにサーバーを作る方法は、[自分のルートと、自分で作るサーバー](docs/embedding.ja.md)にあります。
 
 ## 文書
 
 | したいこと | 読むもの |
 |---|---|
 | 申請の種類を書く | ritsu にある ringi の[ページ](https://i2y.github.io/ritsu/ja/ringi/)と[リファレンス](https://github.com/i2y/ritsu/blob/main/crates/ringi/docs/reference.md)（英語） |
-| API を呼ぶ、curl で管理する | [docs/api.ja.md](docs/api.ja.md) |
-| 人に使ってもらうサーバーを動かす | [docs/operations.ja.md](docs/operations.ja.md) |
-| ルートを足す、自分のプログラムに組み込む | [docs/embedding.ja.md](docs/embedding.ja.md) |
-| ページ、画面、添付ファイルを知る | [web/README.ja.md](web/README.ja.md)、[screens/README.ja.md](screens/README.ja.md)、[screens/page/README.ja.md](screens/page/README.ja.md) |
-| 人にログインしてもらう | [oidc/README.ja.md](oidc/README.ja.md) |
-| エージェントに申請と承認をさせる | [mcp/README.ja.md](mcp/README.ja.md) |
-| flow とエージェントのステップを動かす | [temporal/README.ja.md](temporal/README.ja.md) |
-| サーバーが何をするかと、その理由を正確に知る | [DESIGN.ja.md](DESIGN.ja.md) |
-| フレームワークを直す、自分の Store を試験する | [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md) |
+| API を呼ぶ、curl で管理する | [API を curl で試す](docs/api.ja.md) |
+| 人に使ってもらうサーバーを動かす | [人に使ってもらうサーバーを動かす](docs/operations.ja.md) |
+| ルートを足す、自分のプログラムに組み込む | [自分のルートと、自分で作るサーバー](docs/embedding.ja.md) |
+| ページ、画面、添付ファイルを知る | [ページ、画面、添付ファイル](web/README.ja.md)、[画面](screens/README.ja.md)、[素の HTML のページ](screens/page/README.ja.md) |
+| 人にログインしてもらう | [ログイン](oidc/README.ja.md) |
+| エージェントに申請と承認をさせる | [エージェントのツール](mcp/README.ja.md) |
+| flow とエージェントのステップを動かす | [flow とエージェントのステップ](temporal/README.ja.md) |
+| サーバーが何をするかと、その理由を正確に知る | [設計](DESIGN.ja.md) |
+| フレームワークを直す、自分の Store を試験する | [フレームワークを直す、自分のサーバーを試験する](CONTRIBUTING.ja.md) |
 
 ## パッケージとモジュール
 
@@ -217,7 +217,7 @@ go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
 |---|---|---|---|
 | v0.1.0 | 0.56.0 | 3 | 最初の版 |
 
-`ritsu ringi init` が書く `go.mod` は、生成したコードに合う版を要求します。モジュール `mcp` と `temporal` も同じ版です。約束の版が違うパッケージを渡されたサーバーは、リクエストを受ける前に、そう表示して止まります。動いているサーバーの版の上げ方は、[docs/operations.ja.md](docs/operations.ja.md#版を上げる) にあります。
+`ritsu ringi init` が書く `go.mod` は、生成したコードに合う版を要求します。モジュール `mcp` と `temporal` も同じ版です。約束の版が違うパッケージを渡されたサーバーは、リクエストを受ける前に、そう表示して止まります。動いているサーバーの版の上げ方は、[版を上げる](docs/operations.ja.md#版を上げる)にあります。
 
 ## ライセンス
 

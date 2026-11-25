@@ -235,8 +235,8 @@ the protocol; it shows a tool's result.
 **Streamable HTTP.** The handler is the SDK's streamable HTTP handler behind the SDK's
 `auth.RequireBearerToken`, which calls `HTTP.Verify` through a small adapter:
 
-- No token, or `Verify` answers an error that wraps `server.ErrNoPerson`, or a person with no ID:
-  401. When `ResourceMetadataURL` is set, the 401 tells it in `WWW-Authenticate`.
+- No token, or `Verify` answers an error that wraps `server.ErrNoPerson`, or a person with no
+  ID: 401. When `ResourceMetadataURL` is set, the 401 tells it in `WWW-Authenticate`.
 - A token past its `Expires`: 401. A token without the `Scopes`: 403.
 - Any other error of `Verify`: 500 with a fixed text; the error is logged.
 - A request larger than the API takes a body (`Config.MaxBody`, 1 MiB when it is not set), with

@@ -28,8 +28,8 @@ func withTools(ctx context.Context, st *serve.Stores, cfg server.Config) error {
 The route is behind the same guards and the same sign-in as the pages. A request with no one signed
 in is answered 401 before it reaches the route. What an agent does is done as the person, and the
 gate is asked as for a page. A route may not take a path of the framework's (the pages, the screens,
-the attachments, the API, signing in): the server stops before it starts, and says which
-([DESIGN.md](../DESIGN.md), 2.6).
+the attachments, the API, signing in): the server stops before it starts, and says which ([the
+design](../DESIGN.md), 2.6).
 
 ## A server without package serve
 
@@ -103,8 +103,8 @@ its context ends: any number of processes may run it on one database. `web.New` 
 screens and the attachments in front of the API, with the guards a browser needs. `Server` itself is
 an `http.Handler` that serves the API alone.
 
-Package `serve` also checks settings that do not go together, limits how long a request may take, and
-shuts the server down in order. [DESIGN.md](../DESIGN.md), 2.5 and 2.6, lists what it does.
+Package `serve` also checks settings that do not go together, limits how long a request may take,
+and shuts the server down in order. [The design](../DESIGN.md), 2.5 and 2.6, lists what it does.
 
 ## Behind a proxy that signs people in
 
@@ -126,4 +126,4 @@ func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server
 The proxy sends three headers on every request, and takes away the ones a client sent:
 `X-Ringi-Proxy-Secret`, `X-Ringi-Person` (the person's ID in the organization's data) and
 `X-Ringi-Roles` (their roles, with commas between, empty for none). A request without the secret, or
-with one of them twice, has no person: 401. [web/DESIGN.md](../web/DESIGN.md), 3.1, says more.
+with one of them twice, has no person: 401. [The design of `web`](../web/DESIGN.md), 3.1, says more.

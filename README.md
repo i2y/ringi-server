@@ -91,7 +91,7 @@ It prints this; the IDs differ each time.
 ```
 
 A request someone made is a *ticket* in the API and in the code, and a request type is a *kind*.
-[docs/api.md](docs/api.md) goes through the API and the administration with curl.
+[The API, with curl](docs/api.md) goes through the API and the administration.
 
 ## Start your own project
 
@@ -175,10 +175,10 @@ go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
 ```
 
 At the provider, register the server as a confidential client of the authorization code flow, with
-this redirect URI and the scopes `openid email profile`. A person is found in the organization's data
-by the email the provider has verified, and their roles come from the claim that `-oidc-roles-claim`
-names. [oidc/README.md](oidc/README.md) says more, and [docs/operations.md](docs/operations.md) says
-how to run the server for people.
+this redirect URI and the scopes `openid email profile`. A person is found in the organization's
+data by the email the provider has verified, and their roles come from the claim that
+`-oidc-roles-claim` names. [Signing in](oidc/README.md) says more, and [the guide for running a
+server](docs/operations.md) has what else a server for people needs.
 
 ## What you supply
 
@@ -212,8 +212,8 @@ Each part is an interface of a few methods:
 | Attachments | `Files` | PostgreSQL, a directory (`web.NewDiskFiles`), memory |
 | A copy of the history | `AuditLog` | none; `servertest` has one for tests |
 
-[DESIGN.md](DESIGN.md), 2.3, says what each part must do; a notifier, for one, must send each key
-once. [docs/embedding.md](docs/embedding.md) shows how to add a route of your own, and how to make a
+Section 2.3 of [the design](DESIGN.md) says what each part must do; a notifier, for one, must send
+each key once. [A guide](docs/embedding.md) shows how to add a route of your own, and how to make a
 server without package `serve`.
 
 ## Documentation
@@ -221,15 +221,15 @@ server without package `serve`.
 | You want to | Read |
 |---|---|
 | write a request type | ringi's [pages](https://i2y.github.io/ritsu/ringi/) and [reference](https://github.com/i2y/ritsu/blob/main/crates/ringi/docs/reference.md), in ritsu |
-| call the API, or administer with curl | [docs/api.md](docs/api.md) |
-| run a server for people | [docs/operations.md](docs/operations.md) |
-| add a route, or put the server in a program of your own | [docs/embedding.md](docs/embedding.md) |
-| know the pages, the screens and the attachments | [web/README.md](web/README.md), [screens/README.md](screens/README.md), [screens/page/README.md](screens/page/README.md) |
-| let people sign in | [oidc/README.md](oidc/README.md) |
-| let agents make and approve requests | [mcp/README.md](mcp/README.md) |
-| run flows and agents' steps | [temporal/README.md](temporal/README.md) |
-| know exactly what the server does, and why | [DESIGN.md](DESIGN.md) |
-| change the framework, or test a store of your own | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| call the API, or administer with curl | [The API, with curl](docs/api.md) |
+| run a server for people | [Running a server for people](docs/operations.md) |
+| add a route, or put the server in a program of your own | [A route of your own, and a server of your own](docs/embedding.md) |
+| know the pages, the screens and the attachments | [The pages, the screens and the attachments](web/README.md), [the screens](screens/README.md), [the plain HTML pages](screens/page/README.md) |
+| let people sign in | [Signing in](oidc/README.md) |
+| let agents make and approve requests | [The agents' tools](mcp/README.md) |
+| run flows and agents' steps | [The flows and the agents' steps](temporal/README.md) |
+| know exactly what the server does, and why | [The design](DESIGN.md) |
+| change the framework, or test a store of your own | [Changing the framework, or testing your own server](CONTRIBUTING.md) |
 
 ## Packages and modules
 
@@ -260,8 +260,8 @@ A server runs code that one version of ritsu generated, and the two go together:
 
 `ritsu ringi init` writes a `go.mod` that requires the version its generated code is made for, and
 the same version of the modules `mcp` and `temporal`. A server given a package of another contract
-stops before it takes requests, and says so. [docs/operations.md](docs/operations.md#raising-the-version)
-says how to raise the version of a server that runs.
+stops before it takes requests, and says so. [The guide for running a
+server](docs/operations.md#raising-the-version) says how to raise the version of one that runs.
 
 ## License
 

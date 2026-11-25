@@ -1,8 +1,8 @@
-# mcp
+# エージェントのツール（mcp）
 
 ringi のサーバーで、エージェントが使うツールを Model Context Protocol（MCP）で出すモジュールです。ritsu は、申請の種類のツールを `requests/mcp/tools.json` に書き、このモジュールがそれを出します。ツールの呼び出しは、フレームワークの一つの操作になり、そのエージェントを使う人として実行されます。gate、チケットの `revision`、拒否は、ページや API と同じです。チケットの履歴には、その人の名前が残ります。
 
-Go の独立したモジュールで、MCP の Go の SDK（`github.com/modelcontextprotocol/go-sdk` v1.8.0）を使います。設計は [DESIGN.ja.md](DESIGN.ja.md) にあります。英語版は [README.md](README.md) です。
+Go の独立したモジュールで、MCP の Go の SDK（`github.com/modelcontextprotocol/go-sdk` v1.8.0）を使います。しくみとその理由は、[設計](DESIGN.ja.md)にあります。英語版は [README.md](README.md) です。
 
 ## エージェントができること
 

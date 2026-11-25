@@ -989,6 +989,9 @@ goes:
 - `drafts`: a draft of the organization's data is kept `Config.DraftsKept` (a day when not given),
   then `Sweep` forgets it, a thousand at a time (13.9). The administration's `records` and `starts`
   are part of the record and stay.
+- `uploads` and `files`: an upload no ticket holds is let go after `Config.UploadsKept`, and its
+  file deleted (2.3). Its row stays, marked, so that no move holds it later: one short row for
+  each upload.
 
 `Sweep` asks the store to forget them a thousand at a time (`ForgetOperations`): at most that many
 replies and that many operations begun, the oldest of each first, and the store answers how many of
@@ -998,9 +1001,6 @@ stores forget the same ones. An answer under a thousand means none of either is 
 the time, so `Sweep` asks again until it gets one: however many there are, a sweep forgets them
 all, and each statement deletes at most a thousand rows of a table. `Keeping` (12) checks the
 limit and the order on both stores.
-- `uploads` and `files`: an upload no ticket holds is let go after `Config.UploadsKept`, and its
-  file deleted (2.3). Its row stays, marked, so that no move holds it later: one short row for
-  each upload.
 
 ## 5. Timers
 

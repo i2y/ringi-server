@@ -1,16 +1,16 @@
-# page
+# The plain HTML pages (screens/page)
 
 The plain HTML pages of a ringi server's requests: the request form, the approval card, the lists of
 tickets and the history, for any browser, with JavaScript or without. The package makes the pages,
 and turns what the browser posts from them into operations of the API. It also makes what is around
 them: the start page, the bar at the top of each page, and the notices.
 
-It is built on the package `screens`, and uses the same data, the same names, the same operations and
-keys, and the same sentences of a refusal as the A2UI screens. It depends on the standard library
-alone and keeps nothing, and every kind of request runs through the same code. The design:
-[DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md). Package `web` serves the pages over
-HTTP ([../../web/README.md](../../web/README.md)), so a server that uses `web` need not call this
-package itself.
+It is built on the package `screens`, and uses the same data, the same names, the same operations
+and keys, and the same sentences of a refusal as the A2UI screens. It depends on the standard
+library alone and keeps nothing, and every kind of request runs through the same code. [The
+design](DESIGN.md) says how it works, and why. Japanese: [README.ja.md](README.ja.md). Package
+[`web`](../../web/README.md) serves the pages over HTTP, so a server that uses `web` need not call
+this package itself.
 
 ## Use
 

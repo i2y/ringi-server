@@ -9,7 +9,7 @@ as the one `ritsu ringi init` writes is. Japanese: [operations.ja.md](operations
 | What | How |
 |---|---|
 | A PostgreSQL database | The server makes its tables itself, in the schema `ringi`. Its user needs the right to make a schema: `grant create on database ringi to ringi_server`. Connect to the database itself, or through a pooler in session mode: a ticket is locked by a connection. The tests run on PostgreSQL 18 |
-| A client at the OpenID Connect provider | A confidential client of the authorization code flow, with the redirect URI `https://<host>/login/callback`. [oidc/README.md](../oidc/README.md) lists what to ask for |
+| A client at the OpenID Connect provider | A confidential client of the authorization code flow, with the redirect URI `https://<host>/login/callback`. [Signing in](../oidc/README.md) lists what to ask for |
 | People's addresses in the organization's data | The column `email` of `people.csv`, as the provider verifies them. A person who signs in is found by it |
 | A way to say who administers | A claim of the provider's ID tokens that lists a person's roles ([Administrators](#administrators)) |
 | https | A certificate for the server, or a proxy that serves https in front of it |
@@ -94,8 +94,8 @@ When a proxy serves https, the server listens on an address only the proxy reach
 - Let a body of 64 MiB through (the organization's data) and an answer take 30 seconds.
 
 A proxy that signs people in itself needs `web.ProxyHeader`, on a server made without package
-`serve` ([embedding.md](embedding.md)). Never put a proxy in front of `-dev-login` or of the header
-`X-Person`: they check no one.
+`serve` ([how](embedding.md#behind-a-proxy-that-signs-people-in)). Never put a proxy in front of
+`-dev-login` or of the header `X-Person`: they check no one.
 
 ## Several processes
 
@@ -105,7 +105,7 @@ keys. Any of them answers any request.
 - A timer or a notice is taken by one process at a time. If that process stops, another takes it
   after 30 seconds (a timer) or 60 seconds (a notice, a flow, a book's release).
 - Doing one of them twice counts as once, by its key. Your notifier, books and flows must hold to
-  that ([DESIGN.md](../DESIGN.md), 2.3).
+  that ([the design](../DESIGN.md), 2.3).
 - Signing out holds in every process. A switch of a version and an import of the organization's data
   are known to all of them within 30 seconds.
 

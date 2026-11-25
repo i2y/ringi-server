@@ -1,8 +1,8 @@
 # Changing the framework, or testing your own server
 
 This page is for someone who changes the framework, and for someone who writes a part of their own
-(a store, above all) and wants it checked. What the server must do, and why, is in
-[DESIGN.md](DESIGN.md). Japanese: [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md).
+(a store, above all) and wants it checked. What the server must do, and why, is in [the
+design](DESIGN.md). Japanese: [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md).
 
 ## Checking a server of your own
 

@@ -154,8 +154,8 @@ curl -s -X POST localhost:8080/requests/leave/tickets -H 'X-Person: e1203' \
 | 429 | `{"error": …}` | too many of them; `Retry-After` says when, if waiting helps |
 | 500 | `{"error": …}` | the server failed, and logged why |
 
-A refusal is kept with its key too: the same key is refused the same, so a corrected call takes a key
-of its own. [DESIGN.md](../DESIGN.md), 7.1, has every case.
+A refusal is kept with its key too: the same key is refused the same, so a corrected call takes a
+key of its own. [The design](../DESIGN.md), 7.1, has every case.
 
 ### The operations
 
@@ -172,11 +172,10 @@ of its own. [DESIGN.md](../DESIGN.md), 7.1, has every case.
 | stop and start a ticket's deadlines | `POST /tickets/{id}/pause`, `…/resume` |
 | withdraw a request, or discard one sent back | `POST /tickets/{id}/withdraw`, `…/discard` |
 | read the organization, or a master's rows | `GET /organization`, `GET /masters/{file}/{master}` |
-| attach a file | `POST /files` ([web/README.md](../web/README.md)) |
+| attach a file | `POST /files` ([with curl](../web/README.md#with-curl)) |
 
-Who may do each is the gate's and the kind's to say. The screens' catalog and the pages are in
-[web/README.md](../web/README.md), and the agents' tools in [mcp/README.md](../mcp/README.md): all of
-them run these operations.
+Who may do each is the gate's and the kind's to say. [The pages and the screens](../web/README.md)
+and [the agents' tools](../mcp/README.md) run the same operations.
 
 ## The lists
 
@@ -303,7 +302,7 @@ null
 {"error":"no such path"}
 ```
 
-The pages, the screens and the agents' tools say the same day. [DESIGN.md](../DESIGN.md), 13, says
+The pages, the screens and the agents' tools say the same day. [The design](../DESIGN.md), 13, says
 what each operation of the administration checks, what the gate is asked, and what the record holds.
 
 ## With PostgreSQL

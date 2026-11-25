@@ -1,4 +1,4 @@
-# temporal
+# The flows and the agents' steps (temporal)
 
 Runs on Temporal the flows that the requests of a ringi server start. A kind of request can start
 three kinds of flow: one that runs after a ticket ends (`launch`), an agent's step (`ask_agent`) and
@@ -6,7 +6,7 @@ a note (`ask_note`). dandori generates the flows for Temporal's Go SDK. This mod
 gives the agents' answers and the notes back to the server. It is a Go module of its own, so that the
 framework's module depends on no SDK.
 
-The design: [DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md).
+[The design](DESIGN.md) says how it works, and why. Japanese: [README.ja.md](README.ja.md).
 
 ## What it does
 
