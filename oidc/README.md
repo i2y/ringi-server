@@ -1,51 +1,17 @@
 # Signing in (oidc)
 
-Signing in through the organization's OpenID Connect provider: the routes of signing in and out, a
-session in a cookie, and the framework's `Authenticator`, which tells it who sends each request. The
-person is found in the organization's data by the email address the provider verified. The package
-depends on the standard library and the framework's core (the package `server`) alone.
+Package `oidc` signs people in through an organization's OpenID Connect provider. It serves the routes
+to sign in and out, keeps each session in an encrypted cookie, and tells the server whose each request
+is (it is a `server.Authenticator`). A person is the one in the organization's data with the mail
+address the provider has verified. The package depends on the standard library and the package `server`
+alone. Japanese: [README.ja.md](README.ja.md).
 
-[The design](DESIGN.md) says how it works, and why. Japanese: [README.ja.md](README.ja.md).
-
-A server whose command is package `serve` (the one `ritsu ringi init` makes, and the example server)
-already signs people in with this package when it is given its `-oidc-…` flags
-([Connect the sign-in](../docs/sign-in.md)). Read [Use](#use) below for a server made in
-Go.
-
-## Register the server at the provider
-
-Ask the people who run the organization's OpenID Connect provider for a client of the server:
-
-| What | Value |
+| To | Read |
 |---|---|
-| The kind of client | a web application that keeps a secret, with the authorization code flow |
-| Redirect URI | `https://<host>/login/callback` |
-| Scopes | `openid email profile`, and one more where the provider needs it to list a person's roles |
-| How the client proves itself at the token endpoint | `client_secret_basic` (or `client_secret_post`) |
-| How ID tokens are signed | RS256, PS256 or ES256 |
-| Claims in the ID token | `email` and `email_verified`, and the claim that lists a person's roles. The package reads the ID token only, not the userinfo endpoint |
-| Post-logout redirect URI | only to sign people out of the provider as well (`Config.ProviderLogout`) |
-
-They give back the issuer URL, the client ID and the client secret. Write the issuer exactly as the
-provider's discovery document (`<issuer>/.well-known/openid-configuration`) writes it: an issuer
-with one `/` more or less at its end is another issuer, and `New` refuses it.
-
-The organization's data must have the people's addresses (the `email` column of `people.csv`), as
-the provider verifies them.
-
-## Keys of the cookies
-
-The session is a cookie encrypted with keys of 32 bytes each. Make a key with
-
-```sh
-head -c 32 /dev/urandom | base64
-```
-
-and give it to the server, for example in `RINGI_SESSION_KEYS`, which `oidc.ParseKeys` reads. To
-rotate, put a new key first and keep the old one after it, with a comma between them; take the old
-one out once the longest session has passed (12 hours by default). `New` refuses a key that is not
-32 random bytes, such as a passphrase in base64 or 32 zero bytes: anyone who guesses the key can
-seal a session as anyone.
+| sign people in to a server that `ritsu ringi init` made | [Connect the sign-in](../docs/sign-in.md). It uses this package through the `-oidc-…` flags, and you write no Go |
+| sign people in to a server you put together in Go | [what to register at the provider](../docs/sign-in.md#1-register-it-with-the-sign-in-service), then [Use](#use), below |
+| test a server that signs people in | [A provider for tests](#a-provider-for-tests), below |
+| know how it works, and why | [the design](DESIGN.md) |
 
 ## Use
 
@@ -68,35 +34,48 @@ srv, err = server.New(server.Config{…, Store: store, Authenticator: signin})
 h, err := web.New(srv, web.Config{
 	Require:  signin.Require,  // a page opened with no session goes to sign in, and comes back
 	LoginURL: signin.LoginURL, // the link of the page that says no one is signed in
-	SignOut:  "/logout",       // the button in the bar of each page
+	SignOut:  "/logout",       // the button at the top of each page
 })
 signin.Mount(h) // GET /login, GET /login/callback, POST /logout, behind the handler's guards
 ```
 
-`New` reads the provider's discovery document and keys, so a wrong issuer or a provider that cannot
-be reached stops the server when it starts, not at the first sign-in. Without the handler of the
-pages and the screens (package `web`), `Mount` takes an `*http.ServeMux` ([the design](DESIGN.md),
-section 10).
+- `New` reads the provider's discovery document and its keys. A wrong issuer, or a provider that cannot
+  be reached, stops the server when it starts, and not at someone's first sign-in.
+- Write the issuer exactly as the discovery document (`<issuer>/.well-known/openid-configuration`) has
+  it. With one `/` more or less at its end it is another issuer, and `New` refuses it.
+- A person's roles are those in the ID token of their last sign-in. A claim that is not in it gives no
+  role. The package reads the ID token only, not the userinfo endpoint.
+- Without `Revocations`, signing out takes the cookie from the browser, and a copy of the cookie works
+  until the session's limit.
+- For a server without package `web`, `Mount` takes an `*http.ServeMux` ([the design](DESIGN.md),
+  section 10).
+- The API answers a request with no session 401.
 
-A person's roles are those of the ID token of their last sign-in. A claim the ID token does not have
-gives no role, and a provider that lists groups by an ID gives the IDs: write the gate with what the
-provider sends.
+The other settings, with their defaults, are the fields of
+[`oidc.Config`](https://pkg.go.dev/github.com/i2y/ringi-server/oidc#Config): how long a session lasts, the
+scopes, the paths, how the client proves itself. `ProviderLogout` signs a person out of the provider too,
+and `PostLogoutRedirectURL` is where the provider then sends them, which is registered there.
 
-What people see:
+## The keys of the cookies
 
-- A page opened with no session goes to the provider, and comes back to the page after signing in.
-- A person whose address the provider did not verify, whom the organization's data does not have,
-  or whose address two people have, is shown a page that says so (403), in English or Japanese.
-- Signing out is the button in the bar of each page (a `POST /logout` from a page of this server).
-  A session ends 12 hours after signing in, or after 2 hours unused.
+A key is 32 random bytes, in base64:
 
-The API answers a request with no session 401.
+```sh
+head -c 32 /dev/urandom | base64
+```
 
-## Tests of your own server
+`oidc.ParseKeys` reads one key, or several with commas between them. The first encrypts, and every one
+of them decrypts. To change the key, put the new one first and keep the old one after it. Take the old
+one out once the longest session has passed, which is 12 hours when `SessionLimit` is not set.
 
-`oidc/oidctest` is an OpenID Connect provider for tests: it serves over https on a local address,
-signs in at once the person a test says, and checks the client, the redirect URL, PKCE and that a
-code is used once, as a provider does.
+`New` refuses a key that is not random, such as a passphrase in base64 or 32 zero bytes. Anyone who
+guesses the key can make a session of anyone.
+
+## A provider for tests
+
+`oidc/oidctest` is an OpenID Connect provider for tests. It serves over https on a local address, and
+signs in at once the person a test says. It checks the client, the redirect URL, PKCE, and that a code
+is used once, as a provider does.
 
 ```go
 p := oidctest.New(t, clock)
@@ -104,13 +83,9 @@ p.SignInAs(map[string]any{"sub": "u-1201", "email": "e1201@example.com", "email_
 signin, err := oidc.New(ctx, p.Config("https://"+app.Listener.Addr().String()+"/login/callback", keys, m))
 ```
 
-`examples/signin_test.go` signs in so, and makes a request on the pages behind the handler's
-guards.
+`examples/signin_test.go` signs in with it, and makes a request on the pages.
 
-## Tests
-
-The tests run with the framework's, in the root of the repository; with `RINGI_TEST_DATABASE`, the
-ended sessions are kept in PostgreSQL too, by two stores on the same tables:
+## The tests of the package
 
 ```sh
 go test ./oidc/...
@@ -121,5 +96,6 @@ ok  	github.com/i2y/ringi-server/oidc	0.841s
 ?   	github.com/i2y/ringi-server/oidc/oidctest	[no test files]
 ```
 
-The tests run a provider of their own over TLS (`httptest`), and send nothing anywhere else. [The
-design](DESIGN.md), section 12, lists what they run.
+They run a provider of their own over TLS (`httptest`), and send nothing anywhere else. With
+`RINGI_TEST_DATABASE`, the ended sessions are kept in PostgreSQL too, by two stores on the same tables.
+[The design](DESIGN.md), section 12, lists what they run.

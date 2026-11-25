@@ -1,38 +1,13 @@
 # ログイン（oidc）
 
-組織の OpenID Connect のプロバイダーでログインするためのパッケージです。ログインとログアウトのルート、クッキーに入れるセッション、リクエストの送り主をフレームワークに伝える `Authenticator` があります。ログインした人は、プロバイダーが確認したメールアドレスで、組織のデータから探します。依存するのは、標準ライブラリとフレームワークの本体（パッケージ `server`）だけです。
+パッケージ `oidc` は、組織の OpenID Connect のプロバイダーで人をログインさせます。ログインとログアウトのルートを持ち、セッションを暗号化したクッキーに入れ、だれのリクエストかをサーバーに伝えます（`server.Authenticator` です）。人は、プロバイダーが確認したメールアドレスで、組織のデータから探します。依存するのは、標準ライブラリとパッケージ `server` だけです。英語版は [README.md](README.md) です。
 
-しくみとその理由は、[設計](DESIGN.ja.md)にあります。英語版は [README.md](README.md) です。
-
-パッケージ `serve` を使うサーバー（`ritsu ringi init` が作るものと、例のサーバー）は、`-oidc-…` のフラグを渡すと、このパッケージでログインさせます（[ログインをつなぐ](../docs/sign-in.ja.md)）。Go で作るサーバーでは、下の[使い方](#使い方)を見てください。
-
-## プロバイダーにサーバーを登録する
-
-組織の OpenID Connect のプロバイダーを管理している人に、このサーバーのクライアントを作ってもらいます。
-
-| 項目 | 値 |
+| したいこと | 読むもの |
 |---|---|
-| クライアントの種類 | シークレットを持つ Web アプリケーション。認可コードフロー |
-| リダイレクト URI | `https://<ホスト>/login/callback` |
-| スコープ | `openid email profile`。プロバイダーが役割を出すのに要るなら、そのスコープも |
-| トークンエンドポイントでのクライアントの認証 | `client_secret_basic`（または `client_secret_post`） |
-| ID トークンの署名 | RS256、PS256、ES256 のどれか |
-| ID トークンのクレーム | `email` と `email_verified`、それと人の役割が入るクレーム。このパッケージは ID トークンだけを読み、userinfo エンドポイントは読みません |
-| ログアウト後のリダイレクト URI | プロバイダーからもログアウトさせるとき（`Config.ProviderLogout`）だけ |
-
-登録すると、issuer の URL、クライアント ID、クライアントシークレットを受け取ります。issuer は、プロバイダーのディスカバリーの文書（`<issuer>/.well-known/openid-configuration`）に書かれたとおりに設定してください。末尾の `/` が一つ多くても少なくても別の issuer になり、`New` が受け付けません。
-
-組織のデータには、プロバイダーが確認するのと同じメールアドレスが要ります（`people.csv` の `email` 列）。
-
-## クッキーの鍵
-
-セッションは、32 バイトの鍵で暗号化したクッキーに入れます。鍵は次のように作ります。
-
-```sh
-head -c 32 /dev/urandom | base64
-```
-
-作った鍵は、たとえば `RINGI_SESSION_KEYS` でサーバーに渡し、`oidc.ParseKeys` で読みます。鍵を入れ替えるときは、新しい鍵を先頭に置いて古い鍵をコンマで区切って後ろに残し、いちばん長いセッションが終わるだけの時間（既定は 12 時間）がたったら、古い鍵を外します。パスフレーズを base64 にしたものや 32 個のゼロのように、32 バイトの乱数でない鍵は、`New` が受け付けません。鍵を当てた人は、だれのセッションでも作れてしまうからです。
+| `ritsu ringi init` で作ったサーバーにログインさせる | [ログインをつなぐ](../docs/sign-in.ja.md)。`-oidc-…` のフラグで、このパッケージを使います。Go のコードは書きません |
+| Go で組み立てたサーバーにログインさせる | [プロバイダーに登録するもの](../docs/sign-in.ja.md#1-ログインのサービスに登録する)と、下の[使い方](#使い方) |
+| ログインするサーバーを試験する | 下の[試験のためのプロバイダー](#試験のためのプロバイダー) |
+| しくみとその理由を知る | [設計](DESIGN.ja.md) |
 
 ## 使い方
 
@@ -48,31 +23,40 @@ signin, err := oidc.New(ctx, oidc.Config{
 	ClientSecret: os.Getenv("RINGI_OIDC_CLIENT_SECRET"),
 	RedirectURL:  "https://requests.example.test/login/callback",
 	Keys:         keys,
-	Map:          oidc.Roles(people, "roles"), // クレーム "roles" にある役割。gate が読む
-	Revocations:  store,                       // PostgreSQL のストア。ログアウトがサーバーのどのプロセスでも効く
+	Map:          oidc.Roles(people, "roles"), // クレーム "roles" にある役割。権限（gate）が読む
+	Revocations:  store,                       // PostgreSQL の Store。ログアウトが、サーバーのどのプロセスでも効く
 })
 srv, err = server.New(server.Config{…, Store: store, Authenticator: signin})
 h, err := web.New(srv, web.Config{
-	Require:  signin.Require,  // セッションがないままページを開くとログインへ進み、あとで戻る
+	Require:  signin.Require,  // セッションがないままページを開くと、ログインに進み、済んだら戻る
 	LoginURL: signin.LoginURL, // 「ログインしていません」のページのリンク
-	SignOut:  "/logout",       // 各ページの上の帯にあるボタン
+	SignOut:  "/logout",       // 各ページの上にあるボタン
 })
 signin.Mount(h) // GET /login、GET /login/callback、POST /logout。ハンドラーの検査の後ろに置く
 ```
 
-`New` はプロバイダーのディスカバリーの文書と鍵を読みます。そのため、issuer の誤りや、プロバイダーにつながらないことは、最初のログインのときではなく、サーバーの起動のときにわかります。ページと画面のハンドラー（パッケージ `web`）を使わないときは、`Mount` に `*http.ServeMux` を渡します（[設計](DESIGN.ja.md)の 10 節）。
+- `New` は、プロバイダーのディスカバリーの文書と鍵を読みます。issuer の誤りや、プロバイダーにつながらないことは、最初のログインのときではなく、サーバーの起動のときに分かります。
+- issuer は、ディスカバリーの文書（`<issuer>/.well-known/openid-configuration`）にあるとおりに書きます。末尾の `/` が一つ多くても少なくても別の issuer になり、`New` が受け付けません。
+- 人の役割は、最後にログインしたときの ID トークンにあるものです。そこにクレームがなければ、役割はありません。読むのは ID トークンだけで、userinfo エンドポイントは読みません。
+- `Revocations` を渡さなければ、ログアウトで消えるのはブラウザのクッキーだけです。クッキーのコピーは、セッションの期限まで使えます。
+- パッケージ `web` を使わないサーバーでは、`Mount` に `*http.ServeMux` を渡します（[設計](DESIGN.ja.md)の 10 節）。
+- セッションのないリクエストには、API は 401 を返します。
 
-人の役割は、最後にログインしたときの ID トークンにあるものです。ID トークンにそのクレームがなければ、役割はありません。グループを ID で挙げるプロバイダーでは、その ID が役割になります。gate は、プロバイダーが送る値に合わせて書いてください。
+セッションの長さ、スコープ、パス、クライアントの認証の方法などの設定と既定の値は、[`oidc.Config`](https://pkg.go.dev/github.com/i2y/ringi-server/oidc#Config) のフィールドにあります。`ProviderLogout` を使うと、プロバイダーからもログアウトします。そのあとプロバイダーが戻す先が `PostLogoutRedirectURL` で、これはプロバイダーにも登録します。
 
-利用者から見えること：
+## クッキーの鍵
 
-- セッションがないままページを開くと、プロバイダーのログインへ進み、ログインのあとで元のページに戻ります。
-- プロバイダーがメールアドレスを確認していない人、組織のデータにいない人、同じアドレスの人が二人以上いる人には、その旨のページ（403）を英語か日本語で出します。
-- ログアウトは、各ページの上の帯にあるボタンです（このサーバーのページからの `POST /logout`）。セッションは、ログインから 12 時間、または使わないまま 2 時間で終わります。
+鍵は、32 バイトの乱数を base64 にしたものです。
 
-セッションのないリクエストには、API は 401 を返します。
+```sh
+head -c 32 /dev/urandom | base64
+```
 
-## 自分のサーバーの試験
+`oidc.ParseKeys` は、一つの鍵か、コンマで区切ったいくつかの鍵を読みます。先頭の鍵で暗号化し、復号にはどの鍵も使います。鍵を替えるときは、新しい鍵を先頭に置き、古い鍵を後ろに残します。いちばん長いセッションが終わるだけの時間（`SessionLimit` を設定しなければ 12 時間）がたったら、古い鍵を外します。
+
+パスフレーズを base64 にしたものや 32 個のゼロのような、乱数でない鍵は、`New` が受け付けません。鍵を当てた人は、だれのセッションでも作れるためです。
+
+## 試験のためのプロバイダー
 
 `oidc/oidctest` は、試験のための OpenID Connect のプロバイダーです。手元のアドレスの https で動き、試験が指定した人をすぐにログインさせます。クライアント、リダイレクト先の URL、PKCE、コードが一度しか使われないことは、本物のプロバイダーと同じように確かめます。
 
@@ -82,11 +66,9 @@ p.SignInAs(map[string]any{"sub": "u-1201", "email": "e1201@example.com", "email_
 signin, err := oidc.New(ctx, p.Config("https://"+app.Listener.Addr().String()+"/login/callback", keys, m))
 ```
 
-`examples/signin_test.go` は、このようにログインして、ハンドラーの検査の後ろのページで申請を出します。
+`examples/signin_test.go` は、これでログインして、ページで申請します。
 
-## 試験
-
-試験は、リポジトリのルートでフレームワークの試験と一緒に回します。`RINGI_TEST_DATABASE` があれば、終わったセッションを PostgreSQL にも記録し、同じ表を使う二つのストアで確かめます。
+## このパッケージの試験
 
 ```sh
 go test ./oidc/...
@@ -97,4 +79,4 @@ ok  	github.com/i2y/ringi-server/oidc	0.841s
 ?   	github.com/i2y/ringi-server/oidc/oidctest	[no test files]
 ```
 
-試験は自前のプロバイダーを TLS で動かし（`httptest`）、ほかへは何も送りません。何を試しているかは、[設計](DESIGN.ja.md)の 12 節にあります。
+試験は自前のプロバイダーを TLS で動かし（`httptest`）、ほかへは何も送りません。`RINGI_TEST_DATABASE` があれば、終わったセッションを PostgreSQL にも記録し、同じ表を使う二つの Store で確かめます。何を試しているかは、[設計](DESIGN.ja.md)の 12 節にあります。
