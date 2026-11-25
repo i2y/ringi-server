@@ -1,16 +1,16 @@
 # 設計：flow を Temporal で動かす
 
-このモジュールは、申請の種類が始める flow を Temporal で動かす。チケットが終わったあとに始める flow（`launch`）、エージェントのステップ（`ask_agent`）、メモ（`ask_note`）の三つである。flow は、dandori が Temporal の Go の SDK 向けに生成した物を使う（`ritsu gen --target go` が `flows/` の下に書く）。フレームワークのモジュールはどの SDK にも依存せず、これらのすることを `Flows` と `Agents` の二つのインターフェースに渡す。このモジュールは、その両方を Temporal で実装する。
+このモジュールは、申請の種類が始める flow を Temporal で動かす。チケットが終わったあとに始める flow（`launch`）、エージェントのステップ（`ask_agent`）、メモ（`ask_note`）の三つである。flow は、dandori が Temporal の Go の SDK 向けに生成した物を使う（`ritsu gen --target go` が `flows/` の下に書く）。フレームワークのモジュールはどの SDK にも依存せず、これらの処理を `Flows` と `Agents` の二つのインターフェースに渡す。このモジュールは、その両方を Temporal で実装する。
 
 英語版：[DESIGN.md](DESIGN.md)。
 
 ## 1. すること
 
-- **launch。** することのキーをワークフロー ID にして、flow を始める。同じキーでもう一度始めても何も始まらず、成功として返す。フレームワークは、同じすることを二度行うことがあるからである。
+- **launch。** 処理のキーをワークフロー ID にして、flow を始める。同じキーでもう一度始めても何も始まらず、成功として返す。フレームワークは、同じ処理を二度行うことがあるからである。
 - **問い合わせ。** キーごとに、このモジュールの小さなワークフロー（以下「問い合わせの実行」）を始める。問い合わせの実行は、キーをワークフロー ID にして flow を子ワークフローとして動かし、flow の結果を読み、答えをフレームワークの `Server.Answered` に渡す。渡すのはアクティビティで、Temporal が済むまでリトライする。flow が終わってから答えを渡すまでのあいだにプロセスが止まっても、答えは失われない。問い合わせの実行はまだ終わっておらず、アクティビティがもう一度試されるからである。
 - **ワーカー。** 問い合わせの実行とそのアクティビティは、サーバーのプロセスのワーカーで動く（アクティビティがサーバーを呼ぶため）。flow は dandori が生成したそれぞれのワーカーで動く。同じプロセスでも、別のプロセスでもよい。
 
-承認そのもの（`next`、時計、することの一覧）は Temporal を使わない。フレームワークは Temporal 無しで動き、Temporal を使うのは flow だけである。
+承認そのもの（`next`、時計、処理の一覧）は Temporal を使わない。フレームワークは Temporal 無しで動き、Temporal を使うのは flow だけである。
 
 ## 2. API
 
@@ -25,29 +25,48 @@ p, err := server.Load(ticketkinds.Contract, ticketkinds.Lang, ticketkinds.Kinds,
 flows, err := temporal.FlowsOf(p)
 ```
 
-`Flow` のフィールドは次のとおりである。
+```go
+// Flow は、申請の種類が挙げる flow と、それを Temporal のどこで動かすか。FlowsOf が、種類の説明から作る。
+type Flow struct {
+	// Name は、申請の種類が flow に付けた名前。種類は、この名前で flow を呼ぶ（説明の flow の
+	// `alias`）。
+	Name string
+	// Kind は、その申請の種類だけに使うとき、種類の名前。二つの種類が一つの名前を別々の flow に
+	// 付けるときに使う。"" はすべての種類。
+	Kind string
+	// Type と TaskQueue は、flow のワークフローの型とタスクキュー（`workflow_type` と
+	// `task_queue`。生成したパッケージの WorkflowType と TaskQueue）。
+	Type      string
+	TaskQueue string
+	// Outputs は、メモの出力の名前を、flow が宣言した順に並べた物（`outputs`）。メモには、この順で
+	// 出力を渡す（ringi の DESIGN 15）。無ければ、実行が返した順のまま。
+	Outputs []string
+}
 
-| フィールド | 中身 |
-|---|---|
-| `Name` | 申請の種類が flow に付けた名前。種類のすることは、この名前で flow を呼ぶ（説明の flow の `alias`） |
-| `Kind` | その申請の種類だけに使うとき、その名前。二つの種類が一つの名前を別々の flow に付けるときに使う。`""` はすべての種類 |
-| `Type`、`TaskQueue` | flow のワークフローの型とタスクキュー（`workflow_type` と `task_queue`。生成したパッケージの `WorkflowType` と `TaskQueue`） |
-| `Outputs` | メモの出力の名前を、flow が宣言した順に並べた物（`outputs`）。メモにはこの順で出力を渡す（ringi の DESIGN 15）。無ければ、実行が返した順のまま |
+// FlowsOf は、パッケージの申請の種類が動かす flow を、種類の説明が挙げるとおりに返す。
+func FlowsOf(pkgs ...*server.Package) ([]Flow, error)
+```
 
-`FlowsOf(pkgs ...*server.Package) ([]Flow, error)` は、パッケージの申請の種類が動かす flow を、種類の説明が挙げるとおりに返す。ある名前を挙げるどの種類も、その名前に同じ flow（型、タスクキュー、出力が同じ）を付けていれば、すべての種類に使う一つの `Flow`（`Kind` が `""`）にする。例の英語と日本語の種類は、どの名前にも同じ flow を付けている。種類によって別の flow を付けている名前は、種類ごとの `Flow` にする。一つの種類だけの `Flow` は、すべての種類の `Flow` より先に選ぶ。`alias`、`workflow_type`、`task_queue` のどれかが無い flow と、一つの種類が二つの版で一つの名前に別々の flow を付けているときは、エラーにする。launch と問い合わせは種類と名前だけで flow を呼ぶので、その二つを見分けられないからである。種類の版が一つの名前に同じ flow を付けていれば、一つにする。
+ある名前を挙げるどの種類も、その名前に同じ flow（型、タスクキュー、出力が同じ）を付けていれば、すべての種類に使う一つの `Flow`（`Kind` が `""`）にする。例の英語と日本語の種類は、どの名前にも同じ flow を付けている。種類によって別の flow を付けている名前は、種類ごとの `Flow` にする。一つの種類だけの `Flow` は、すべての種類の `Flow` より先に選ぶ。`alias`、`workflow_type`、`task_queue` のどれかが無い flow と、一つの種類が二つの版で一つの名前に別々の flow を付けているときは、エラーにする。launch と問い合わせは種類と名前だけで flow を呼ぶので、その二つを見分けられないからである。種類の版が一つの名前に同じ flow を付けていれば、一つにする。
 
 ### 2.2 Runner
 
 ```go
 type Config struct {
-	Flows []Flow // 種類が launch し、問い合わせる flow（FlowsOf）
-	// このプロセスで動かす flow のワーカー（Run）。ポーリングするタスクキューごとに、生成したパッケージの
-	// ワーカーを作る関数（その NewWorker に、使う人のタスクと Transport を渡す）。ここにワーカーの無い
-	// タスクキューの flow は、別のプロセスが動かす。
-	Workers       map[string]func(c client.Client) worker.Worker
-	TaskQueue     string         // 問い合わせの実行と答えのタスクキュー（既定は "requests.ask"）
-	AnswerTimeout time.Duration  // 答えを一回渡すのにかけてよい時間（既定は 1 分）
-	WorkerOptions worker.Options // 問い合わせの実行のワーカーのオプション
+	// Flows は、申請の種類が始め、問い合わせる flow（FlowsOf）。
+	Flows []Flow
+	// Workers は、このプロセスで動かす flow のワーカー（Run）。ポーリングするタスクキューごとに、生成した
+	// パッケージのワーカーを作る関数（その NewWorker に、使う人のタスクと、エージェントが外へ出る
+	// Transport を渡す）。ここにワーカーの無いタスクキューの flow は、別のプロセスが動かす。
+	Workers map[string]func(c client.Client) worker.Worker
+	// TaskQueue は、問い合わせの実行と答えのタスクキュー（既定は DefaultTaskQueue の
+	// "requests.ask"）。
+	TaskQueue string
+	// AnswerTimeout は、答えをサーバーに渡す一回の試しにかけてよい時間（既定は 1 分）。それを超えた
+	// 試しと、ワーカーが止まった試しは、もう一度試される。
+	AnswerTimeout time.Duration
+	// WorkerOptions は、問い合わせの実行のワーカーのオプション。
+	WorkerOptions worker.Options
 }
 
 func New(c client.Client, cfg Config) (*Runner, error)
@@ -60,12 +79,17 @@ type Answerer interface {
 	Answered(ctx context.Context, key server.EffectKey, a server.Answer) (server.Reply, error)
 }
 
+// Worker は、Config.TaskQueue で、問い合わせの実行とその答えを受け持つワーカー。
 func (r *Runner) Worker(to Answerer) worker.Worker
+// Run は、Worker(to) と Config.Workers の flow のワーカーを、ctx が終わるか、ワーカーが続けられない
+// エラーで止まるまで動かす。
 func (r *Runner) Run(ctx context.Context, to Answerer) error
+// CheckWorkers は、Runner が実行を始めるタスクキューのそれぞれを、ワーカーがポーリングしているかを、
+// どのキューにもワーカーがいるか ctx が終わるまで、Temporal に聞く。
 func (r *Runner) CheckWorkers(ctx context.Context) error
 ```
 
-`New` は I/O をしない。名前、型、タスクキューの無い `Flow`、一つの種類に同じ名前の `Flow` が二つあるとき、`Config.Workers` のタスクキューに nil の関数を渡したとき（「Config.Workers has no worker for the task queue …」）、`Config.Flows` のどの flow のタスクキューでもないキューのワーカーがあるとき（「Config.Workers has a worker for the task queue …, which no flow of Config.Flows is on」）は受け付けない。サーバーは Runner を受け取って作り（`Config.Flows` と `Config.Agents`）、Runner はそのサーバーに答える。そのため、サーバーは `New` ではなく、ワーカーを作るとき（`Worker`、`Run`）に渡す。`AnswerTimeout` を超えた試し、またはワーカーが止まった試しは、もう一度試される。
+`New` は I/O をしない。名前、型、タスクキューの無い `Flow`、一つの種類に同じ名前の `Flow` が二つあるとき、`Config.Workers` のタスクキューに nil の関数を渡したとき（「Config.Workers has no worker for the task queue …」）、`Config.Flows` のどの flow のタスクキューでもないキューのワーカーがあるとき（「Config.Workers has a worker for the task queue …, which no flow of Config.Flows is on」）は受け付けない。サーバーは Runner を受け取って作り（`Config.Flows` と `Config.Agents`）、Runner はそのサーバーに答える。そのため、サーバーは `New` ではなく、ワーカーを作るとき（`Worker`、`Run`）に渡す。
 
 `Worker` は、`Config.TaskQueue` で問い合わせの実行と答えを受け持つワーカーを返す。`Run` はそのワーカーと、`Workers` の関数が作るワーカー（タスクキューごとに一つ）を始め、ctx が終わるか、ワーカーが続けられないエラーで止まるまで戻らない。始められないワーカーがあれば、それまでに始めたワーカーを止めて、そのエラーを返す。ctx が終われば `ctx.Err()` を、問い合わせの実行のワーカーがエラーで止まればそのエラーを返す。
 
@@ -93,18 +117,18 @@ if err := w.Run(worker.InterruptCh()); err != nil {
 
 ## 3. flow を始める（launch）
 
-`Launch` は、することに書かれた flow（`Launch.Flow` を、`Launch.Kind` の一覧から探す）を、次の形で始める。
+`Launch` は、処理に書かれた flow（`Launch.Flow` を、`Launch.Kind` の一覧から探す）を、次の形で始める。
 
 - ワークフロー ID：キー。`<チケット>/<回>/<通し番号>`（`EffectKey.String`）
 - 型とタスクキュー：その `Flow` の物
 - 入力：引数を一つの JSON オブジェクトにした物（5 章）
 - ID が重なれば断り、使われている ID ならエラーにする（`WorkflowExecutionErrorWhenAlreadyStarted`）
 
-ID が使われているために断られたときは、成功として返す。前に始めた実行があるからである。それ以外のエラーは返し、フレームワークがすることを繰り返す（2 秒後、それから倍にして 10 分まで、終わり無く）。そのため、始められなかった flow（Temporal に届かない、`Config.Flows` に無い）も、始められるようになった時点で始まる。生成したパッケージの `Start` も同じオプションを付けるが、Runner はそれを呼ばない。launch と、問い合わせの実行の子ワークフローを、一つの一覧から始めるためである。
+ID が使われているために断られたときは、成功として返す。前に始めた実行があるからである。それ以外のエラーは返し、フレームワークが処理を繰り返す（2 秒後、それから倍にして 10 分まで、終わり無く）。そのため、始められなかった flow（Temporal に届かない、`Config.Flows` に無い）も、始められるようになった時点で始まる。生成したパッケージの `Start` も同じオプションを付けるが、Runner はそれを呼ばない。launch と、問い合わせの実行の子ワークフローを、一つの一覧から始めるためである。
 
 launch した flow は何も返さない。flow の結果は Temporal に残る。
 
-Temporal が使われた ID を断るのは、終わった実行を持っているあいだ（ネームスペースのリテンション）だけである。フレームワークは `Launch` が戻るとすぐにすることを済みにするので、二度目の開始はその繰り返しのうちに来る。リテンションが切れるよりずっと前である。
+Temporal が使われた ID を断るのは、終わった実行を持っているあいだ（ネームスペースのリテンション）だけである。フレームワークは `Launch` が戻るとすぐに処理を済みにするので、二度目の開始はその繰り返しのうちに来る。リテンションが切れるよりずっと前である。
 
 ## 4. flow に問い合わせ、答えを返す
 
@@ -155,7 +179,7 @@ flow の結果は、Temporal が問い合わせの実行の履歴に持ってい
 
 ## 5. 値
 
-することは引数を、メモは出力を、約束の名前つきの値で持つ。`[{"name": …, "value": …}]` の形で、値は `{"str":{"v":…}}`、`{"num":{"v":…}}`、`{"truth":{"v":…}}`、`{"rows":{"v":[[…], …]}}`（名前つきの値の行）、`"nothing"` のどれかである。
+処理は引数を、メモは出力を、約束の名前つきの値で持つ。`[{"name": …, "value": …}]` の形で、値は `{"str":{"v":…}}`、`{"num":{"v":…}}`、`{"truth":{"v":…}}`、`{"rows":{"v":[[…], …]}}`（名前つきの値の行）、`"nothing"` のどれかである。
 
 | 約束 | flow の入力（JSON） | flow の出力（JSON）→ 約束 |
 |---|---|---|
@@ -189,13 +213,13 @@ flow の結果は、Temporal が問い合わせの実行の履歴に持ってい
 - `flows_test.go`：`TestFlowsOf` は、例の種類の説明（`../examples/requests`。無ければ `SKIP` と書く）から flow を読む。六つの flow（`provision`、`summarize`、`precheck_agent`、`travel_decision`、`pay`、`order`）が、それぞれ英語と日本語の種類に共通の一つの `Flow` になり、出力が宣言の順に並び、`New` がそれを受け付ける。日本語の経費が `pay` に別の flow を付けると、二つの種類それぞれの `Flow` になり、どちらの種類も自分の flow を選ぶ。タスクキューの無い flow はエラーになる。`TestFlowsOfVersions`：一つの種類の二つの版が、一つの名前に同じ flow を付けていれば一つになり、別々の flow ならエラーになる。`TestCheckWorkers`（開発用サーバーで）：ワーカーのいない flow のタスクキューを、ワーカーが来るまで挙げる。来れば、すべてのキューにワーカーがいる。`DescribeTaskQueue` が開発用サーバーに聞く前に ctx を終えたり失敗したりできるクライアントでも試す。ワーカーのいるキューについての二つ目の問いの途中で ctx が終わっても、問いと問いのあいだで終わったときと同じエラーになる。最初の問いの途中で ctx が終われば、すべてのキューを、まだ答えていないキューとして挙げる。失敗する問いは聞き直し、最後の問いのエラーを付けて挙げ、そのエラーをラップする。一度だけ失敗し、そのあと答えが返る問いなら、確かめは通る。
 - `runner_test.go`：試験のために書いた、生成した物と同じ形のワークフローと、キーごとに答えを覚える偽のサーバーで、Runner を動かす。`New` が受け付けない設定（flow の設定、`Workers` で nil の関数を渡したタスクキュー、どの flow のタスクキューでもないキューのワーカー）。二度始めても、実行が終わったあとに始めても、launch は一度だけ動く。問い合わせが `ok`、`doubt`、`Failed`、メモの出力を宣言の順で（宣言が無ければそのままの順で）渡す。断りで問い合わせの実行が終わり、エラーはリトライし、`NotFound` で失敗する。二度問い合わせても一度だけ動く。キャンセルした問い合わせの実行が `Failed` を渡す。答えを渡す途中でワーカーを止め、別のワーカーを起こしても、答えは一度だけ受け取られる。`Run` が問い合わせの実行のワーカーと `Workers` のワーカーを動かし、ctx で終わる。
 - `examples_test.go`：例をフレームワークの上で動かす。`ritsu`（`RITSU`、または `PATH` の `ritsu`）で、例（`RINGI_EXAMPLES`、無ければフレームワークの `examples/project`）から経費と契約の種類とその flow を、試験のために作ったモジュールに生成する。そこへ `testdata/examples` を写し、その試験を動かす。外の試験が `-race` なら `-race` を付け、開発用サーバーのアドレスとネームスペース `one-process` を、環境変数（`RINGI_TEMPORAL_ADDRESS`、`RINGI_TEMPORAL_NAMESPACE`）で渡す。`ritsu` か例が無ければ `SKIP` と書く。モジュールには、生成した flow が `doc.go` に書いているモジュールを要件として入れる。モジュールのキャッシュだけで組む機械では、`RINGI_EXAMPLES_GOMOD` に、キャッシュにある版を使う go.mod を指定する。その要件と、隣の go.sum も入れる。生成した物は残さない。生成した flow には、エージェントのプロバイダーとモデルの名前が入っているからである（例の flow が選んでいる）。
-- `testdata/examples`：メモリの保管先と、試験が設定する時計で、二つの種類を動かす。flow は、生成した種類の説明から `FlowsOf` が作り、そのワーカーは、別のプロセスが動かすのと同じように試験が動かす。エージェントの確かめが通る（チケットは上長へ進む）、疑う、プロバイダーが失敗する（flow がリトライのあとで `doubt` と答える）、形の合わない答えを返す（flow が失敗し、`agent failed`）。契約のメモが宣言の順で付く、期限のあとに来る（チケットはメモ無しで進み、遅れた答えは `stale` で断られる）。エージェントが承認した日帰りの出張の支払いが、もう一度 launch しても一度だけ動く。サーバーが答えを受け取ってから返事を返すまでのあいだに、問い合わせの実行のワーカーが止まる。README の例（`TestOneProcess`）は、ネームスペース `one-process` で動く。そこをポーリングするほかのワーカーはおらず、残りの二つの flow のワーカーは、別のプロセスと同じように試験が動かす。サーバーのプロセスは、日帰りの出張の決裁と支払いを自分のワーカーで動かし、`CheckWorkers` がそのワーカーを見つけ、サーバー自身のループがすることを行う。
+- `testdata/examples`：メモリの保管先と、試験が設定する時計で、二つの種類を動かす。flow は、生成した種類の説明から `FlowsOf` が作り、そのワーカーは、別のプロセスが動かすのと同じように試験が動かす。エージェントの確かめが通る（チケットは上長へ進む）、疑う、プロバイダーが失敗する（flow がリトライのあとで `doubt` と答える）、形の合わない答えを返す（flow が失敗し、`agent failed`）。契約のメモが宣言の順で付く、期限のあとに来る（チケットはメモ無しで進み、遅れた答えは `stale` で断られる）。エージェントが承認した日帰りの出張の支払いが、もう一度 launch しても一度だけ動く。サーバーが答えを受け取ってから返事を返すまでのあいだに、問い合わせの実行のワーカーが止まる。README の例（`TestOneProcess`）は、ネームスペース `one-process` で動く。そこをポーリングするほかのワーカーはおらず、残りの二つの flow のワーカーは、別のプロセスと同じように試験が動かす。サーバーのプロセスは、日帰りの出張の決裁と支払いを自分のワーカーで動かし、`CheckWorkers` がそのワーカーを見つけ、サーバー自身のループが処理を行う。
 
 ## 8. 採らなかった方法
 
 - **Temporal に答えを聞きに行く。** サーバーのプロセスが、起動したときと定期的に、答えを待っているキーを探し、その実行がどう終わったかを Temporal に聞く方法。フレームワークに、答えを待つキーの一覧が要る。結果はネームスペースのリテンションが切れる前に読まなければならない。問い合わせの実行なら、答えは一か所に残り、リトライは Temporal がする。
 - **flow 自身の実行から答えを渡す。** flow のワーカーのインターセプターが、flow の終わりに `Answered` を呼ぶ方法。答えが flow の履歴の一部になり、dandori の `Replay` はインターセプター無しでリプレイする。それに、エージェントの鍵を持つプロセスとサーバーのプロセスを分けられない。
-- **`Ask` の中で待つ。** `Ask` が flow を始めて終わるのを待つ方法。フレームワークのすることのリースは 1 分で、flow はそれより長くかかることがある。待っているあいだにプロセスが止まれば、答えは Temporal にしか残らない。
+- **`Ask` の中で待つ。** `Ask` が flow を始めて終わるのを待つ方法。フレームワークの処理のリースは 1 分で、flow はそれより長くかかることがある。待っているあいだにプロセスが止まれば、答えは Temporal にしか残らない。
 - **flow にタイムアウトを付ける。** ステップが遅れたことはチケットの時計が言い、遅れた答えは断られる。ここでタイムアウトを付けると、申請の種類が書いていない二つ目の期限になる。
 
 ## 9. あとで
