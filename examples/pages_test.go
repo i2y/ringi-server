@@ -186,6 +186,7 @@ type pageForm struct {
 	values    url.Values
 	files     map[string]string // a file input's name → the name of the file chosen
 	contents  map[string][]byte // a file input's name → what its file holds, when not fileBytes's
+	types     map[string]string // a file input's name → the type its file is sent as, when not a PDF's
 	copies    map[string]int    // a file input's name → how many times its file is sent (once when not set)
 	options   map[string][]string
 	kinds     map[string]string // a control's name → text, hidden, select, textarea, checkbox, file
@@ -391,6 +392,9 @@ func (b *pageForm) body(button string) ([]byte, string, error) {
 			h := textproto.MIMEHeader{}
 			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, name, file))
 			h.Set("Content-Type", "application/pdf")
+			if ct, ok := b.types[name]; ok {
+				h.Set("Content-Type", ct)
+			}
 			part, err := w.CreatePart(h)
 			if err != nil {
 				return nil, "", err

@@ -68,6 +68,7 @@ type Form struct {
 	Back   string          // the page it leads from: the ticket's, or for a new request the start page; "" for no link
 	Again  *Reading        // a post read, shown again
 	Worked WorkedFunc      // what the form works out (section 3.1); nil: as before it is filled in
+	FormAt FormAtFunc      // the form the ticket had when the page was shown (section 4.1); nil: not known
 }
 
 type Card struct {
@@ -81,11 +82,16 @@ type Card struct {
 	Back    string         // the address of the start page, for a link; "" for none
 	Again   *Reading
 	Worked  WorkedFunc     // what the ticket's form works out (section 3.2); nil, as a Form's
+	FormAt  FormAtFunc     // as a Form's, for an approver's edit
 }
 
 // WorkedFunc asks the kind's Worked entry: `{"form": …, "edited": …}` in, `{"fields": …}` out (a
 // server asks Server.Worked); nil out for a kind that has none.
 type WorkedFunc func(in json.RawMessage) (json.RawMessage, error)
+
+// FormAtFunc answers the form the ticket had at a revision (a server asks Server.FormAt); nil out for
+// a revision the ticket was never at, or one whose form is not said.
+type FormAtFunc func(revision json.RawMessage) (json.RawMessage, error)
 
 type List struct {
 	screens.List
@@ -661,9 +667,8 @@ The button may be gone because this very post took it away: a browser with no sc
 pressed twice twice, and a page gone back to sends it again. So the reading also holds the operation
 the post makes, `Sent`, with the key it makes (section 4.5): the server does not run it, and when the
 same operation with the same key was taken before (`Server.Replied`, the core's DESIGN 8.1), it
-answers the post as it did then. Two posts have no `Sent`, as what they send is made from the
-ticket as it is now, and is no longer what they sent: a request made again, and an approver's edit
-(section 4.1). Neither has one whose values do not read or fail a check. Once the server has answered
+answers the post as it did then. A post whose values do not read or fail a check has no `Sent`, and
+neither has a new request, whose button making it does not take away. Once the server has answered
 the post, `Sent` is nil, as `Operation` is.
 
 ### 4.1 The values
@@ -671,11 +676,11 @@ the post, `Sent` is nil, as `Operation` is.
 - **A new request** (`submit`): `requester` (null for one's own), `form` (each field on the page
   that holds a value; a field left out of the post was hidden), `comment`.
 - **A request made again** (`resubmit`), ringi's DESIGN 7.3 and 12.4: `form` holds only the fields
-  whose value differs from the ticket's (`/before`); `clear` names the fields the ticket held a
-  value of that are now empty, or hidden; rows are never in `clear` (they are sent as a list, which
-  may have no row). A hidden field's value is not sent.
+  whose value differs from the form the page showed (`/before`); `clear` names the fields that form
+  held a value of that are now empty, or hidden; rows are never in `clear` (they are sent as a list,
+  which may have no row). A hidden field's value is not sent.
 - **An approver's edit** (`edit`): the same over the fields approvers give or correct, against the
-  ticket's form: `fields` and `clear`.
+  ticket's form as the page showed it: `fields` and `clear`.
 - **The other buttons**: the ticket's ID (from the input: the ticket the server addresses), the
   revision the page showed (`_revision`), `comment`, and what the button sends besides (`to`,
   `approver` with its `part`, `of` and `to`).
@@ -684,6 +689,14 @@ These are the values `functions.js` sends for the same form (`<kind>.given`, `.c
 `.edits`, `.edits_cleared`): the tests hold the two to each other. A text, a long text and a comment
 lose the `White_Space` at their ends; a number, a day and an ID lose that of
 `String.prototype.trim`, as before.
+
+The form a page showed is the ticket's now, while the post's revision is the ticket's. A page that
+showed the ticket at another revision showed the form it had then, which the reading asks the input's
+`FormAt` for (a server answers with `Server.FormAt`, the core's DESIGN 8.1). What the post changed is
+of that form, so the same post makes the same body however often it is sent, and the same key
+(section 4.5). Where no form of the revision is known (`FormAt` is nil, or answers nil), the values
+are read against the ticket's form now when the button is offered, which the server refuses as
+`stale`, and there is no `Sent` when it is not.
 
 ### 4.2 Checks on the server
 
@@ -706,6 +719,10 @@ makes one of a function), and puts the ID it answers in the value, also when the
 again keeps it in `a.<field>`, so a file is not chosen twice. A file the ticket holds stays unless
 `d.<field>` is checked. The server must hold an ID a post names to the files the person may attach
 (one they uploaded, or one the ticket holds): the hidden field can be changed.
+
+The Keeper of a page answers the same ID for the same file of the same page (`web`'s `Handler.Keeper`
+does: its DESIGN 9.3). The ID is in the body, so a form with a file that is posted twice would be two
+operations, and two requests, if its file were kept twice.
 
 A Keeper that does not take a file answers a `*FileRefusal`: a file larger than `Max` bytes
 (`TooLarge`), one that is not what its type says (`Content`), one of a person who already has as
@@ -790,10 +807,11 @@ replaces what the earlier said.
 
 The core makes the key from the surface, the button, the body and (for an operation on a ticket) the
 timestamp. The timestamp is the time the page was shown (`_at`), so the same page posted twice (a
-double click, a post sent again) is one operation, and the script does not send a form again for 3
-seconds after it is sent (section 6). A page shown
-again is made with a new `Now`, and a new request's form with a new surface (as the core asks), so a
-person who was refused can send the same values again.
+double click, a post sent again) is one operation: its files are kept once (section 4.3), and what it
+changes is read against the form it showed (section 4.1). The script does not send a form again for 3
+seconds after it is sent (section 6). A page shown again is made with a new `Now`, and a new request's
+form with a new surface (as the core asks), so a person who was refused can send the same values
+again.
 
 ## 5. Numbers
 
@@ -891,6 +909,8 @@ button posts what a browser posts, as `multipart/form-data` when the form has a 
 | `TestFindNameAsItsValue` | A value whose name is the value itself (section 3.1.1): held, it has no name said under it; found, its button gives the script no name (`data-name` empty); a value with a name of its own is named. |
 | `TestKeys` | The keys of section 4.5: the same card posted twice makes one key; shown again a second later, or with another comment, another. A new request's key is of its surface and body: the same at another time, another under another surface. |
 | `TestNotAPost` | Another surface, no surface, no time or one that does not read, no button or one of no screen, a revision that does not read: `ErrPost`. A button the viewer may not press now, and the comment button with no comment, show the page again. The same button from a page of an older revision is the refusal `stale`, not sent: the card shown again says so and keeps the comment; offered now, it is sent with the page's revision, for the server to answer. A comment not offered is not sent. A card the viewer acts on is not shown without `Now`. |
+| `TestSentBeforeNotOffered` | The operation of a post whose button is not offered now (`Sent`): a request made again, a request discarded, an approver's edit, a rejection and an approver added have the operation they had while the button was offered, whatever step the ticket is at now; a post whose values fail a check, and a new request, have none. |
+| `TestSentFromAPageBefore` | A request made again and an approver's edit, posted from a page that showed the ticket at another revision: read against the form `FormAt` answers for it (asked once, and not for a page of the ticket now), each is the operation, with the key, it was then, when its button is offered now and when it is not (as `Sent`, beside the refusal `stale`). With another comment the key is another; with a value that fails its check there is no `Sent`. With no `FormAt`, or none answered, a button offered reads against the form now and one not offered has no `Sent`. An error of `FormAt`, and a form that is no form, are the reading's. |
 | `TestAdminPages`, `TestAdminSays` | The administration's five pages in both languages: the parts the person may use, and none; the link back to them, given its address; each version's start and who decided it, the form to switch a version the person may switch and none for another, the date field's first and last days; the organization's versions and counts, the button of the source shown only with one; a draft's days, counts and button, and a draft of the latest's own data with no button; the record's filters, lines, older lines and CSV link. A name or a value with markup is shown as text, and one with a character that turns the order of what follows it is kept within its `<bdi>`. `AdminSays` says each problem in both languages, with what it names in its place (a version's first day alone, its last alone, both; a minute and minutes). Each page reads back as `TestPagesOfEveryTicket` reads one. |
 | `TestHomeListsBarAndNotices` | In both languages: the start page with an entry in each part (a title with markup shown as text, an address escaped, a count of five digits grouped, no count but the waiting ones') and with none (each part says so); a list's three headings, its link to older tickets, and its column of who (the one who made a request for the person on their own requests, the requester on the others); a title in another language marked with it; the bar (one navigation with no name of its own, a name with markup, the other language's link with `lang` and `hreflang`, the sign-out form with its token) and the bar of no one; each notice with its link and without, what it says before its link, and a notice of nothing refused. Each page reads back as `TestPagesOfEveryTicket` reads one. `Title` and `Masters`. |
 | `TestHomeTicketsAndNames`, `TestStageIn`, `TestTicketInfo` | The start page's entries that list tickets, in both languages: each ticket's link, its badge (one back with its requester says whether it was sent back or is to be resubmitted), its stage, marked where it is in another language, whom the line names and its short line; an entry of the person's own that says how many are in each state, however few it lists; the names of two kinds of one title, and none of a title alone. A stage's words and their language (the one the kind is written in, for a stage with no words in the page's), the name as it is for a stage or a kind the set does not have; a ticket's short line: the numbers the form works out, then the days, two at most, and none of the other values. |

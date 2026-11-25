@@ -46,3 +46,42 @@ func TestStageAgain(t *testing.T) {
 		}
 	}
 }
+
+// TestRevision checks when two revisions are one, and which a ticket at one is at no more (past): a
+// round does not come back, nor does a ticket of a round with more edits taken; a stage does.
+func TestRevision(t *testing.T) {
+	read := func(s string) revisionView {
+		r, err := readRevision([]byte(s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		a, b       string
+		same, past bool
+	}{
+		{`{"round":1,"stage":0,"edits":0}`, `{"round":1,"stage":0,"edits":0}`, true, false},
+		{`{"round":1,"stage":null,"edits":0}`, `{"round":1,"edits":0}`, true, false},
+		{`{"round":1,"stage":1,"edits":0}`, `{"round":1,"stage":0,"edits":0}`, false, false},
+		{`{"round":1,"stage":0,"edits":0}`, `{"round":1,"stage":1,"edits":0}`, false, false},
+		{`{"round":1,"stage":0,"edits":0}`, `{"round":1,"stage":null,"edits":0}`, false, false},
+		{`{"round":1,"stage":null,"edits":0}`, `{"round":1,"stage":0,"edits":0}`, false, false},
+		{`{"round":1,"stage":0,"edits":1}`, `{"round":1,"stage":0,"edits":0}`, false, true},
+		{`{"round":1,"stage":0,"edits":0}`, `{"round":1,"stage":0,"edits":1}`, false, false},
+		{`{"round":2,"stage":0,"edits":0}`, `{"round":1,"stage":0,"edits":0}`, false, true},
+		{`{"round":2,"stage":0,"edits":0}`, `{"round":1,"stage":0,"edits":1}`, false, true},
+		{`{"round":1,"stage":0,"edits":1}`, `{"round":2,"stage":0,"edits":0}`, false, false},
+		{`{"round":1,"stage":0,"edits":0}`, `{"round":2,"stage":0,"edits":0}`, false, false},
+	} {
+		a, b := read(c.a), read(c.b)
+		if a.same(b) != c.same || a.past(b) != c.past {
+			t.Errorf("%s and %s: same %v, past %v", c.a, c.b, a.same(b), a.past(b))
+		}
+	}
+	for _, bad := range []string{``, `{`, `"x"`, `1`, `{"round":"1"}`, `{"round":1.5}`, `{"stage":[]}`} {
+		if r, err := readRevision([]byte(bad)); err == nil {
+			t.Errorf("%s is read as the revision %+v", bad, r)
+		}
+	}
+}

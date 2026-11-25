@@ -718,6 +718,35 @@ func shownBefore(post Post, dm data) bool {
 	return !bytes.Equal(a, b)
 }
 
+// formShown is the ticket's form as the page a post is from showed it, which what the post changes is
+// of: the ticket's form now; for a page that showed the ticket before it last changed, the form it
+// had then (at), and known is false when that is not said: the form is then the one now.
+func formShown(post Post, dm data, now map[string]any, at FormAtFunc) (form map[string]any, known bool, err error) {
+	if !shownBefore(post, dm) {
+		return now, true, nil
+	}
+	if at == nil {
+		return now, false, nil
+	}
+	rev, err := revisionOf(post)
+	if err != nil {
+		return nil, false, err
+	}
+	raw, err := at(rev)
+	if err != nil {
+		return nil, false, err
+	}
+	if raw == nil {
+		return now, false, nil
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	if err := d.Decode(&form); err != nil {
+		return nil, false, fmt.Errorf("page: the form the ticket had at the revision %s: %w", rev, err)
+	}
+	return form, true, nil
+}
+
 // commentOf is the comment a post holds: without the white space at its ends, nil when none is
 // left; and whether it fits (2,000 characters, ringi's DESIGN 7.2).
 func commentOf(r *reader) (any, bool) {
@@ -886,9 +915,8 @@ func (p *Pages) ReadForm(in Form, post Post, keep Keeper) (*Reading, error) {
 	offered := dm.can(action)
 	if !offered {
 		rd.notOffered(w, true, post, dm)
-		if action != "discard" {
-			// a form made again is made from the ticket as it is now, and is not the one sent before
-			return rd, nil
+		if action == "submit" {
+			return rd, nil // a new request is of no ticket that could have moved on
 		}
 	}
 	if !fits {
@@ -919,7 +947,14 @@ func (p *Pages) ReadForm(in Form, post Post, keep Keeper) (*Reading, error) {
 		}
 		ctx["ticket"], ctx["revision"] = jsonOf(ticketID), rev
 		if action == "resubmit" {
-			form, clear := changes(k.d, (*field).given, values, present, dm.obj("before"))
+			before, known, err := formShown(post, dm, dm.obj("before"), in.FormAt)
+			if err != nil {
+				return nil, err
+			}
+			if !known && !offered {
+				return rd, nil // what it changed is not known
+			}
+			form, clear := changes(k.d, (*field).given, values, present, before)
 			ctx["form"], ctx["clear"] = jsonOf(form), jsonOf(clear)
 		} else {
 			// discarding a request checks only its comment
@@ -964,7 +999,7 @@ func (p *Pages) ReadCard(in Card, post Post, keep Keeper) (*Reading, error) {
 	comment, fits := commentOf(r)
 	var values map[string]any
 	var present map[string]bool
-	if dm.can("edit") && (do == "button.edit" || strings.HasPrefix(do, "row.") || strings.HasPrefix(do, "find:") || strings.HasPrefix(do, "choose:")) {
+	if do == "button.edit" || dm.can("edit") && (strings.HasPrefix(do, "row.") || strings.HasPrefix(do, "find:") || strings.HasPrefix(do, "choose:")) {
 		values, present = r.fields(func(f *field) bool { return f.edited })
 		if r.err != nil {
 			return nil, r.err
@@ -988,10 +1023,6 @@ func (p *Pages) ReadCard(in Card, post Post, keep Keeper) (*Reading, error) {
 	}
 	if !offered {
 		rd.notOffered(w, action != "comment", post, dm)
-		if action == "edit" {
-			// an edit is made from the ticket as it is now, and is not the one sent before
-			return rd, nil
-		}
 	}
 	if !fits {
 		r.problem("comment", "comment.fits", phrase{plain(commentFits(lang))})
@@ -1022,7 +1053,14 @@ func (p *Pages) ReadCard(in Card, post Post, keep Keeper) (*Reading, error) {
 			r.problem("comment", "comment.given", phrase{plain(commentGiven(lang))})
 		}
 	case "edit":
-		form, clear := changes(k.d, func(f *field) bool { return f.edited }, values, present, dm.obj("form"))
+		before, known, err := formShown(post, dm, dm.obj("form"), in.FormAt)
+		if err != nil {
+			return nil, err
+		}
+		if !known && !offered {
+			return rd, nil // what it changed is not known
+		}
+		form, clear := changes(k.d, func(f *field) bool { return f.edited }, values, present, before)
 		ctx["fields"], ctx["clear"] = jsonOf(form), jsonOf(clear)
 	case "send_back":
 		ctx["to"] = jsonOf(typed("send_back_to"))

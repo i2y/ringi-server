@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	server "github.com/i2y/ringi-server"
@@ -159,6 +160,106 @@ func TestRaiseMovesForTheRecord(t *testing.T) {
 	}
 	if _, err := st.LastImport(ctx); !errors.Is(err, server.ErrNotFound) {
 		t.Errorf("the last import after the raise: %v", err)
+	}
+	exec("drop schema if exists {s} cascade")
+}
+
+// TestRaiseUploadsForTheirKeys raises tables that the code of version 9 made, with uploads in them,
+// to this code's version (DESIGN 4.3): step 10 gives the uploads a key, none for those kept before
+// it, which stay as they were (counted, held or let go), however many of one person's, and the index
+// keeps one upload to a key of a person's that is not let go.
+func TestRaiseUploadsForTheirKeys(t *testing.T) {
+	url := os.Getenv("RINGI_TEST_DATABASE")
+	if url == "" {
+		t.Skip("RINGI_TEST_DATABASE names no PostgreSQL database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	const schema = "ringi_raise_uploads"
+	q := pgx.Identifier{schema}.Sanitize()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, strings.ReplaceAll(sql, "{s}", q), args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec("drop schema if exists {s} cascade")
+	exec("create schema {s}")
+	exec("create table {s}.schema_version (version integer not null)")
+	exec("insert into {s}.schema_version (version) values (9)")
+	for _, step := range steps[:9] {
+		exec(step)
+	}
+	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	for _, u := range []struct{ id, state string }{{"f-open-1", "open"}, {"f-open-2", "open"}, {"f-held", "held"}, {"f-gone", "gone"}, {"f-deleted", "deleted"}} {
+		exec(`insert into {s}.uploads (id, by_person, at, state) values ($1, 'ann', $2, $3)`, u.id, at, u.state)
+	}
+	st, err := New(ctx, pool, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploads := func(want ...string) {
+		t.Helper()
+		rows, err := pool.Query(ctx, "select id, state, key from "+q+".uploads order by seq")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for rows.Next() {
+			var id, state, key string
+			if err := rows.Scan(&id, &state, &key); err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, strings.TrimSpace(id+" "+state+" "+key))
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("the uploads: %q; want %q", got, want)
+		}
+	}
+	before := []string{"f-open-1 open", "f-open-2 open", "f-held held", "f-gone gone", "f-deleted deleted"}
+	uploads(before...)
+	// The uploads kept before are no key's, and two of them are counted as they were.
+	if id, err := st.UploadOf(ctx, "ann", "page-1"); !errors.Is(err, server.ErrNotFound) {
+		t.Errorf("the upload of a key no one gave: %q %v", id, err)
+	}
+	if _, err := st.KeepUpload(ctx, server.Upload{ID: "f-3", By: "ann", At: at, Key: "page-1"}, 2); !errors.Is(err, server.ErrTooManyUploads) {
+		t.Errorf("a third upload, with a limit of two: %v", err)
+	}
+	// One kept after has its key, and is found by it: the next with the key is it.
+	for _, id := range []string{"f-3", "f-4"} {
+		if got, err := st.KeepUpload(ctx, server.Upload{ID: id, By: "ann", At: at, Key: "page-1"}, 3); err != nil || got != "f-3" {
+			t.Errorf("%s with the key page-1: %q %v; want f-3", id, got, err)
+		}
+	}
+	if got, err := st.UploadOf(ctx, "ann", "page-1"); err != nil || got != "f-3" {
+		t.Errorf("the upload of the key page-1: %q %v", got, err)
+	}
+	uploads(append(before, "f-3 open page-1")...)
+	// The index itself refuses a second, open or held, and takes one once the first is let go, and the
+	// same key of someone else.
+	second := func(id, person string) error {
+		_, err := pool.Exec(ctx, "insert into "+q+".uploads (id, by_person, at, key) values ($1, $2, $3, 'page-1')", id, person, at)
+		return err
+	}
+	for _, state := range []string{"open", "held"} {
+		exec(`update {s}.uploads set state = $1 where id = 'f-3'`, state)
+		var pe *pgconn.PgError
+		if err := second("f-5", "ann"); !errors.As(err, &pe) || pe.ConstraintName != "uploads_key" {
+			t.Errorf("a second upload of a key whose first is %s: %v", state, err)
+		}
+	}
+	if err := second("f-6", "ben"); err != nil {
+		t.Errorf("someone else's upload of the key: %v", err)
+	}
+	for _, state := range []string{"gone", "deleted"} {
+		exec(`update {s}.uploads set state = $1 where by_person = 'ann' and key = 'page-1'`, state)
+		if err := second("f-after-"+state, "ann"); err != nil {
+			t.Errorf("an upload of a key whose first is %s: %v", state, err)
+		}
 	}
 	exec("drop schema if exists {s} cascade")
 }

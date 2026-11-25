@@ -259,7 +259,7 @@ func TestStoresKeepEveryField(t *testing.T) {
 		}
 
 		// An upload, read back as it is let go: not before a time in its own microsecond.
-		if err := s.KeepUpload(ctx, server.Upload{ID: "up-1", By: "ann", At: t1}, 0); err != nil {
+		if _, err := s.KeepUpload(ctx, server.Upload{ID: "up-1", By: "ann", At: t1}, 0); err != nil {
 			t.Fatal(err)
 		}
 		if ups, err := s.LetGoUploads(ctx, t1.Add(100*time.Nanosecond), 10); err != nil || len(ups) != 0 {

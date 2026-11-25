@@ -473,11 +473,13 @@ func (h *Handler) readPost(w http.ResponseWriter, r *http.Request, p *server.Per
 	return post, true
 }
 
-// keeper keeps the files a post of a page attaches as the person's, as an upload does; a file the
-// server does not take is said at its field.
-func (h *Handler) keeper(ctx context.Context, p server.Person) page.Keeper {
+// Keeper keeps the files a post of a page (of package page) attaches as the person's, as an upload
+// does, each once: the same post sent again (pressed twice with no script, sent again from a page gone
+// back to) names the files it named the first time, and is the same operation. A file the server does
+// not take is said at its field.
+func (h *Handler) Keeper(ctx context.Context, p server.Person, post page.Post) page.Keeper {
 	return page.KeepFunc(func(f *multipart.FileHeader) (string, error) {
-		id, err := h.Keep(ctx, p, f)
+		id, err := h.keepPosted(ctx, p, f, post.Values.Get(page.FieldSurface), post.Values.Get(page.FieldAt))
 		switch {
 		case errors.Is(err, ErrTooLarge):
 			return "", &page.FileRefusal{TooLarge: true, Max: h.cfg.MaxFile}
@@ -598,7 +600,7 @@ func (h *Handler) newRequest(w http.ResponseWriter, r *http.Request, p server.Pe
 		}
 		read := in
 		read.Surface = "" // the post says the surface the form was shown under
-		rd, err := set.pages.ReadForm(read, post, h.keeper(ctx, p))
+		rd, err := set.pages.ReadForm(read, post, h.Keeper(ctx, p, post))
 		if errors.Is(err, page.ErrPost) {
 			h.notice(w, r, &p, http.StatusBadRequest, page.NoticeBadPost)
 			return
@@ -692,9 +694,9 @@ func (h *Handler) ticketPage(screen string) func(http.ResponseWriter, *http.Requ
 			}
 			var rd *page.Reading
 			if screen == "card" {
-				rd, err = t.set.pages.ReadCard(pg.card, post, h.keeper(ctx, p))
+				rd, err = t.set.pages.ReadCard(pg.card, post, h.Keeper(ctx, p, post))
 			} else {
-				rd, err = t.set.pages.ReadForm(pg.form, post, h.keeper(ctx, p))
+				rd, err = t.set.pages.ReadForm(pg.form, post, h.Keeper(ctx, p, post))
 			}
 			if errors.Is(err, page.ErrPost) {
 				h.notice(w, r, &p, http.StatusBadRequest, page.NoticeBadPost)
@@ -833,12 +835,31 @@ func (h *Handler) ticketInput(ctx context.Context, r *http.Request, p server.Per
 		}
 		out.card = page.Card{Card: screens.Card{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Serving: h.serving(nil)},
 			Action: keepLang(r, base), Now: h.srv.Now(), Picks: picks, Zone: h.srv.Zone(t.kind, t.version),
-			History: keepLang(r, base+"/history"), Resubmit: again, Back: keepLang(r, PagesPath), Worked: h.workedFor(t.kind, t.version)}
+			History: keepLang(r, base+"/history"), Resubmit: again, Back: keepLang(r, PagesPath), Worked: h.workedFor(t.kind, t.version),
+			FormAt: h.formAt(ctx, p, t.id)}
 		return out, nil
 	}
 	out.form = page.Form{Form: screens.Form{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Serving: h.serving(nil)},
-		Action: keepLang(r, base+"/form"), Now: h.srv.Now(), Picks: picks, Back: keepLang(r, base), Worked: h.workedFor(t.kind, t.version)}
+		Action: keepLang(r, base+"/form"), Now: h.srv.Now(), Picks: picks, Back: keepLang(r, base), Worked: h.workedFor(t.kind, t.version),
+		FormAt: h.formAt(ctx, p, t.id)}
 	return out, nil
+}
+
+// formAt is how a page's reading asks the form a ticket had at a revision (Server.FormAt): nil for a
+// revision the ticket was never at. One that cannot be made again is logged, and the post is read as
+// one of the ticket now.
+func (h *Handler) formAt(ctx context.Context, p server.Person, ticket string) page.FormAtFunc {
+	return func(revision json.RawMessage) (json.RawMessage, error) {
+		form, ok, err := h.srv.FormAt(ctx, p, ticket, revision)
+		if err != nil {
+			h.log.Error("the form a ticket had", "ticket", ticket, "revision", string(revision), "err", err)
+			return nil, nil
+		}
+		if !ok {
+			return nil, nil
+		}
+		return form, nil
+	}
 }
 
 // workedFor is how a page asks what a form of a version of a kind works out (Server.Worked): nil for

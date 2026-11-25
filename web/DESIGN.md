@@ -484,7 +484,9 @@ A renderer's `FileAttachment` posts its file to the address the screen's `/uploa
 DESIGN 13.2, 13.8), which the handler fills with `web.UploadPath` (`/files`, section 2.1), and puts
 the answer's `id` in its value. A server that keeps no files (no `server.Config.Files`) leaves
 `/upload` null, and answers `POST /files` 404 (`the server keeps no files`). A page's form sends its
-files with the form instead; `Handler.Keep` keeps each the same way, as the person's (section 9.3).
+files with the form instead; `Handler.Keeper` keeps each the same way, as the person's, and once for a
+post of the page (section 9.3). `Handler.Keep` keeps a file posted with a form of one's own, anew each
+time.
 
 ### 6.3 Who may name a file, and who may download it
 
@@ -532,6 +534,7 @@ routes of a sign-in are added this way (section 3.1).
 | `server.Call.Via` | the way in, for the audit log: `"screens"` for an action, `"pages"` for a page's post |
 | `Server.Can`, `Server.Submitting` | section 4 |
 | `Server.Replied` | what was answered to a page's post before, for a post of a button that is not offered now (section 9.2; the core's DESIGN 8.1) |
+| `Server.FormAt` | the form a ticket had when a page showed it, for a post of a request made again or of an approver's edit (section 9.2; the core's DESIGN 8.1) |
 | `Server.Names`, `Server.MasterRows` | section 5 (`MasterRows` answers a master's `MasterLayout` with its rows: its key and its name field) |
 | `Server.People`, `Server.Teams` | the people and the teams of the version of the organization in effect today, for the pages' pickers (section 5) |
 | `Server.Waiting`, `server.WaitingQuery` | the tickets that wait for a person (`list_waiting`, the core's DESIGN 10.2), the newest first, a page at a time (`Kind`, `Before`, `Limit`; `Limit` 0 for all), for the lists of what waits |
@@ -540,7 +543,7 @@ routes of a sign-in are added this way (section 3.1).
 | `Server.CountMine`, `server.MineCount` | how many requests of their own a person has, by kind and by state: the tickets `Server.Mine` answers with no query, counted (the core's DESIGN 10.4), for the start page |
 | `server.DefaultPage`, `server.MaxPage` | a list's page: 50 tickets when its size is not asked, 100 at most (section 2.1) |
 | `Server.TicketFiles` | the files a ticket holds (its form now, and its history), to a person who may see it |
-| `Server.Upload` | keeps an upload as the person's, recorded as one no ticket holds yet; `*server.TooManyUploads` past the person's limit (section 6.2) |
+| `Server.Upload`, `Server.UploadOnce` | keeps an upload as the person's, recorded as one no ticket holds yet; `*server.TooManyUploads` past the person's limit (section 6.2); `UploadOnce` keeps it once for a key (section 9.3) |
 | `Server.Zone`, `Server.Now` | the UTC offset a ticket's card shows its times in; the time a page is shown at, which a post's key reads |
 | `Server.Authenticate`, `Server.Packages`, `Server.Files`, `Server.MaxBody`, `Server.MaxOrganization` | what the server was made with |
 | `Server.Do` with the administration's operations, `Server.AdminParts`, `Server.Administers`, `server.MaxReason` | the administration's pages (section 9.1; the core's DESIGN 13) |
@@ -600,8 +603,7 @@ reading is one of:
   cannot do this now.", 422. The button may be gone because this post was taken before, though
   (pressed twice with no script, or sent again from a page gone back to): when the same operation was
   taken with the same key (`Reading.Sent`, `Server.Replied`), the answer is the one it had, 303 to the
-  ticket's card. A request made again and an approver's edit are made from the ticket as it is, so
-  the same page sent again is not the same operation, and is `stale`;
+  ticket's card;
 - **an operation**: it is run as the person (`Server.Do`, `Via: "pages"`).
 
 The answer of the operation:
@@ -622,9 +624,15 @@ The answer of the operation:
 - **not found**: the notice "Not found" (404).
 
 The pages' script sends a form once until its answer comes, and lets it be sent again 3 seconds
-after it was sent, since a sending the person stopped has no answer to come. Sent again from the
-same page with the same values, the operation has the same key, and the server answers it as it did
-the first: a new request, with the same ticket.
+after it was sent, since a sending the person stopped has no answer to come. A browser with no script
+sends a button pressed twice twice. Sent again from the same page with the same values, every
+operation has the same key, and the server answers it as it did the first: a new request with the
+same ticket, anything else with the ticket's card, and nothing is done a second time. So it is with
+the files of the form, which are kept once (section 9.3), and with a request made again and an
+approver's edit, which send what they change of the form: what they change is read against the form
+the page showed (`Server.FormAt` at the post's revision), though the first of the two has changed the
+ticket's since. When the moves of the ticket cannot be given again (`FormAt` fails), the failure is
+logged and the post is read as one whose form is not known: `stale`.
 
 A post that is not one of the page it is sent to (no button pressed, another page's surface, a
 revision or a time that does not read) is the notice "The form could not be read" (400).
@@ -633,9 +641,13 @@ revision or a time that does not read) is the notice "The form could not be read
 
 A form with an attachment field is `multipart/form-data`; any other `application/x-www-form-urlencoded`
 (another type is 415). The body is held to the server's `MaxBody` and `Config.MaxFile` for each of
-at most 10 files; past it, 413. Each file chosen is kept as the person's upload (`Handler.Keep`,
+at most 10 files; past it, 413. Each file chosen is kept as the person's upload (`Handler.Keeper`,
 with the checks of 6.2) before the operation is made, and the form names it by its ID; a field
-reads one file, however many the post sends under its name. A file the server does not take, too
+reads one file, however many the post sends under its name. A file is kept once for a page
+(`Server.UploadOnce`): its key is made of the page's surface, the time the page was shown, the name
+and the type the file is sent with, and its bytes (SHA-256). So a form posted twice names the same
+file, has the same body and is one operation, at once or one after the other; the same bytes from
+another page, under another name or of another type are another file. A file the server does not take, too
 large, of a type it does not take, or past the person's number of uploads no request holds, is said
 at its field (`page.FileRefusal`), and the page is shown again; a file the field held before stays.
 When the post is not taken (the page's checks stop it, or the server refuses it), the file kept
@@ -684,5 +696,5 @@ language:
 The pages and the A2UI screens share the rest of this package: the person (`Server.Authenticate`,
 and `Config.Require` for the pages), the guards (section 3), `Handler.Lookup` for their names, the
 address their pickers find under (`/find`, `web.FindPath`, section 5.1), `Server.Can` and
-`Server.Submitting` for their buttons and for whom a request may be made, `Handler.Keep` for their
+`Server.Submitting` for their buttons and for whom a request may be made, `Handler.Keeper` for their
 files, the download routes for their links, and the sentences of package `screens` for a refusal.

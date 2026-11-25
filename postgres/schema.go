@@ -216,6 +216,11 @@ create index tickets_count on {s}.tickets (kind, version, status);
 	`
 update {s}.moves m set kind = t.kind, version = t.version from {s}.tickets t where t.id = m.ticket and m.version = 0;
 `,
+	// 10: the key each upload was made once for (Store.UploadOf); '' for none, as for those made before it.
+	`
+alter table {s}.uploads add column key text not null default '';
+create unique index uploads_key on {s}.uploads (by_person, key) where key <> '' and state in ('open', 'held');
+`,
 }
 
 // peopleOf is the people of the ticket t, sorted as Go sorts strings.
@@ -320,7 +325,8 @@ var queries = map[string]string{
 	"file_delete": `delete from {s}.files where id = $1`,
 
 	// The uploads (uploads.go) and the operations past their time.
-	"upload_keep":   `insert into {s}.uploads (id, by_person, at) values ($1, $2, $3) on conflict (id) do nothing`,
+	"upload_keep":   `insert into {s}.uploads (id, by_person, at, key) values ($1, $2, $3, $4) on conflict (id) do nothing`,
+	"upload_of":     `select id from {s}.uploads where by_person = $1 and key = $2 and state in ('open', 'held')`,
 	"uploads_open":  `select count(*) from {s}.uploads where by_person = $1 and state = 'open'`,
 	"uploads_hold":  `update {s}.uploads set state = 'held' where id = any($1) and state = 'open'`,
 	"uploads_gone":  `select id from {s}.uploads where id = any($1) and state in ('gone', 'deleted') order by id limit 1`,

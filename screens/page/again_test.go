@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html"
+	"maps"
 	"mime/multipart"
 	"net/url"
 	"reflect"
@@ -611,9 +612,8 @@ func TestNotAPost(t *testing.T) {
 	}
 }
 
-// TestSentBeforeNotOffered reads posts of buttons that are not offered now, of a form made again and of
-// an edit: the form's request made again and the card's edit are made from the ticket as it is now, and
-// are not the ones sent before; dropping the request is.
+// TestSentBeforeNotOffered reads posts of buttons that are not offered now, on pages of the ticket as it
+// is: each was sent before as the operation it makes when it is offered.
 func TestSentBeforeNotOffered(t *testing.T) {
 	_, p := testPages(t)
 	raw, _ := ticketWhere(t, "expense", func(m map[string]any) bool { return m["status"] == "with_requester" })
@@ -621,41 +621,64 @@ func TestSentBeforeNotOffered(t *testing.T) {
 	pg, err := p.Form(in)
 	b, err := browse(checkPageBytes(t, pg, err))
 	must(t, err)
+	must(t, b.set("f.purpose", "Another purpose"))
 	now := in
 	now.Can = nil
-	for _, c := range []struct {
-		button string
-		sent   bool
-	}{{"button.resubmit", false}, {"button.discard", true}} {
-		post, err := b.press(c.button)
+	for _, button := range []string{"button.resubmit", "button.discard"} {
+		post, err := b.press(button)
 		must(t, err)
 		offered, err := p.ReadForm(in, post, nil)
 		must(t, err)
-		if offered.Sent != nil || c.sent && offered.Operation == nil {
-			t.Fatalf("%s: %v %v %v", c.button, offered.Operation, offered.Sent, offered.Problems)
+		if offered.Sent != nil || offered.Operation == nil {
+			t.Fatalf("%s: %v %v %v", button, offered.Operation, offered.Sent, offered.Problems)
 		}
 		rd, err := p.ReadForm(now, post, nil)
 		must(t, err)
 		if rd.Operation != nil || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
-			t.Errorf("%s, not offered: %v %v", c.button, rd.Operation, rd.Problems)
+			t.Errorf("%s, not offered: %v %v", button, rd.Operation, rd.Problems)
 		}
-		if (rd.Sent != nil) != c.sent || c.sent && !reflect.DeepEqual(rd.Sent, offered.Operation) {
-			t.Errorf("%s, not offered, was sent before as %+v, want %v (%+v)", c.button, rd.Sent, c.sent, offered.Operation)
+		if !reflect.DeepEqual(rd.Sent, offered.Operation) {
+			t.Errorf("%s, not offered, was sent before as %+v, want %+v", button, rd.Sent, offered.Operation)
 		}
+		if button == "button.resubmit" {
+			post.Values.Set("f.purpose", "")
+			if rd, err := p.ReadForm(now, post, nil); err != nil || rd.Operation != nil || rd.Sent != nil || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
+				t.Errorf("a request made again with no purpose, not offered: %v %v %v %v", rd.Operation, rd.Sent, rd.Problems, err)
+			}
+		}
+	}
+	// A new request is of no ticket: one that may not be made now is not one made before.
+	new := Form{Form: screens.Form{Kind: "leave", Language: "en", Can: []string{"submit"}, MaySubmit: true, Surface: "n1"}, Action: "/post", Now: testNow}
+	pg, err = p.Form(new)
+	b, err = browse(checkPageBytes(t, pg, err))
+	must(t, err)
+	for name, value := range map[string]string{"f.kind": "paid", "f.first_day": "2026-11-20", "f.days": "1"} {
+		must(t, b.set(name, value))
+	}
+	post, err := b.press("button.submit")
+	must(t, err)
+	if rd, err := p.ReadForm(new, post, nil); err != nil || rd.Operation == nil || rd.Sent != nil {
+		t.Fatalf("a new request: %+v %+v %v %v", rd.Operation, rd.Sent, rd.Problems, err)
+	}
+	new.Can = nil
+	if rd, err := p.ReadForm(new, post, nil); err != nil || rd.Operation != nil || rd.Sent != nil || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
+		t.Errorf("a new request, not offered: %+v %+v %v %v", rd.Operation, rd.Sent, rd.Problems, err)
 	}
 	raw, _ = ticketWhere(t, "expense", func(m map[string]any) bool { return m["status"] == "in_progress" })
 	card := Card{Card: screens.Card{Language: "en", Ticket: raw, Can: []string{"edit", "comment"}}, Action: "/post", Now: testNow}
 	pg, err = p.Card(card)
 	b, err = browse(checkPageBytes(t, pg, err))
 	must(t, err)
-	post, err := b.press("button.edit")
+	must(t, b.set("f.account", "5700"))
+	post, err = b.press("button.edit")
 	must(t, err)
-	if rd, err := p.ReadCard(card, post, nil); err != nil || rd.Sent != nil {
-		t.Errorf("an edit: %v %v", rd.Sent, err)
+	offered, err := p.ReadCard(card, post, nil)
+	if err != nil || offered.Sent != nil || offered.Operation == nil {
+		t.Fatalf("an edit: %v %v %v", offered.Operation, offered.Sent, err)
 	}
 	card.Can = []string{"comment"}
-	if rd, err := p.ReadCard(card, post, nil); err != nil || rd.Operation != nil || rd.Sent != nil || len(rd.Problems) != 1 {
-		t.Errorf("an edit, not offered: %v %v %v %v", rd.Operation, rd.Sent, rd.Problems, err)
+	if rd, err := p.ReadCard(card, post, nil); err != nil || rd.Operation != nil || len(rd.Problems) != 1 || !reflect.DeepEqual(rd.Sent, offered.Operation) {
+		t.Errorf("an edit, not offered: %v %+v %v %v, want %+v sent before", rd.Operation, rd.Sent, rd.Problems, err, offered.Operation)
 	}
 	// The step the ticket is at now says nothing of the post: not that it asks for a reason, …
 	raw, _ = ticketWhere(t, "leave", func(m map[string]any) bool { return m["status"] == "in_progress" })
@@ -700,6 +723,136 @@ func TestSentBeforeNotOffered(t *testing.T) {
 		must(t, err)
 		if rd.Operation != nil || rd.Refusal() != "stale" || !reflect.DeepEqual(rd.Sent, added.Operation) {
 			t.Errorf("an approver added to a part that is not there now (%v): %v %q %+v", can, rd.Operation, rd.Refusal(), rd.Sent)
+		}
+	}
+}
+
+// TestSentFromAPageBefore reads posts of pages that showed the ticket before it last changed, of a
+// request made again and of an approver's edit: what they change is of the form the ticket had at the
+// page's revision (FormAt), so the post is the operation it was when it was sent the first time,
+// whether the button is offered again or not. With no such form, it is the ticket's now where the
+// button is offered, and no operation sent before where it is not. The form is asked for a page
+// before the ticket changed, and for no other.
+func TestSentFromAPageBefore(t *testing.T) {
+	_, p := testPages(t)
+	// changed is a ticket with another revision, and a form with other values.
+	changed := func(raw json.RawMessage, values map[string]any, revise func(revision map[string]any)) json.RawMessage {
+		var m map[string]any
+		must(t, decode(raw, &m))
+		for name, v := range values {
+			m["form"].(map[string]any)[name] = v
+		}
+		revise(m["revision"].(map[string]any))
+		return marshal(m)
+	}
+	fails := errors.New("it fails")
+	form := func(raw json.RawMessage, can []string, at FormAtFunc) Form {
+		return Form{Form: screens.Form{Language: "en", Ticket: raw, Can: can}, Action: "/post", Now: testNow, FormAt: at}
+	}
+	card := func(raw json.RawMessage, can []string, at FormAtFunc) Card {
+		return Card{Card: screens.Card{Language: "en", Ticket: raw, Can: can}, Action: "/post", Now: testNow, FormAt: at}
+	}
+	back, _ := ticketWhere(t, "expense", func(m map[string]any) bool { return m["status"] == "with_requester" })
+	going, _ := ticketWhere(t, "expense", func(m map[string]any) bool { return m["status"] == "in_progress" })
+	for _, c := range []struct {
+		button    string
+		then, now json.RawMessage // the ticket the page showed, and the ticket now
+		shown     func(raw json.RawMessage, can []string, at FormAtFunc) (Page, error)
+		read      func(raw json.RawMessage, can []string, at FormAtFunc, post Post) (*Reading, error)
+		field     string
+		value     string
+		spoil     string // a field, and
+		spoilt    string // a value of it that fails a check
+	}{
+		{"resubmit", back, changed(back, map[string]any{"purpose": "Another purpose"}, func(rev map[string]any) { rev["round"] = 7 }),
+			func(raw json.RawMessage, can []string, at FormAtFunc) (Page, error) {
+				return p.Form(form(raw, can, at))
+			},
+			func(raw json.RawMessage, can []string, at FormAtFunc, post Post) (*Reading, error) {
+				return p.ReadForm(form(raw, can, at), post, nil)
+			}, "f.purpose", "Another purpose", "f.purpose", ""},
+		{"edit", going, changed(going, map[string]any{"account": "5700"}, func(rev map[string]any) { rev["edits"] = 7 }),
+			func(raw json.RawMessage, can []string, at FormAtFunc) (Page, error) {
+				return p.Card(card(raw, can, at))
+			},
+			func(raw json.RawMessage, can []string, at FormAtFunc, post Post) (*Reading, error) {
+				return p.ReadCard(card(raw, can, at), post, nil)
+			}, "f.account", "5700", "comment", strings.Repeat("x", 2001)},
+	} {
+		never := func(revision json.RawMessage) (json.RawMessage, error) {
+			t.Errorf("%s: the form at %s is asked for a page of the ticket now", c.button, revision)
+			return nil, nil
+		}
+		pg, err := c.shown(c.then, []string{c.button}, never)
+		b, err := browse(checkPageBytes(t, pg, err))
+		must(t, err)
+		must(t, b.set(c.field, c.value))
+		post, err := b.press("button." + c.button)
+		must(t, err)
+		first, err := c.read(c.then, []string{c.button}, never, post)
+		must(t, err)
+		if first.Operation == nil || first.Sent != nil || !strings.Contains(string(first.Operation.Body), c.value) {
+			t.Fatalf("%s: %+v %+v %v", c.button, first.Operation, first.Sent, first.Problems)
+		}
+		var then struct {
+			Form     json.RawMessage
+			Revision any
+		}
+		must(t, decode(c.then, &then))
+		asked := 0
+		at := func(revision json.RawMessage) (json.RawMessage, error) {
+			asked++
+			var rev any
+			must(t, decode(revision, &rev))
+			if !alike(rev, then.Revision) {
+				t.Errorf("%s: the form at %s is asked, and the page showed %v", c.button, revision, then.Revision)
+			}
+			return then.Form, nil
+		}
+		// The button is offered again: the server answers the operation it took with its key.
+		again, err := c.read(c.now, []string{c.button}, at, post)
+		must(t, err)
+		if !reflect.DeepEqual(again.Operation, first.Operation) || again.Sent != nil || asked != 1 {
+			t.Errorf("%s, sent again, offered: %+v (%v), want %+v; asked %d times", c.button, again.Operation, again.Problems, first.Operation, asked)
+		}
+		// The button is not offered: the page says that the ticket changed.
+		for _, can := range [][]string{nil, {"comment"}} {
+			if c.button == "resubmit" && can != nil {
+				can = []string{"discard"}
+			}
+			asked = 0
+			again, err = c.read(c.now, can, at, post)
+			must(t, err)
+			if again.Operation != nil || !reflect.DeepEqual(again.Sent, first.Operation) || again.Refusal() != "stale" || len(again.Problems) != 0 || asked != 1 {
+				t.Errorf("%s, sent again, not offered: %+v, sent before as %+v, want %+v; %q %v; asked %d times", c.button, again.Operation, again.Sent, first.Operation, again.Refusal(), again.Problems, asked)
+			}
+		}
+		// A post of other values is another operation; one that fails a check is none.
+		other := Post{Values: maps.Clone(post.Values)}
+		other.Values.Set("comment", "Another comment")
+		if again, err = c.read(c.now, nil, at, other); err != nil || again.Sent == nil || again.Sent.Key == first.Operation.Key {
+			t.Errorf("%s, sent again with another comment: %+v %v", c.button, again.Sent, err)
+		}
+		other.Values.Set(c.spoil, c.spoilt)
+		if again, err = c.read(c.now, nil, at, other); err != nil || again.Sent != nil || again.Refusal() != "stale" {
+			t.Errorf("%s, sent again with a value that fails its check: %+v %q %v", c.button, again.Sent, again.Refusal(), err)
+		}
+		// No form is known: what is offered is made of the ticket now, and nothing was sent before.
+		for what, at := range map[string]FormAtFunc{"with no FormAt": nil, "with none answered": func(json.RawMessage) (json.RawMessage, error) { return nil, nil }} {
+			if again, err = c.read(c.now, nil, at, post); err != nil || again.Operation != nil || again.Sent != nil || again.Refusal() != "stale" {
+				t.Errorf("%s, sent again %s: %+v %+v %q %v", c.button, what, again.Operation, again.Sent, again.Refusal(), err)
+			}
+			if again, err = c.read(c.now, []string{c.button}, at, post); err != nil || again.Operation == nil || again.Sent != nil || !strings.Contains(string(again.Operation.Body), `:{}`) {
+				t.Errorf("%s, sent again %s, offered: %+v %v", c.button, what, again.Operation, err)
+			}
+		}
+		for _, can := range [][]string{nil, {c.button}} {
+			if _, err = c.read(c.now, can, func(json.RawMessage) (json.RawMessage, error) { return nil, fails }, post); !errors.Is(err, fails) {
+				t.Errorf("%s, sent again where the form cannot be asked (%v): %v", c.button, can, err)
+			}
+			if _, err = c.read(c.now, can, func(json.RawMessage) (json.RawMessage, error) { return json.RawMessage(`[]`), nil }, post); err == nil {
+				t.Errorf("%s, sent again where the form is no form (%v), is read", c.button, can)
+			}
 		}
 	}
 }

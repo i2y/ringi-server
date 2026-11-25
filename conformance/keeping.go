@@ -37,6 +37,12 @@ import (
 //	    "Zoe" and "ann", "Key-2" and "key-1", "fay" and "éva". ForgetOperations with a limit of two
 //	    forgets the older one first, then those of the one time by person, then by key, as Go
 //	    compares strings (byte by byte), two of each sort at a time: it answers 4, 4, 4, 2 and 0.
+//	(d) The uploads people made once for a key (Upload.Key). The second of a person's with one key is
+//	    not recorded and is answered the first one's ID, past the person's limit too, and after a move
+//	    holds the first; the same key is another upload of another person, and uploads with no key are
+//	    each recorded. Of twenty kept at once with one key, with a limit of one and with none, one is
+//	    recorded and each of the twenty is answered its ID. An upload let go is its key's no more:
+//	    UploadOf answers ErrNotFound, and the next one kept with the key is recorded.
 func Keeping(t *testing.T, s Setup) {
 	t.Helper()
 	ctx := context.Background()
@@ -154,8 +160,8 @@ func Keeping(t *testing.T, s Setup) {
 		check("the snapshot's At", o.At, t0)
 	}
 
-	if err := store.KeepUpload(ctx, server.Upload{ID: "keeping-upload", By: "ann", At: t0}, 0); err != nil {
-		t.Errorf("(a) keeping an upload: %v", err)
+	if id, err := store.KeepUpload(ctx, server.Upload{ID: "keeping-upload", By: "ann", At: t0}, 0); err != nil || id != "keeping-upload" {
+		t.Errorf("(a) keeping an upload: %q, %v", id, err)
 	}
 	if ups, err := store.LetGoUploads(ctx, t0.Add(time.Hour), 10); err != nil || len(ups) != 1 {
 		t.Errorf("(a) the uploads let go: %d, %v; want the one", len(ups), err)
@@ -325,4 +331,7 @@ func Keeping(t *testing.T, s Setup) {
 			t.Errorf("(c) after ForgetOperations answered %d, the operations begun forgotten are %q; want %q", n, begun, want)
 		}
 	}
+
+	// (d)
+	keepingUploads(t, store, t0.Add(48*time.Hour))
 }

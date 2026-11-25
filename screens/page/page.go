@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -209,6 +210,9 @@ type Form struct {
 	// hidden, with nothing of it sent; one whose condition holds is shown, and asked for; a computed
 	// field shows its value. The script decides them again as the person types.
 	Worked WorkedFunc
+	// FormAt answers the form the ticket had at a revision: ReadForm reads with it a post of a page
+	// that showed the ticket before it last changed (nil: no such form is known).
+	FormAt FormAtFunc
 }
 
 // Card is what an approval card is made of.
@@ -230,6 +234,9 @@ type Card struct {
 	// field hidden on its condition and show the values the form works out, and the fields approvers
 	// edit are shown as the form after the edits decides them.
 	Worked WorkedFunc
+	// FormAt answers the form the ticket had at a revision, as a Form's: ReadCard reads with it an
+	// edit of a page that showed the ticket before it last changed.
+	FormAt FormAtFunc
 }
 
 // List is what a list of tickets is made of.
@@ -391,6 +398,13 @@ type Post struct {
 	Values url.Values
 	Files  map[string][]*multipart.FileHeader
 }
+
+// FormAtFunc answers the form the ticket a page shows had at a revision (a server asks
+// Server.FormAt); nil for a revision the ticket was never at, or one whose form is not said. What a
+// post of a request made again or of an approver's edit changes is of the form its page showed: of
+// this one, when the ticket has changed since. So a post sent again after it was taken makes the
+// operation it made then (Reading.Sent).
+type FormAtFunc func(revision json.RawMessage) (json.RawMessage, error)
 
 // Keeper keeps the files a form attaches.
 type Keeper interface {

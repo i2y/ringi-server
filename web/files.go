@@ -3,6 +3,8 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -112,7 +114,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, p server.Person
 		if part.FormName() != "file" {
 			continue
 		}
-		id, info, err := h.keep(r.Context(), p, part.FileName(), part.Header.Get("Content-Type"), part)
+		id, info, err := h.keep(r.Context(), p, "", part.FileName(), part.Header.Get("Content-Type"), part)
 		var full *server.TooManyUploads
 		switch {
 		case errors.Is(err, ErrTooLarge), errors.As(err, &tooLarge):
@@ -137,8 +139,16 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, p server.Person
 // Keep keeps a file a person posted with a form, as an upload keeps it: ErrTooLarge past
 // Config.MaxFile, ErrFileType for a media type Config.FileTypes does not have, ErrFileContent for
 // a file that does not begin as its type does, *server.TooManyUploads for a person who has as many
-// uploads that no ticket holds as the server keeps. It answers the file's ID.
+// uploads that no ticket holds as the server keeps. It answers the file's ID. It keeps the file anew
+// each time; a post of a page keeps its files with Keeper.
 func (h *Handler) Keep(ctx context.Context, p server.Person, fh *multipart.FileHeader) (string, error) {
+	return h.keepPosted(ctx, p, fh, "", "")
+}
+
+// keepPosted keeps a file as Keep does, once for a page (its surface, and the time it was shown: what
+// its post says; none for a file of no page): the same bytes sent again under the same name and type
+// from the same page are the file kept before (Server.UploadOnce).
+func (h *Handler) keepPosted(ctx context.Context, p server.Person, fh *multipart.FileHeader, surface, at string) (string, error) {
 	if h.files == nil {
 		return "", ErrNoFiles
 	}
@@ -150,14 +160,25 @@ func (h *Handler) Keep(ctx context.Context, p server.Person, fh *multipart.FileH
 		return "", err
 	}
 	defer f.Close()
-	id, _, err := h.keep(ctx, p, fh.Filename, fh.Header.Get("Content-Type"), f)
+	key, contentType := "", fh.Header.Get("Content-Type")
+	if surface != "" {
+		sum := sha256.New()
+		if _, err := io.Copy(sum, f); err != nil {
+			return "", err
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return "", err
+		}
+		key = pageKey(surface, at, "file", fh.Filename, contentType, hex.EncodeToString(sum.Sum(nil)))
+	}
+	id, _, err := h.keep(ctx, p, key, fh.Filename, contentType, f)
 	return id, err
 }
 
-// keep checks a file's media type and its first bytes, and keeps it as the person's upload
-// (server.Upload), reading no more than MaxFile of it (DESIGN 6.2). The type keeps its charset and
-// no other parameter, and the name an ending of the type (fileName).
-func (h *Handler) keep(ctx context.Context, p server.Person, name, contentType string, r io.Reader) (string, server.FileInfo, error) {
+// keep checks a file's media type and its first bytes, and keeps it as the person's upload, once for
+// a key (server.UploadOnce; "" keeps it anew), reading no more than MaxFile of it (DESIGN 6.2). The
+// type keeps its charset and no other parameter, and the name an ending of the type (fileName).
+func (h *Handler) keep(ctx context.Context, p server.Person, key, name, contentType string, r io.Reader) (string, server.FileInfo, error) {
 	mt, params, err := mime.ParseMediaType(contentType)
 	if err != nil || !h.types[mt] {
 		return "", server.FileInfo{}, ErrFileType
@@ -180,7 +201,7 @@ func (h *Handler) keep(ctx context.Context, p server.Person, name, contentType s
 		kept["charset"] = cs
 	}
 	info := server.FileInfo{Name: fileName(cleanName(name), mt), ContentType: mime.FormatMediaType(mt, kept)}
-	id, err := h.srv.Upload(ctx, p, info, io.MultiReader(bytes.NewReader(head), c))
+	id, err := h.srv.UploadOnce(ctx, p, key, info, io.MultiReader(bytes.NewReader(head), c))
 	if c.over {
 		return "", server.FileInfo{}, ErrTooLarge
 	}

@@ -445,7 +445,8 @@ mail's subject.
 
 The package `conformance` checks a server against the contract ritsu generated, on any store:
 `Vectors` gives every vector through the API and holds each answer to the shape the contract gives
-it (`Package.CheckAnswer`, which you can call on any answer of the API), `Trials` tries each
+it (`Package.CheckAnswer`, which you can call on any answer of the API), `Worked` asks what each
+half-filled form of the vectors works out and checks the answers, `Trials` tries each
 operation a person makes before it is done and checks that the trial kept nothing and answered as
 the operation does, `Concurrent` sends many operations to the same tickets at once, through two
 servers on one store, and checks what the store kept, `WaitingCounts` checks the counts of the
@@ -459,9 +460,10 @@ which contract 3 gives every stage) through a pause and a resume, `Administratio
 version's start switched with the number read, the record of the switches a page at a time, the
 drafts of the organization's data, an import taken once of two sent at once, the imports of a day,
 and nothing changed or read for one the gate does not allow (it needs no vectors), and `Keeping`
-checks that every time the store answers is in UTC, and that it forgets old operations a limit at a
-time, the oldest first, and those of one time by person, then by key, as Go compares strings (it
-needs no vectors). To check your own store:
+checks that every time the store answers is in UTC, that it forgets old operations a limit at a
+time, the oldest first, and those of one time by person, then by key, as Go compares strings, and
+that it records one upload to a key of a person's, sent at once too (it needs no vectors). To check
+your own store:
 
 ```go
 func TestConformance(t *testing.T) {
@@ -475,6 +477,7 @@ func TestConformance(t *testing.T) {
 		Organization: orgfiles.New(os.DirFS("project")),
 	}
 	t.Log(conformance.Summary(conformance.Vectors(t, s)))
+	conformance.Worked(t, s)
 	conformance.Trials(t, s)
 	conformance.Concurrent(t, s)
 	conformance.WaitingCounts(t, s)

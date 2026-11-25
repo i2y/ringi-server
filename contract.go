@@ -71,14 +71,38 @@ func deref(s *string) string {
 	return *s
 }
 
+// revisionView is a ticket's revision (ringi's DESIGN 7.1): its round, the place of the stage it is
+// at (nil at none), and how many edits of its approvers were taken.
+type revisionView struct {
+	Round int64 `json:"round"`
+	Stage *int  `json:"stage"`
+	Edits int64 `json:"edits"`
+}
+
+func readRevision(b []byte) (revisionView, error) {
+	var r revisionView
+	err := json.Unmarshal(b, &r)
+	return r, err
+}
+
+// same reports whether two revisions are one.
+func (r revisionView) same(o revisionView) bool {
+	return r.Round == o.Round && r.Edits == o.Edits && (r.Stage == nil) == (o.Stage == nil) && (r.Stage == nil || *r.Stage == *o.Stage)
+}
+
+// past reports whether a ticket at r is at o no more: a round does not come back, and in a round an
+// edit is not taken back (a stage does come back: an approval retracted, a ticket sent back to an
+// earlier stage).
+func (r revisionView) past(o revisionView) bool {
+	return r.Round > o.Round || r.Round == o.Round && r.Edits > o.Edits
+}
+
 // current answers the stage the ticket is at, or nil: the one its revision places (`revision.stage`,
 // ringi's DESIGN 7.1). Its name does not say which: a stage that waited for a later one is in the
 // list twice, the first time as it was when it waited (`again`, ringi's DESIGN 5.12).
 func (t *ticketView) current() *stageView {
-	var rev struct {
-		Stage *int `json:"stage"`
-	}
-	if json.Unmarshal(t.Revision, &rev) != nil || rev.Stage == nil || *rev.Stage < 0 || *rev.Stage >= len(t.Stages) {
+	rev, err := readRevision(t.Revision)
+	if err != nil || rev.Stage == nil || *rev.Stage < 0 || *rev.Stage >= len(t.Stages) {
 		return nil
 	}
 	return &t.Stages[*rev.Stage]

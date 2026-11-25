@@ -27,8 +27,30 @@ func (e *TooManyUploads) Is(target error) bool { return target == ErrTooManyUplo
 // holds yet. A person who has Config.UploadsPerPerson such uploads already is answered
 // *TooManyUploads, and nothing is kept. It answers the file's ID.
 func (s *Server) Upload(ctx context.Context, p Person, info FileInfo, r io.Reader) (string, error) {
+	return s.UploadOnce(ctx, p, "", info, r)
+}
+
+// UploadOnce keeps a file as Upload does, once for a key of the person's: for a key the person gave
+// before, with a file that is not let go, it keeps nothing and answers that file's ID, whether a
+// ticket holds it or not. A post that brings a file, sent again, so names the file it named the
+// first time, and is the same operation. The key is an idempotency key (1 to 255 bytes of visible
+// ASCII), made by the caller from the file among the rest: a key given with another file is answered
+// the first one's ID. With no key it is Upload.
+func (s *Server) UploadOnce(ctx context.Context, p Person, key string, info FileInfo, r io.Reader) (string, error) {
 	if s.cfg.Files == nil {
 		return "", errors.New("server: no Config.Files to keep an upload in")
+	}
+	if key != "" {
+		if !keyFits(key) {
+			return "", fmt.Errorf("an upload's key is 1 to %d bytes of visible ASCII (from ! to ~, no space)", maxKey)
+		}
+		id, err := s.cfg.Store.UploadOf(ctx, p.ID, key)
+		if err == nil {
+			return id, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return "", fmt.Errorf("the uploads: %w", err)
+		}
 	}
 	limit := max(s.cfg.UploadsPerPerson, 0)
 	full := &TooManyUploads{Max: limit, Kept: s.cfg.UploadsKept}
@@ -46,18 +68,22 @@ func (s *Server) Upload(ctx context.Context, p Person, info FileInfo, r io.Reade
 	if err != nil {
 		return "", err
 	}
-	// Two uploads of one person at once both pass the count above; the store counts again as it
-	// records, so that the person never has more than the limit.
-	if err := s.cfg.Store.KeepUpload(ctx, Upload{ID: id, By: p.ID, At: info.At}, limit); err != nil {
+	// Two uploads of one person at once both pass the count above, and two with one key are both put;
+	// the store counts again as it records, so that the person never has more than the limit, and
+	// records one of a key. A file it did not record is deleted.
+	kept, err := s.cfg.Store.KeepUpload(ctx, Upload{ID: id, By: p.ID, At: info.At, Key: key}, limit)
+	if err != nil || kept != id {
 		if derr := s.cfg.Files.Delete(context.WithoutCancel(ctx), id); derr != nil && !errors.Is(derr, ErrNotFound) {
 			s.log.Warn("deleting a file the store did not record as an upload", "id", id, "err", derr)
 		}
-		if errors.Is(err, ErrTooManyUploads) {
-			return "", full
-		}
+	}
+	if errors.Is(err, ErrTooManyUploads) {
+		return "", full
+	}
+	if err != nil {
 		return "", fmt.Errorf("the uploads: %w", err)
 	}
-	return id, nil
+	return kept, nil
 }
 
 // sweepBatch is how many uploads Sweep takes from the store at once; it forgets ten times as many

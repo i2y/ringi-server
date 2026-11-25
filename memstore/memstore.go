@@ -592,16 +592,42 @@ func (s *Store) Organization(_ context.Context, id string) (server.OrgSnapshot, 
 	return o, nil
 }
 
-// KeepUpload records an upload, unless the person has max uploads no ticket holds.
-func (s *Store) KeepUpload(_ context.Context, u server.Upload, max int) error {
+// KeepUpload records an upload, unless the person has one with its key, or max uploads no ticket
+// holds.
+func (s *Store) KeepUpload(_ context.Context, u server.Upload, max int) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if kept := s.keyed(u.By, u.Key); kept != nil {
+		return kept.ID, nil
+	}
 	if max > 0 && s.open(u.By) >= max {
-		return server.ErrTooManyUploads
+		return "", server.ErrTooManyUploads
 	}
 	if _, ok := s.uploads[u.ID]; !ok {
 		u.At = us(u.At)
 		s.uploads[u.ID] = &upload{Upload: u, seq: len(s.uploads)}
+	}
+	return u.ID, nil
+}
+
+// UploadOf answers the upload a person made with a key that is not let go.
+func (s *Store) UploadOf(_ context.Context, person, key string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u := s.keyed(person, key); u != nil {
+		return u.ID, nil
+	}
+	return "", server.ErrNotFound
+}
+
+func (s *Store) keyed(person, key string) *upload {
+	if key == "" {
+		return nil
+	}
+	for _, u := range s.uploads {
+		if u.By == person && u.Key == key && !u.gone {
+			return u
+		}
 	}
 	return nil
 }

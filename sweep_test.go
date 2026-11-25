@@ -3,7 +3,9 @@ package server_test
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -51,6 +53,133 @@ func TestUpload(t *testing.T) {
 		if _, err := unlimited.srv.Upload(ctx, p, server.FileInfo{Name: "a.pdf", ContentType: "application/pdf"}, pdf()); err != nil {
 			t.Fatalf("upload %d with no limit: %v", i+1, err)
 		}
+	}
+}
+
+// unread is a file no one may read: an upload answered by its key is not read.
+type unread struct{ t *testing.T }
+
+func (u unread) Read([]byte) (int, error) {
+	u.t.Error("a file sent again with the key of one kept is read")
+	return 0, errors.New("read")
+}
+
+var errNoUploadOf = errors.New("the store fails")
+
+// noUploadOf is a store that fails when it is asked for an upload by its key.
+type noUploadOf struct{ server.Store }
+
+func (noUploadOf) UploadOf(context.Context, string, string) (string, error) { return "", errNoUploadOf }
+
+// together is Files whose puts each wait until n of them are put.
+type together struct {
+	*servertest.Files
+	n  int
+	wg *sync.WaitGroup
+}
+
+func (f together) Put(ctx context.Context, info server.FileInfo, r io.Reader) (string, error) {
+	id, err := f.Files.Put(ctx, info, r)
+	f.wg.Done()
+	f.wg.Wait()
+	return id, err
+}
+
+// TestUploadOnce checks Server.UploadOnce: the file a person gives with a key is kept once, whether
+// it is given again after it or at once, past the person's limit too and when a ticket holds it; it is
+// kept anew once it is let go. A key is the person's, and one that is no idempotency key is an error.
+func TestUploadOnce(t *testing.T) {
+	ctx := context.Background()
+	files := &servertest.Files{}
+	w := newWorld(t, func(c *server.Config) { c.Files, c.UploadsPerPerson, c.UploadsKept = files, 2, time.Hour })
+	ann, bob := server.Person{ID: "ann"}, server.Person{ID: "bob"}
+	info := server.FileInfo{Name: "a.pdf", ContentType: "application/pdf"}
+	once := func(p server.Person, key string) (string, error) {
+		return w.srv.UploadOnce(ctx, p, key, info, strings.NewReader("%PDF-1.4\n"))
+	}
+	a, err := once(ann, "k1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := w.srv.UploadOnce(ctx, ann, "k1", info, unread{t}); err != nil || got != a {
+		t.Errorf("given again: %q, %v; want %q", got, err, a)
+	}
+	if n := files.Len(); n != 1 {
+		t.Errorf("a file given twice with a key is %d files", n)
+	}
+	b, err := once(bob, "k1")
+	if err != nil || b == a {
+		t.Errorf("another person's, with the same key: %q, %v", b, err)
+	}
+	c, err := once(ann, "")
+	if err != nil || c == a {
+		t.Errorf("with no key: %q, %v", c, err)
+	}
+	// ann has two now, as many as the server keeps.
+	var full *server.TooManyUploads
+	if got, err := once(ann, "k2"); !errors.As(err, &full) || full.Max != 2 {
+		t.Errorf("past the limit: %q, %v", got, err)
+	}
+	if got, err := once(ann, "k1"); err != nil || got != a {
+		t.Errorf("given again past the limit: %q, %v; want %q", got, err, a)
+	}
+	if n := files.Len(); n != 3 {
+		t.Errorf("the server keeps %d files, not 3", n)
+	}
+	for _, key := range []string{"a b", "é", "x\n", strings.Repeat("x", 256)} {
+		if got, err := once(bob, key); err == nil || got != "" {
+			t.Errorf("with the key %q: %q, %v", key, got, err)
+		}
+	}
+	// Let go, the key is the next file's.
+	w.clock.Add(61 * time.Minute)
+	if n, _, err := w.srv.Sweep(ctx); err != nil || n != 3 {
+		t.Fatalf("the sweep: %d %v", n, err)
+	}
+	again, err := once(ann, "k1")
+	if err != nil || again == a || !files.Has(again) {
+		t.Errorf("given again after the file was let go: %q, %v; the one before is %q", again, err, a)
+	}
+	// Held by a ticket, it stays the key's.
+	if err := w.store.Save(ctx, &server.Move{Ticket: "T", Kind: "trip", Version: 1, Body: []byte(`{"id":"T"}`), Status: "in_progress", At: w.clock.Now(),
+		Event: []byte(`{}`), Effects: []byte(`[]`), Uploads: []string{again}}); err != nil {
+		t.Fatal(err)
+	}
+	w.clock.Add(61 * time.Minute)
+	if n, _, err := w.srv.Sweep(ctx); err != nil || n != 0 {
+		t.Fatalf("the sweep after it is held: %d %v", n, err)
+	}
+	if got, err := w.srv.UploadOnce(ctx, ann, "k1", info, unread{t}); err != nil || got != again {
+		t.Errorf("given again after a ticket holds it: %q, %v; want %q", got, err, again)
+	}
+	// A store that does not say whether the key has a file is an error, with nothing kept.
+	none := &servertest.Files{}
+	failing := newWorld(t, func(c *server.Config) { c.Files, c.Store = none, noUploadOf{c.Store} })
+	if got, err := failing.srv.UploadOnce(ctx, ann, "k1", info, unread{t}); !errors.Is(err, errNoUploadOf) || got != "" || none.Len() != 0 {
+		t.Errorf("where the store fails: %q, %v, %d files", got, err, none.Len())
+	}
+	// At once: both are put before either is recorded, and one is kept.
+	const n = 5
+	both := together{&servertest.Files{}, n, &sync.WaitGroup{}}
+	both.wg.Add(n)
+	w2 := newWorld(t, func(c *server.Config) { c.Files = both })
+	ids, errs := make([]string, n), make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ids[i], errs[i] = w2.srv.UploadOnce(ctx, ann, "k1", info, strings.NewReader("%PDF-1.4\n"))
+		}()
+	}
+	wg.Wait()
+	for i := range n {
+		if errs[i] != nil || ids[i] != ids[0] {
+			t.Errorf("at once, the %dth is answered %q, %v, and the first %q", i, ids[i], errs[i], ids[0])
+		}
+	}
+	if both.Files.Len() != 1 || !both.Files.Has(ids[0]) {
+		t.Errorf("at once, %d files are kept, the one answered: %v", both.Files.Len(), both.Files.Has(ids[0]))
 	}
 }
 

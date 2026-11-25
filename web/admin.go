@@ -100,12 +100,13 @@ func adminDone(lang, done string) string {
 	return wd[0]
 }
 
-// adminKey is the idempotency key of a post of the administration's pages, made as the core makes
-// the screens' keys (screens/page's DESIGN 4.5): from the page's address, the time it was shown
-// (_at) and what it sends, so that a page posted twice is one operation, and a page shown again
-// (with a new time) can send the same values again.
-func adminKey(path, at string, values ...string) string {
-	material := append([]string{path, at}, values...)
+// pageKey is the idempotency key of a post of a page that the screens' core makes none for (the
+// administration's pages, and a file a post brings), made as the core makes the screens' keys
+// (screens/page's DESIGN 4.5): from the page, the time it was shown (_at) and what it sends, so that a
+// page posted twice is one operation, and a page shown again (with a new time) can send the same
+// values again.
+func pageKey(pg, at string, values ...string) string {
+	material := append([]string{pg, at}, values...)
 	m, _ := json.Marshal(material)
 	sum := sha256.Sum256(m)
 	return "page-" + hex.EncodeToString(sum[:])
@@ -324,7 +325,7 @@ func (h *Handler) adminSwitch(w http.ResponseWriter, r *http.Request, p server.P
 		body["reason"] = reason
 	}
 	b, _ := json.Marshal(body)
-	key := adminKey(r.URL.Path, f.Get("_at"), string(b))
+	key := pageKey(r.URL.Path, f.Get("_at"), string(b))
 	rep, err := h.adminDo(r, p, server.Call{Operation: "admin_switch_kind", Kind: kind, Version: version, Key: key, Body: b})
 	if err != nil {
 		h.pageFail(w, r, &p, "admin_switch_kind", err)
@@ -509,13 +510,13 @@ func (h *Handler) adminCheck(w http.ResponseWriter, r *http.Request, p server.Pe
 			return
 		}
 		sum := sha256.Sum256(archive)
-		c.Key, c.Upload = adminKey(r.URL.Path, at, "upload", hex.EncodeToString(sum[:])), bytes.NewReader(archive)
+		c.Key, c.Upload = pageKey(r.URL.Path, at, "upload", hex.EncodeToString(sum[:])), bytes.NewReader(archive)
 	default:
 		f, ok := h.adminPost(w, r, p)
 		if !ok {
 			return
 		}
-		c.Key, c.Body = adminKey(r.URL.Path, f.Get("_at"), "source"), []byte(`{"source":"config"}`)
+		c.Key, c.Body = pageKey(r.URL.Path, f.Get("_at"), "source"), []byte(`{"source":"config"}`)
 	}
 	rep, err := h.adminDo(r, p, c)
 	if err != nil {
@@ -694,7 +695,7 @@ func (h *Handler) adminImport(w http.ResponseWriter, r *http.Request, p server.P
 		body["locks_out"] = true
 	}
 	b, _ := json.Marshal(body)
-	rep, err := h.adminDo(r, p, server.Call{Operation: "admin_import_organization", Key: adminKey(r.URL.Path, f.Get("_at"), string(b)), Body: b})
+	rep, err := h.adminDo(r, p, server.Call{Operation: "admin_import_organization", Key: pageKey(r.URL.Path, f.Get("_at"), string(b)), Body: b})
 	if err != nil {
 		h.pageFail(w, r, &p, "admin_import_organization", err)
 		return

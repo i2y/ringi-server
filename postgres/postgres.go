@@ -601,33 +601,58 @@ func (s *Store) org(ctx context.Context, sql string, args ...any) (server.OrgSna
 	return o, err
 }
 
-// KeepUpload records an upload, unless the person has max uploads no ticket holds. The uploads of
-// one person are recorded one at a time, under a lock of the person's, so that two at once are
-// counted one after the other.
-func (s *Store) KeepUpload(ctx context.Context, u server.Upload, max int) error {
+// KeepUpload records an upload, unless the person has one with its key, or max uploads no ticket
+// holds. The uploads of one person are recorded one at a time, under a lock of the person's, so that
+// two at once are counted, and looked for by their key, one after the other.
+func (s *Store) KeepUpload(ctx context.Context, u server.Upload, max int) (string, error) {
 	tx, err := s.q(ctx).Begin(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
-	if max > 0 {
+	if max > 0 || u.Key != "" {
 		h := fnv.New64a()
 		h.Write([]byte(s.schema + "\x00uploads\x00" + u.By))
 		if _, err := tx.Exec(ctx, "select pg_advisory_xact_lock($1)", int64(h.Sum64())); err != nil {
-			return err
+			return "", err
 		}
+	}
+	if u.Key != "" {
+		var id string
+		err := tx.QueryRow(ctx, s.sql["upload_of"], u.By, u.Key).Scan(&id)
+		if err == nil {
+			return id, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", err
+		}
+	}
+	if max > 0 {
 		var n int
 		if err := tx.QueryRow(ctx, s.sql["uploads_open"], u.By).Scan(&n); err != nil {
-			return err
+			return "", err
 		}
 		if n >= max {
-			return server.ErrTooManyUploads
+			return "", server.ErrTooManyUploads
 		}
 	}
-	if _, err := tx.Exec(ctx, s.sql["upload_keep"], u.ID, u.By, u.At); err != nil {
-		return err
+	if _, err := tx.Exec(ctx, s.sql["upload_keep"], u.ID, u.By, u.At, u.Key); err != nil {
+		return "", err
 	}
-	return tx.Commit(ctx)
+	return u.ID, tx.Commit(ctx)
+}
+
+// UploadOf answers the upload a person made with a key that is not let go.
+func (s *Store) UploadOf(ctx context.Context, person, key string) (string, error) {
+	if key == "" {
+		return "", server.ErrNotFound
+	}
+	var id string
+	err := s.q(ctx).QueryRow(ctx, s.sql["upload_of"], person, key).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", server.ErrNotFound
+	}
+	return id, err
 }
 
 // OpenUploads counts a person's uploads that no ticket holds and that are not let go.

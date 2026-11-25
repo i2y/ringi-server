@@ -239,9 +239,9 @@ And the rest of `*Server`:
   do that are due, about once a second and right after a save, and sweeps when it starts and every
   `Config.SweepEvery`. `RunTimers`, `RunToDo` and `Sweep` do one pass each, for a deployment that
   schedules them itself.
-- `Upload(ctx, person, info, r)` keeps a file a person uploads (2.3, "Files"), and `Sweep(ctx)`
-  lets go of the uploads no ticket held in time and forgets the operations past theirs, the ones
-  begun and never answered among them (4.4).
+- `Upload(ctx, person, info, r)` keeps a file a person uploads, and `UploadOnce(ctx, person, key,
+  info, r)` keeps it once for a key (2.3, "Files"). `Sweep(ctx)` lets go of the uploads no ticket held
+  in time and forgets the operations past theirs, the ones begun and never answered among them (4.4).
 - `Replay(ctx, ticket)` gives a ticket's moves to its kind's entries again, in order, each with the
   snapshot of the organization it was given, and fails at the first answer that is not the move the
   store kept.
@@ -263,9 +263,9 @@ And the rest of `*Server`:
 - `AdminParts(ctx, person)` answers the parts of the administration a person may use, and
   `Administers(ctx, person)` whether there is one, for the start page's link (13.4, 13.7);
   `MaxOrganization()` is the largest upload of the organization's data the server takes (13.3).
-- The calls the screens and the pages make (`Authenticate`, `Can` and `Replied`, which 8.1 says,
-  `Submitting`, `Names`, `MasterRows`, `TicketFiles`, `Files`, `MaxBody`, `Packages`) are in `web`'s
-  DESIGN.md.
+- The calls the screens and the pages make (`Authenticate`, `Can`, `Replied` and `FormAt`, which 8.1
+  says, `Submitting`, `Names`, `MasterRows`, `TicketFiles`, `Files`, `MaxBody`, `Packages`) are in
+  `web`'s DESIGN.md.
 
 ### 2.3 The parts you swap
 
@@ -485,6 +485,14 @@ person may have `Config.UploadsPerPerson` uploads that no ticket holds (50 when 
 number, any number): `Upload` refuses the next with `*TooManyUploads`, and keeps nothing of it.
 `web` answers it 429 with no `Retry-After`: the count goes down only when a request holds an upload
 or the server lets one go, so there is no time to say when to send again.
+
+`Server.UploadOnce` keeps a file once for a key of the person's (of the characters an operation's key
+may have). While the upload they made with the key is kept, held by a ticket or not, the next with
+that key is not read and not counted, and is answered that upload's ID; of two at once, the store
+records one, the server deletes the file of the other, and both are answered the one's ID. An upload
+let go is its key's no more. The key is the caller's to make of the file: the pages make it of the
+page a form was posted from and of the file (`web`'s DESIGN, 9.3), so that a form with a file that is
+posted twice names one file and is one operation.
 
 **OrgSource.** It reads the organization's data: the versions (teams, people, members), the proxies,
 and the rows of the masters. The framework tells it what to read (where ritsu's files say the data
@@ -880,14 +888,13 @@ audit entry, and the removal of a timer that was refused.
 The rest of the interface reads what `Save` wrote, the lists a page at a time (`Waiting`, `Mine`;
 10.2, 10.4); keeps the operations begun with the names of their tries (`Begin`, and `Renew` for a new
 try; 3, 3.2); takes a ticket's lock (3.2); leases the timers and the things to do (5, 6); keeps the
-void of a hold no move keeps as a thing to do (`KeepToDo`, 3.2); records the uploads and lets go of
-them (2.3); forgets the operations past their time, and the ones begun and never answered
-(4.4); and keeps the administration's records with what they change, all or nothing, and reads them
-(`SaveChange`, `Records`, the starts, the imports and the drafts; 13.8). `Lock` answers a context
-that carries the lock: the framework reads the
-ticket and saves its move with that context, so a store may keep the lock on a connection and use
-the connection for them (the PostgreSQL store does). The conformance tests (12) check a store against
-all of it. The memory store reads back what it was given as PostgreSQL does, field by field; the
+void of a hold no move keeps as a thing to do (`KeepToDo`, 3.2); records the uploads, one to a key of
+a person's, finds one by its key, and lets go of them (2.3); forgets the operations past their time,
+and the ones begun and never answered (4.4); and keeps the administration's records with what they
+change, all or nothing, and reads them (`SaveChange`, `Records`, the starts, the imports and the
+drafts; 13.8). `Lock` answers a context that carries the lock: the framework reads the ticket and
+saves its move with that context, so a store may keep the lock on a connection and use the connection
+for them (the PostgreSQL store does). The conformance tests (12) check a store against all of it. The memory store reads back what it was given as PostgreSQL does, field by field; the
 framework's `TestStoresKeepEveryField` reads each field back from both.
 
 A store keeps times to the microsecond: what is finer is cut off (toward the past), in the times it
@@ -934,7 +941,7 @@ In a schema of their own (`requests` unless `postgres.New` is given another):
 | `organizations` | each snapshot of the organization's data | `id` |
 | `people` | the people of each ticket: everyone its moves named (its requester's side, who sent it back, its approvers, who answered), kept when the ticket no longer names them (10.3), and which of them it is the request of (10.4) | `ticket`, `person` |
 | `files` | the attachments: the bytes, the name, the type, the size, who uploaded each and when | `id` |
-| `uploads` | each upload: who uploaded it and when, and whether a ticket holds it, it was let go, or its file is deleted (2.3) | `id` |
+| `uploads` | each upload: who uploaded it and when, the key it was made with, when there is one, and whether a ticket holds it, it was let go, or its file is deleted (2.3) | `id` |
 | `revoked` | the sessions of signing in ended before their time (`oidc`'s `Revocations`), until they would have ended | `session` |
 | `records`, `starts`, `drafts` | the administration's records, the starts of the versions an administrator decided, and the drafts of the organization's data (13.8) | `id`; `kind`, `version`; `person`, `id` |
 | `schema_version` | the version of these tables | |
@@ -953,7 +960,8 @@ a step that must rewrite rows is a step of its own with a note in this file. The
 time its stage started (its JSON's `stages[].started`) or else the time of its last move, and reads
 the tickets that wait for a person by an index on that time (`waiting_list`), in place of the index
 by person alone. Step 8 adds the administration's tables (13.8), and step 9 is one too: it gives each
-move kept before it the kind and the version of its ticket.
+move kept before it the kind and the version of its ticket. Step 10 adds the key of an upload (2.3),
+and the index by which a person has at most one upload of a key that is not let go.
 
 ### 4.4 How long rows are kept
 
@@ -1322,6 +1330,21 @@ func (s *Server) Replied(ctx context.Context, c server.Call) (server.Reply, bool
 `Replied` answers the reply kept with the person's key (section 3), when the key was used for this
 operation on this ticket with this body, and the person may see the ticket. It runs nothing (`web`'s
 DESIGN, 9.2).
+
+A request made again and an approver's edit send what they change of the form (ringi's DESIGN 7.3), so
+a post of one is read against the form its page showed, which the ticket may hold no more. The
+revision the page showed says which form that was:
+
+```go
+// FormAt answers the form a ticket had at a revision, the last time the ticket was at it.
+func (s *Server) FormAt(ctx context.Context, p server.Person, ticket string, revision json.RawMessage) (form json.RawMessage, ok bool, err error)
+```
+
+`FormAt` gives the ticket's moves to its kind's entries again, as `Replay` does, up to where the
+ticket is past the revision: in a later round, or in the same round with more edits taken, neither of
+which a ticket comes back from. `ok` is false for a revision the ticket was never at, and for a ticket
+that is not there or that the person may not see. Nothing of a form is kept beside the moves, and a
+page of the ticket as it is needs none of this: the cost is of a post from a page shown before.
 
 ## 9. The organization
 
@@ -1761,7 +1784,12 @@ Ten tests check a server against the contract, and all run on any store:
   the order they are forgotten in, of people and keys that a database's collation of a language
   orders otherwise than Go (`Zoe` and `ann`, `Key-2` and `key-1`, `fay` and `éva`):
   `ForgetOperations` with a limit of two forgets the older one first, then those of the one time by
-  person, then by key, as Go compares strings, and answers 4, 4, 4, 2 and 0.
+  person, then by key, as Go compares strings, and answers 4, 4, 4, 2 and 0; (d) uploads made once for
+  a key: the second of a person's with one key is not recorded and is answered the first one's ID,
+  past the person's limit too and after a move holds the first, the same key is another upload of
+  another person, and uploads with no key are each recorded; of twenty kept at once with one key,
+  with a limit of one and with none, one is recorded, and each of the twenty is answered its ID; an
+  upload let go is found by its key no more, and the next one with the key is recorded.
 
 On the examples, every vector agrees, on the memory store and on PostgreSQL: 2,990 of 2,990, 2,166
 through the HTTP handler, and through `Deliver` 626 timers, 102 operations that name no person (the
@@ -1831,7 +1859,16 @@ are tried, with each person of the organization as the approver added or the one
 over to, each approver of the stage as the one it is handed over from, and each stage as the one sent
 back to.
 
-To check your own store, write a test that calls the nine with a function that gives an empty
+A form of the plain HTML pages is sent as a browser with no script sends a button pressed again
+(`examples/twice_test.go`, on both stores): a new request with a file, a request made again with a
+file and with none, and an approver's edit, each posted five times at once and then twice more, and
+the last two again after the ticket has moved on. Every post is answered 303 to the same ticket; there
+is one ticket, or one more move, and the file is kept once. With another comment or value, from a page
+shown at another time, or from another person, a request made again and an edit are refused as
+`stale`; with another file, or the same bytes under another name or of another type, a new request is
+another one.
+
+To check your own store, write a test that calls the ten with a function that gives an empty
 store, and your generated package (see the README).
 
 ## 13. Administration

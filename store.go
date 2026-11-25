@@ -101,10 +101,16 @@ type Store interface {
 	// Organization reads a snapshot by its ID, or ErrNotFound.
 	Organization(ctx context.Context, id string) (OrgSnapshot, error)
 
-	// KeepUpload records a file a person uploaded (Server.Upload), which no ticket holds yet. When
-	// the person has max such uploads already (max 0 or less: no limit), it records nothing and
-	// answers ErrTooManyUploads. An ID recorded before is left as it is.
-	KeepUpload(ctx context.Context, u Upload, max int) error
+	// KeepUpload records a file a person uploaded (Server.Upload), which no ticket holds yet, and
+	// answers the ID recorded. For a key (Upload.Key) the person has an upload of that is not let go
+	// (UploadOf), it records nothing and answers that one's ID: of two at once with one key, one is
+	// recorded, and both are answered its ID. When the person has max uploads no ticket holds already
+	// (max 0 or less: no limit), it records nothing and answers ErrTooManyUploads. An ID recorded
+	// before is left as it is.
+	KeepUpload(ctx context.Context, u Upload, max int) (id string, err error)
+	// UploadOf answers the ID of the upload a person made with a key (Upload.Key, not ""), held by a
+	// ticket or not, that is not let go; or ErrNotFound.
+	UploadOf(ctx context.Context, person, key string) (id string, err error)
 	// OpenUploads counts a person's uploads that no ticket holds and that are not let go.
 	OpenUploads(ctx context.Context, person string) (int, error)
 	// LetGoUploads lets go of up to limit uploads made before `before` that no ticket holds, the
@@ -325,6 +331,8 @@ type Upload struct {
 	ID string
 	By string
 	At time.Time
+	// Key is the key the person gave with the file, to keep it once (Server.UploadOnce); "" for none.
+	Key string
 }
 
 // ErrTooManyUploads is the store's answer to an upload past a person's limit (Store.KeepUpload).
