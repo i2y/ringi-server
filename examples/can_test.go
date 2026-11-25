@@ -503,6 +503,15 @@ func TestPostSentAgain(t *testing.T) {
 	books.Refuse = func(server.BookCall) string { return "the book is closed" }
 	if r, err := b.press(h, "e1101", "button.approve"); err != nil || r.Code != http.StatusConflict || !strings.Contains(string(summaryOf(r.Body.Bytes())), screens.RefusalWords("en", "book")) {
 		t.Fatalf("an approval the book refuses: %v %d %s", err, r.Code, summaryOf(r.Body.Bytes()))
+	} else if root, err := readPage(r.Body.Bytes()); err != nil {
+		t.Fatal(err)
+	} else {
+		// the book's reason is written for the person: it is under the page's sentence, not folded
+		// with the details for the people who keep the kind
+		reasons := root.all(func(n *pageNode) bool { return n.hasClass("reason") })
+		if len(reasons) != 1 || strings.TrimSpace(reasons[0].content()) != "the book is closed" || len(root.all(func(n *pageNode) bool { return n.name == "details" })) != 0 {
+			t.Errorf("the book's reason on the page: %s", summaryOf(r.Body.Bytes()))
+		}
 	}
 	books.Refuse = nil
 	body, _ = json.Marshal(map[string]any{"revision": rev, "comment": "No."})

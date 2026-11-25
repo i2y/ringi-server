@@ -4,7 +4,8 @@ When an operation does not fit the rules, the server changes nothing, and says w
 of the API (409) has the kind of reason in `refused`. There are 12 kinds. Japanese: [refusals.ja.md](refusals.ja.md).
 
 On the pages, "Details for the people who keep this kind of request" below the sentence says which rule it did not
-fit, and where.
+fit, and where. A book's reason (`book`) is not folded there: it is written for the person, and shown right under the
+sentence.
 
 | `refused` | What the page says | When |
 |---|---|---|
@@ -18,14 +19,14 @@ fit, and where.
 | `comment` | The comment was not accepted. Check the comment. | Left empty in an operation that needs one. Longer than 2,000 characters |
 | `submit` | You are not one of the people who may make this request. | A request by someone who is not in `submitted by` of the request type |
 | `data` | The request cannot be dealt with on this date with the data the company has set up. Ask the people who keep this kind of request. | There is no organization's data in effect that day. A day outside the time the request type can be used. The deadline cannot be counted in the calendar |
-| `book` | The request cannot be recorded in the books for you. Ask the people who keep this kind of request. | Too little is left of a budget or of days of leave. It is not decided which department's book it goes in |
+| `book` | A book (of a budget or of days of leave, say) did not take this. | Too little is left of a budget or of days of leave. It is not decided which department's book it goes in |
 | `unread` | The request could not be dealt with. Ask the people who keep this kind of request. | The request type was changed without raising its version, and a request in progress cannot be read |
 
 The answer of `form` says in `at` which field of the form it is. In a row of items, it is like `items[1].price`, with
 the rows counted from 0. The page marks that field.
 
 `text` and `text_ja` of the answer of `book` are the reason the book gave (such as "the department's budget is
-short"). On the pages, it is in "Details for the people who keep this kind of request".
+short"). The page shows it under its own sentence.
 
 ## Operations of administrators
 

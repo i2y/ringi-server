@@ -21,6 +21,9 @@
 {{- with .Summary}}
 <div class="summary" id="summary" role="alert" tabindex="-1" autofocus="autofocus">
 <p>{{.Words}}</p>
+{{- if .Reason}}
+<p class="reason">{{.Reason}}</p>
+{{- end}}
 {{- if .Items}}
 <ul>{{range .Items}}<li>{{if .Target}}<a href="#{{.Target}}">{{template "phrase" .Words}}</a>{{else}}{{template "phrase" .Words}}{{end}}</li>{{end}}</ul>
 {{- end}}

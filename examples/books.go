@@ -70,7 +70,17 @@ func (b Books) Call(ctx context.Context, tx any, c server.BookCall) (server.Book
 	default:
 		return server.BookAnswer{}, fmt.Errorf("no book call %s.%s.%s", c.Book, c.Transfer, c.Call)
 	}
+	if words, ok := reasons[r.Reason]; ok {
+		return server.BookAnswer{Outcome: r.Outcome, Reason: words[0], ReasonJa: words[1]}, err
+	}
 	return server.BookAnswer{Outcome: r.Outcome, Reason: r.Reason}, err
+}
+
+// reasons say the books' reasons (`refused as` in budget.book and leave.book) in words for the person
+// who made the request, in English and in Japanese: a page shows them under its own sentence.
+var reasons = map[string][2]string{
+	"over_budget":  {"the department's budget is short", "部の予算が足りません"},
+	"over_balance": {"too few days of leave are left", "休暇の残りの日数が足りません"},
 }
 
 // makeBooks runs the books' SQL under a lock of the database: PostgreSQL fails one of two processes

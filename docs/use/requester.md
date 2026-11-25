@@ -107,7 +107,7 @@ Choose the person, and it is their request. Leave it empty for your own request.
 | A request type is not there | You are not one of those who can make it, or it is no longer used. Ask the department that keeps it |
 | "This request may be made from 2027-04-01." | It has not started. Wait until that day |
 | "The request changed after this page was shown." | Someone else acted first. The page shows it as it is now: check it, and try again |
-| "The request cannot be recorded in the books for you." | As a rule, too little is left of the department's budget or of your days of leave. Open "Details for the people who keep this kind of request" to read the reason |
+| "A book (of a budget or of days of leave, say) did not take this." | The reason is right under it ("the department's budget is short", say). If you can ask for less money or fewer days, change the request and send it again. If it is not clear, ask the people who keep this kind of request |
 | "The request cannot be dealt with on this date with the data the company has set up." | The company's data of the organization or of the calendar does not have that day. Tell the department that keeps the request type |
 | A second comment is not taken | Leave about 10 seconds between comments on the same request |
 | Someone else's request says "Not found" | You are not one of those who can see it, or the ID is wrong |

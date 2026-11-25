@@ -232,7 +232,7 @@ go run ./cmd/server -dev-login -db 'postgres:///shinsei'
 {"refused":"book","text":"the department's budget is short","text_ja":"部の予算が足りません","at":null}
 ```
 
-`text` と `text_ja` は、`Books.Call` が `Reason` と `ReasonJa` に入れた文です。ページには、申請を出せなかったことが出ます。この文は、その下の「申請を管理している人向けの詳細」を開くと読めます。
+`text` と `text_ja` は、`Books.Call` が `Reason` と `ReasonJa` に入れた文です。ページには、帳簿が受け付けなかったことと、そのすぐ下にこの文が出ます。
 
 ## 帳簿を別のデータベースに置く
 

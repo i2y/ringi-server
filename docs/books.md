@@ -244,8 +244,8 @@ The request is not taken, and nothing of it is kept. The API answers 409 and the
 {"refused":"book","text":"the department's budget is short","text_ja":"部の予算が足りません","at":null}
 ```
 
-`text` and `text_ja` are the words `Books.Call` put in `Reason` and `ReasonJa`. The page says that the request
-could not be made. These words are below it, in "Details for the people who keep this kind of request".
+`text` and `text_ja` are the words `Books.Call` put in `Reason` and `ReasonJa`. The page says that a book did not
+take the request, with these words right under it.
 
 ## Keep the books in another database
 

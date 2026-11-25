@@ -774,7 +774,9 @@ The API answers an operation it does not take in one of three ways, and the page
 
 The refusal's text in the page's language (`Refusal.In`: its Japanese on a Japanese page when it
 has one, else its English) and the problem are shown folded at the head of the page, under "Details
-for the people who keep this kind of request".
+for the people who keep this kind of request". A book's refusal (`book`) is the exception: its text
+is the book's reason, which the company's `Books` writes for the person ("the department's budget
+is short"), and it is shown under the sentence, not folded.
 
 Each answer becomes a `Problem` of the reading: its `Place` the part (`trip_to`, `items.1.price`,
 `comment`; empty for the head of the page), its `Code` the check of that part it is said with, or

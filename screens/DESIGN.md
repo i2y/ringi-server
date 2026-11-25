@@ -470,7 +470,7 @@ on either:
 | `form` | Some values were not accepted. Check the fields marked below. | 受け付けられない値があります。印の付いた項目を確かめてください。 |
 | `submit` | You are not one of the people who may make this request. | この申請を出せる人に入っていません。 |
 | `data` | The request cannot be dealt with on this date with the data the company has set up. Ask the people who keep this kind of request. | 会社が用意したデータでは、この日付の申請を扱えません。この申請を管理している人に問い合わせてください。 |
-| `book` | The request cannot be recorded in the books for you. Ask the people who keep this kind of request. | この申請は、あなたの所属では帳簿に記録できません。この申請を管理している人に問い合わせてください。 |
+| `book` | A book (of a budget or of days of leave, say) did not take this. | 帳簿（予算や休暇の日数など）が、この操作を受け付けませんでした。 |
 | `unread` | The request could not be dealt with. Ask the people who keep this kind of request. | この申請を処理できませんでした。この申請を管理している人に問い合わせてください。 |
 | any other | The request was not accepted. | 申請は受け付けられませんでした。 |
 

@@ -96,9 +96,14 @@ func (p phrase) with(t text) phrase {
 // summary is what a page shown again says first: a refusal's words, or that fields are wrong, with
 // a link to each.
 type summary struct {
-	Words   string
-	Items   []summaryItem
-	Details string // the refusal's text, folded
+	Words string
+	Items []summaryItem
+	// Reason is a book's reason (the refusal `book`), shown under the words: the books write it for
+	// the person, in the words of the company ("the department's budget is short"). Details is the
+	// text of another refusal, folded, for the people who keep the kind: it names the fields and the
+	// lines as the kind writes them.
+	Reason  string
+	Details string
 }
 
 type summaryItem struct {
@@ -1136,7 +1141,11 @@ func (b *builder) summary() *summary {
 		if r.refused == "form" && !slices.ContainsFunc(r.Problems, func(p Problem) bool { return p.Place != "" }) {
 			s.Words = t(b.lang, "Some values were not accepted. Check what you entered.", "受け付けられない値があります。入力した値を確かめてください。")
 		}
-		s.Details = r.refusal.In(b.lang)
+		if r.refused == "book" {
+			s.Reason = r.refusal.In(b.lang)
+		} else {
+			s.Details = r.refusal.In(b.lang)
+		}
 	case r.invalid != "":
 		if !slices.ContainsFunc(r.Problems, func(p Problem) bool { return p.Code == "invalid" }) {
 			s.Words = w.Invalid()

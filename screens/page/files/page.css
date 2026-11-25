@@ -78,6 +78,7 @@
 .ringi .summary details { margin-top: 0.4rem; }
 .ringi .summary summary { cursor: pointer; font-weight: 600; }
 .ringi .summary .details { white-space: pre-wrap; font-size: 0.9rem; color: var(--muted); }
+.ringi .summary .reason { white-space: pre-wrap; font-weight: 400; }
 
 .ringi .values dl { background: var(--tint); border: 1px solid var(--line); border-radius: 14px; padding: 0.25rem 1.15rem; margin: 0; }
 .ringi .value { display: grid; grid-template-columns: minmax(8rem, 1fr) 3fr; gap: 0.5rem; padding: 0.65rem 0; border-bottom: 1px solid var(--line); }
