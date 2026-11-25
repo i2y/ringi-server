@@ -108,4 +108,4 @@ func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server
 }
 ```
 
-プロキシは、クライアントが送ってきた同じ名前のヘッダーを取り除いたうえで、どのリクエストにも三つのヘッダーを付けます。`X-Ringi-Proxy-Secret`、`X-Ringi-Person`（組織のデータにある人の ID）、`X-Ringi-Roles`（ロールをカンマで区切ったもの。なければ空）です。秘密がないリクエストと、同じヘッダーが二つあるリクエストは、だれのリクエストにもならず、401 です。詳しくは [web/DESIGN.ja.md](../web/DESIGN.ja.md) の 3.1 にあります。
+プロキシは、クライアントが送ってきた同じ名前のヘッダーを取り除いたうえで、どのリクエストにも三つのヘッダーを付けます。`X-Ringi-Proxy-Secret`、`X-Ringi-Person`（組織のデータにある人の ID）、`X-Ringi-Roles`（役割をコンマで区切ったもの。なければ空）です。秘密がないリクエストと、同じヘッダーが二つあるリクエストは、だれのリクエストにもならず、401 です。詳しくは [web/DESIGN.ja.md](../web/DESIGN.ja.md) の 3.1 にあります。

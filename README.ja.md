@@ -38,7 +38,7 @@ go run ./cmd/server -dev-login
 2. ログアウトして、e1101（営業一課長）を選びます。ホームに、承認を待っている申請が出ます。
 3. その申請を開いて、承認します。
 
-`-dev-login` は本人を確かめないので、自分のコンピュータのアドレスでしか動きません。人にログインしてもらう方法は、[ログイン](#ログイン)にあります。
+`-dev-login` は本人を確かめないので、自分のコンピューターのアドレスでしか動きません。人にログインしてもらう方法は、[ログイン](#ログイン)にあります。
 
 `pages.sh` は、同じことを curl で、JavaScript のないブラウザと同じように行います。別の端末で、`examples/` で実行します（jq も要ります）。
 
@@ -91,7 +91,7 @@ shinsei に 49 個のファイルを書きました（モジュール example.co
 
 | パス | 中身 |
 |---|---|
-| `project/` | ritsu が読む規則。`purchase.ringi` は購買の申請で、金額と目的を入れ、申請した人の上長、次に部長が承認する。期限と催促もある。組織は `shared/company.ringi` と `org/`（三つの部、二つの課、十人）、gate は `shared/company.gate`、営業日の暦は `shared/office.cal` |
+| `project/` | ritsu が読む規則。`purchase.ringi` は購買の申請で、金額と目的を入れ、申請した人の上長、次に部長が承認する。期限と催促もある。組織は `shared/company.ringi` と `org/`（三つの部、二つの課、十人）、gate は `shared/company.gate`、営業日のカレンダーは `shared/office.cal` |
 | `go/`、`requests/` | ritsu が `project/` から生成するもの。Go のパッケージと、約束 |
 | `generate.go` | `ritsu gen` を実行する `//go:generate` の行 |
 | `shinsei.go`、`gate.go`、`notify.go` | プロジェクトがサーバーに渡すもの。生成されたパッケージと組織、sekisho が生成した gate を呼ぶコード、通知をログに書く Notifier |
@@ -126,11 +126,11 @@ shinsei に 82 個のファイルを書きました（モジュール example.co
 
 | フラグ | だれのリクエストか | 用途 |
 |---|---|---|
-| なし | ヘッダー `X-Person`（と `X-Roles`）の人 | 自分のコンピュータで、curl で API を試す |
-| `-dev-login` | ページで選んだ人 | 自分のコンピュータで、ページを試す |
+| なし | ヘッダー `X-Person`（と `X-Roles`）の人 | 自分のコンピューターで、curl で API を試す |
+| `-dev-login` | ページで選んだ人 | 自分のコンピューターで、ページを試す |
 | `-oidc-…` | 組織の OpenID Connect のプロバイダーでログインした人 | 人に使ってもらう |
 
-上の二つは本人を確かめません。自分のコンピュータのアドレスでしか動かず、プロキシが転送したリクエストは受け付けません。人に使ってもらうときは、プロバイダーの設定を渡します。
+上の二つは本人を確かめません。自分のコンピューターのアドレスでしか動かず、プロキシが転送したリクエストは受け付けません。人に使ってもらうときは、プロバイダーの設定を渡します。
 
 ```sh
 export RINGI_OIDC_CLIENT_SECRET='プロバイダーが発行したシークレット'
@@ -141,7 +141,7 @@ go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
   -oidc-redirect-url https://ringi.example.com:8443/login/callback
 ```
 
-プロバイダーには、このサーバーを、シークレットを持つ認可コードフローのクライアントとして登録します。リダイレクト URI は上のもの、スコープは `openid email profile` です。ログインした人は、プロバイダーが確認済みとしているメールアドレスで、組織のデータから探します。ロールは、`-oidc-roles-claim` で指定したクレームから取ります。詳しくは [oidc/README.ja.md](oidc/README.ja.md) に、人に使ってもらうサーバーの動かし方は [docs/operations.ja.md](docs/operations.ja.md) にあります。
+プロバイダーには、このサーバーを、シークレットを持つ認可コードフローのクライアントとして登録します。リダイレクト URI は上のもの、スコープは `openid email profile` です。ログインした人は、プロバイダーが確認済みとしているメールアドレスで、組織のデータから探します。役割は、`-oidc-roles-claim` で指定したクレームから取ります。詳しくは [oidc/README.ja.md](oidc/README.ja.md) に、人に使ってもらうサーバーの動かし方は [docs/operations.ja.md](docs/operations.ja.md) にあります。
 
 ## プロジェクトが用意するもの
 
@@ -169,7 +169,7 @@ go run ./cmd/server -addr :8443 -tls-cert server.crt -tls-key server.key \
 | 通知 | `Notifier` | なし。メールやチャットへの送信を書くまでは、ログに出る |
 | 帳簿 | `Books` | chobo が生成したクライアントを呼ぶコードの例（[examples/books.go](examples/books.go)） |
 | flow とエージェントのステップ | `Flows`、`Agents` | モジュール `temporal` |
-| だれがログインしたか | `Authenticator` | `oidc`。人をログインさせるプロキシの後ろでは `web.ProxyHeader`。自分のコンピュータで試すときは `devlogin` |
+| だれがログインしたか | `Authenticator` | `oidc`。人をログインさせるプロキシの後ろでは `web.ProxyHeader`。自分のコンピューターで試すときは `devlogin` |
 | 申請を置く場所 | `Store` | `postgres`。試験用の `memstore` |
 | 添付ファイル | `Files` | PostgreSQL、ディレクトリ（`web.NewDiskFiles`）、メモリ |
 | 履歴の写し | `AuditLog` | なし。`servertest` に試験用のものがある |

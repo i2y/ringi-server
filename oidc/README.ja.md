@@ -14,10 +14,10 @@
 |---|---|
 | クライアントの種類 | シークレットを持つ Web アプリケーション。認可コードフロー |
 | リダイレクト URI | `https://<ホスト>/login/callback` |
-| スコープ | `openid email profile`。プロバイダーがロールを出すのに要るなら、そのスコープも |
+| スコープ | `openid email profile`。プロバイダーが役割を出すのに要るなら、そのスコープも |
 | トークンエンドポイントでのクライアントの認証 | `client_secret_basic`（または `client_secret_post`） |
 | ID トークンの署名 | RS256、PS256、ES256 のどれか |
-| ID トークンのクレーム | `email` と `email_verified`、それと人のロールが入るクレーム。このパッケージは ID トークンだけを読み、userinfo エンドポイントは読みません |
+| ID トークンのクレーム | `email` と `email_verified`、それと人の役割が入るクレーム。このパッケージは ID トークンだけを読み、userinfo エンドポイントは読みません |
 | ログアウト後のリダイレクト URI | プロバイダーからもログアウトさせるとき（`Config.ProviderLogout`）だけ |
 
 登録すると、issuer の URL、クライアント ID、クライアントシークレットを受け取ります。issuer は、プロバイダーのディスカバリーの文書（`<issuer>/.well-known/openid-configuration`）に書かれたとおりに設定してください。末尾の `/` が一つ多くても少なくても別の issuer になり、`New` が受け付けません。
@@ -32,7 +32,7 @@
 head -c 32 /dev/urandom | base64
 ```
 
-作った鍵は、たとえば `RINGI_SESSION_KEYS` でサーバーに渡し、`oidc.ParseKeys` で読みます。鍵を入れ替えるときは、新しい鍵を先頭に置いて古い鍵をカンマで区切って後ろに残し、いちばん長いセッションが終わるだけの時間（既定は 12 時間）がたったら、古い鍵を外します。パスフレーズを base64 にしたものや 32 個のゼロのように、32 バイトの乱数でない鍵は、`New` が受け付けません。鍵を当てた人は、だれのセッションでも作れてしまうからです。
+作った鍵は、たとえば `RINGI_SESSION_KEYS` でサーバーに渡し、`oidc.ParseKeys` で読みます。鍵を入れ替えるときは、新しい鍵を先頭に置いて古い鍵をコンマで区切って後ろに残し、いちばん長いセッションが終わるだけの時間（既定は 12 時間）がたったら、古い鍵を外します。パスフレーズを base64 にしたものや 32 個のゼロのように、32 バイトの乱数でない鍵は、`New` が受け付けません。鍵を当てた人は、だれのセッションでも作れてしまうからです。
 
 ## 使い方
 
@@ -48,7 +48,7 @@ signin, err := oidc.New(ctx, oidc.Config{
 	ClientSecret: os.Getenv("RINGI_OIDC_CLIENT_SECRET"),
 	RedirectURL:  "https://requests.example.test/login/callback",
 	Keys:         keys,
-	Map:          oidc.Roles(people, "roles"), // クレーム "roles" にあるロール。gate が読む
+	Map:          oidc.Roles(people, "roles"), // クレーム "roles" にある役割。gate が読む
 	Revocations:  store,                       // PostgreSQL のストア。ログアウトがサーバーのどのプロセスでも効く
 })
 srv, err = server.New(server.Config{…, Store: store, Authenticator: signin})
@@ -62,7 +62,7 @@ signin.Mount(h) // GET /login、GET /login/callback、POST /logout。ハンド�
 
 `New` はプロバイダーのディスカバリーの文書と鍵を読みます。そのため、issuer の誤りや、プロバイダーにつながらないことは、最初のログインのときではなく、サーバーの起動のときにわかります。ページと画面のハンドラー（パッケージ `web`）を使わないときは、`Mount` に `*http.ServeMux` を渡します（DESIGN.ja.md の 10 節）。
 
-人のロールは、最後にログインしたときの ID トークンにあるものです。ID トークンにそのクレームがなければ、ロールはありません。グループを ID で挙げるプロバイダーでは、その ID がロールになります。gate は、プロバイダーが送る値に合わせて書いてください。
+人の役割は、最後にログインしたときの ID トークンにあるものです。ID トークンにそのクレームがなければ、役割はありません。グループを ID で挙げるプロバイダーでは、その ID が役割になります。gate は、プロバイダーが送る値に合わせて書いてください。
 
 利用者から見えること：
 

@@ -84,7 +84,7 @@ err = tools.Serve(ctx, &sdkmcp.StdioTransport{}, server.Person{ID: "e1201"})
 
 | フィールド | 何か |
 |---|---|
-| `Verify` | `func(ctx, token string, r *http.Request) (Token, error)`。ベアラートークンが表す人を答える。`Token` は、`Person`（ロールを含む。`Authenticator` が API に渡すのと同じ形）、`Expires`（ゼロなら言わない）、`Scopes` を持つ |
+| `Verify` | `func(ctx, token string, r *http.Request) (Token, error)`。ベアラートークンが表す人を答える。`Token` は、`Person`（役割を含む。`Authenticator` が API に渡すのと同じ形）、`Expires`（ゼロなら言わない）、`Scopes` を持つ |
 | `ResourceMetadataURL` | `Verify` と一緒に使う。保護されたリソースのメタデータ（RFC 9728）の URL。401 の `WWW-Authenticate` ヘッダーで知らせる（5） |
 | `Scopes` | `Verify` と一緒に使う。トークンが持つべきスコープ。持たないトークンには 403 を返す |
 | `Person` | `func(r *http.Request) (server.Person, error)`。要求を送った人を、サーバーのログインが見つけるとおりに答える。パッケージ `serve` のルート（`Stores.Handle`）の後ろでは `serve.Person`、ほかの形で出すハンドラーでは `Server.Authenticate`（5） |
@@ -353,7 +353,7 @@ initialize の答えは、エージェントへの説明を持つ。種類は `l
   `not_found` になり、チケットの中身は何も返らず、その人たちの物は何も残らないこと。申請者と受け持つ部門の人は
   承認できない（`person`）こと。`list_mine` が自分のチケットだけを答えること。
 - `httptest` での streamable HTTP。トークンが無ければ 401、大きすぎる要求は 413 で、人のエージェントがツールを
-  並べ、一つ呼べること。`Verify` が渡したロールが gate に届くこと。
+  並べ、一つ呼べること。`Verify` が渡した役割が gate に届くこと。
 - `HTTP.Person` を使う形（`TestHandlerByPerson`）。`Verify` と `Person` のどちらも無いときと両方あるとき、`Person`
   にベアラートークンの設定を添えたときに、`Handler` が断ること。人がいなければ 401、`Person` が失敗すれば 500 で、
   どちらも本文が API と同じこと。公開の `Host` への要求も受けること。人のエージェントがその人として申請を出し、文が
@@ -361,7 +361,7 @@ initialize の答えは、エージェントへの説明を持つ。種類は `l
 - `serve` が動かすサーバーの `/mcp`（`TestServedByServe`）。`X-Person` ヘッダーと `-dev-login` のそれぞれで、人が
   いないとき、組織にいない人のとき、もう一方の方法のヘッダーやクッキーのとき、公開の `Host` のときに、ツールに届く
   前に 401 になること。人のエージェントがツールを並べ、申請を出して読めること。承認する人のエージェントにそれが
-  待っているチケットとして見え、gate が断る `approve` がツールのエラーになること。`X-Roles` のロールが gate に
+  待っているチケットとして見え、gate が断る `approve` がツールのエラーになること。`X-Roles` の役割が gate に
   届くこと。
 - 同じキーで同じ呼び出しをもう一度送っても、チケットが一つであること。
 - `check_operation` が何も保存せず、呼び出しが答えるはずの物を答えること。使い切った予算が見え、帳簿は確かめが

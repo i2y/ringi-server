@@ -9,7 +9,7 @@
 | PostgreSQL のデータベース | 表は、サーバーがスキーマ `ringi` に自分で作る。データベースのユーザーには、スキーマを作る権限が要る（`grant create on database ringi to ringi_server`）。接続先は、データベースそのものか、セッションモードのプーラーにする。チケットのロックを接続が持つため。試験は PostgreSQL 18 で行っている |
 | OpenID Connect のプロバイダーのクライアント | シークレットを持つ、認可コードフローのクライアント。リダイレクト URI は `https://<ホスト>/login/callback`。頼むことの一覧は [oidc/README.ja.md](../oidc/README.ja.md) にある |
 | 組織のデータにあるメールアドレス | `people.csv` の列 `email`。プロバイダーが確認済みとしているものと同じにする。ログインした人をこれで探す |
-| だれが管理者かを示すもの | 人のロールを並べた、プロバイダーの ID トークンのクレーム（[管理者](#管理者)） |
+| だれが管理者かを示すもの | 人の役割を並べた、プロバイダーの ID トークンのクレーム（[管理者](#管理者)） |
 | https | サーバーの証明書か、手前で https を受けるプロキシ |
 | 通知 | プロジェクトの Notifier。`ritsu ringi init` が書くものは、ログに出すだけ |
 | 時刻の同期 | 期限とセッションは、それぞれのマシンの時計で数える。マシンの時刻を合わせておく |
@@ -26,9 +26,9 @@
 | `-oidc-client-id` | クライアントの ID |
 | `RINGI_OIDC_CLIENT_SECRET` | クライアントのシークレット（または `-oidc-client-secret`） |
 | `-oidc-redirect-url` | プロバイダーから戻ってくる URL。プロバイダーに登録したもの |
-| `-oidc-roles-claim` | 人のロールを並べた、ID トークンのクレーム。なければ、プロバイダーはだれにもロールを与えない |
-| `-oidc-scopes` | `openid`、`email`、`profile` のほかに求めるスコープ。ロールを ID トークンに入れるのに要るプロバイダーで使う |
-| `RINGI_SESSION_KEYS` | セッションのクッキーの鍵。32 バイトの乱数の base64 を、新しい順に、カンマで区切って並べる（または `-session-keys`） |
+| `-oidc-roles-claim` | 人の役割を並べた、ID トークンのクレーム。なければ、プロバイダーはだれにも役割を与えない |
+| `-oidc-scopes` | `openid`、`email`、`profile` のほかに求めるスコープ。役割を ID トークンに入れるのに要るプロバイダーで使う |
+| `RINGI_SESSION_KEYS` | セッションのクッキーの鍵。32 バイトの乱数の base64 を、新しい順に、コンマで区切って並べる（または `-session-keys`） |
 | `-tls-cert`、`-tls-key` | 証明書とその鍵。プロキシなしで https を受けるとき |
 
 セッションの鍵は `head -c 32 /dev/urandom | base64` で作り、取っておきます。なくすと、全員がログインし直すことになります。データベースのパスワードは、`-db` に書く代わりに、`PGPASSWORD` か `.pgpass` ファイルに置けます。
@@ -53,17 +53,17 @@ export PGPASSWORD='データベースのパスワード'
 
 ### 管理者
 
-だれが何をしてよいかは、人のロールを見て gate が決めます。`ritsu ringi init` が書く gate と例の gate には、`staff` のほかに三つあります。
+だれが何をしてよいかは、人の役割を見て gate が決めます。`ritsu ringi init` が書く gate と例の gate には、`staff` のほかに三つあります。
 
-| ロール | できること |
+| 役割 | できること |
 |---|---|
 | `workflow_admin` | 自分の部署が持つ申請の種類を管理する |
 | `system_admin` | すべての申請の種類と、組織のデータを管理する |
 | `auditor` | すべての記録を読む。何も変えられない |
 
-人に使ってもらうサーバーでは、ロールはプロバイダーから来ます。ロールを並べたクレームの名前を `-oidc-roles-claim` で渡します。値が文字列か、文字列のリストのクレームです。ロールはセッションのクッキーに入るので、このサーバーのロールだけを並べたクレームにします。クッキーに入りきらないほどあると、ログインできません。gate にないロールは無視し、そのことを一度だけログに書きます。gate のロールを一つも持たない人は `staff` です。プロバイダーで変えたロールは、その人が次にログインしたときから効きます。
+人に使ってもらうサーバーでは、役割はプロバイダーから来ます。役割を並べたクレームの名前を `-oidc-roles-claim` で渡します。値が文字列か、文字列のリストのクレームです。役割はセッションのクッキーに入るので、このサーバーの役割だけを並べたクレームにします。クッキーに入りきらないほどあると、ログインできません。gate にない役割は無視し、そのことを一度だけログに書きます。gate の役割を一つも持たない人は `staff` です。プロバイダーで変えた役割は、その人が次にログインしたときから効きます。
 
-これらのロールを持つ人のホームには、管理へのリンクが出ます。そこで、申請の種類の版を切り替え、組織のデータを確かめて取り込みます。
+これらの役割を持つ人のホームには、管理へのリンクが出ます。そこで、申請の種類の版を切り替え、組織のデータを確かめて取り込みます。
 
 ![組織のデータの管理のページ。今の版と、新しいデータを確かめるボタン](images/organization.ja.webp)
 
@@ -197,7 +197,7 @@ from pg_stat_user_tables where schemaname = 'ringi' order by pg_total_relation_s
 
 ## 秘密と証明書を替える
 
-- **セッションの鍵。** 新しい鍵を先頭に、古い鍵をそのあとに、カンマで区切って並べ、すべてのプロセスを起動し直します。12 時間たったら古い鍵を外します。
+- **セッションの鍵。** 新しい鍵を先頭に、古い鍵をそのあとに、コンマで区切って並べ、すべてのプロセスを起動し直します。12 時間たったら古い鍵を外します。
 - **クライアントのシークレット。** プロバイダーと `RINGI_OIDC_CLIENT_SECRET` で替え、起動し直します。ログインしている人は、ログインしたままです。
 - **証明書。** 起動のときに読みます。ファイルを更新したら、起動し直します。
 - **漏れた鍵。** 古い鍵を入れずに、新しい鍵だけにします。全員がログインし直します。
@@ -209,7 +209,7 @@ from pg_stat_user_tables where schemaname = 'ringi' order by pg_total_relation_s
 | ログ | すること |
 |---|---|
 | `signing in through the provider takes …, and these are missing: …` | 挙がっているものを渡す |
-| `… checks no one, so it listens only on a loopback address …` | プロバイダーの設定がない。設定がないと、自分のコンピュータでしか使えない |
+| `… checks no one, so it listens only on a loopback address …` | プロバイダーの設定がない。設定がないと、自分のコンピューターでしか使えない |
 | `the environment has RINGI_SESSION_KEYS, a setting of signing in through the provider, and … checks no one` | `-oidc-…` のフラグを渡すか、その環境変数を外す |
 | `-session-keys: oidc: key 1 has 33 bytes, not 32` | 鍵を `head -c 32 /dev/urandom \| base64` で作る |
 | `the -oidc-… settings: oidc: the provider's discovery document: …` | issuer の書き方がプロバイダーと違う。または、プロバイダーに届かない |

@@ -61,7 +61,7 @@ type Claims struct {
 func (c Claims) Strings(name string) []string // 文字列か、文字列のリストのクレーム
 
 func ByEmail(people People) Map              // 確認済みのメールアドレスの人
-func Roles(m Map, claim string) Map           // m の作る人に、クレームにあるロールを足す
+func Roles(m Map, claim string) Map           // m の作る人に、クレームにある役割を足す
 func PeopleOf(ctx context.Context, srv *server.Server) ([]server.OrgPerson, error)
 type People func(ctx context.Context) ([]server.OrgPerson, error)
 ```
@@ -77,7 +77,7 @@ type Revocations interface {
 func NewMemoryRevocations() *MemoryRevocations // プロセスが一つのとき
 ```
 
-`ParseKeys(text)` は、クッキーの鍵をテキストから読みます。鍵は base64 で一つ 32 バイト、カンマか空白で区切り、新しいものを先に書きます。
+`ParseKeys(text)` は、クッキーの鍵をテキストから読みます。鍵は base64 で一つ 32 バイト、コンマか空白で区切り、新しいものを先に書きます。
 
 ## 3. ログインの流れ
 
@@ -190,12 +190,12 @@ Browser                     Server (this package)                        Provide
 |---|---|
 | `v` | この形の版（1） |
 | `id` | セッションの ID。16 バイトの乱数の base64url で、ログインのたびに新しくする |
-| `p`、`r` | `Map` が作った人の ID とロール |
+| `p`、`r` | `Map` が作った人の ID と役割 |
 | `s` | トークンの `sub` |
 | `at` | ログインした時刻（Unix 秒） |
 | `seen` | 最後に更新した時刻（6.3 節） |
 
-トークンのほかの中身は残しません。ブラウザが保存できる大きさ（クッキーの名前と属性を含めて 4,096 バイト）を超えるセッションは、ログインのときにエラーのページを出し、ログに書きます。大きくなるのはロールだけです。
+トークンのほかの中身は残しません。ブラウザが保存できる大きさ（クッキーの名前と属性を含めて 4,096 バイト）を超えるセッションは、ログインのときにエラーのページを出し、ログに書きます。大きくなるのは役割だけです。
 
 ### 6.2 鍵の入れ替え
 
@@ -228,9 +228,9 @@ Browser                     Server (this package)                        Provide
 
 `people` は、今日有効な組織の版の人を返します。`PeopleOf(ctx, srv)` はそれをサーバーから読みます（`Server.People`）。サーバーが持つスナップショットを読むので、どのチケットでもサーバーが使うのと同じ人になります。人をほかから読む配備では、その関数を渡してください。
 
-`Roles(m, claim)` は、`m` が作る人に、クレーム（`groups` のような、文字列か文字列のリスト）にあるロールを足します。ゲートが使うロールです。パッケージ `serve` は、`-oidc-roles-claim` のクレームで、これを使います。人のロールは、ログインしたときにプロバイダーが渡したものです。プロバイダーでの変更は、次のログインで反映されます。
+`Roles(m, claim)` は、`m` が作る人に、クレーム（`groups` のような、文字列か文字列のリスト）にある役割を足します。ゲートが使う役割です。パッケージ `serve` は、`-oidc-roles-claim` のクレームで、これを使います。人の役割は、ログインしたときにプロバイダーが渡したものです。プロバイダーでの変更は、次のログインで反映されます。
 
-組織のデータから外れた人や、ロールが変わった人も、今のセッションは上限まで使えます。もっと早く終わらせるには `Config.Revocations` を使います。
+組織のデータから外れた人や、役割が変わった人も、今のセッションは上限まで使えます。もっと早く終わらせるには `Config.Revocations` を使います。
 
 ## 8. 答え
 
