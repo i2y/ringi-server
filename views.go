@@ -323,16 +323,16 @@ func (s *Server) mayMakeOn(ctx context.Context, k *kind, p Person, requester str
 	if usable && !k.usable(day) {
 		return false, nil
 	}
-	part, ov, err := snap.part(k, day)
-	if err != nil || part == nil {
-		return false, err
+	ov := snap.at(day)
+	if ov == nil {
+		return false, nil
 	}
 	var by any
 	if requester != p.ID {
 		by = p.ID
 	}
 	probe := object("submit", object("id", "probe", "requester", requester, "by", by, "form", json.RawMessage("{}"), "comment", nil, "attempt", "probe"))
-	out, err := s.call(k, true, nil, probe, part, now)
+	out, err := s.call(k, true, nil, probe, snap, now)
 	if err != nil {
 		return false, err
 	}

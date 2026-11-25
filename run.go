@@ -349,14 +349,11 @@ func (s *Server) tryOnce(ctx context.Context, in *input) (Reply, error) {
 		event = submitOf(in.newID, in.submit.requester, in.submit.by, in.submit.form, in.submit.comment, in.attempt)
 	}
 	day := k.day(in.now)
-	var part json.RawMessage
 	var ov *orgVersion
 	if snap != nil {
-		if part, ov, err = snap.part(k, day); err != nil {
-			return Reply{}, err
-		}
+		ov = snap.at(day)
 	}
-	if part == nil {
+	if ov == nil {
 		return s.refuse(ctx, in, k, event, &refusal{Refused: "data", Text: "no version of the organization is in effect on " + day, TextJa: jatext.Join(day, "に効いている組織の版がありません")})
 	}
 	if in.person != nil && in.action != "" {
@@ -374,7 +371,7 @@ func (s *Server) tryOnce(ctx context.Context, in *input) (Reply, error) {
 			return r, err
 		}
 	}
-	out, err := s.call(k, view == nil, rec.Body, event, part, in.now)
+	out, err := s.call(k, view == nil, rec.Body, event, snap, in.now)
 	if err != nil {
 		if text, ok := entryInput(err); ok && in.person != nil {
 			// What the person sent is outside what the entry takes: their request is invalid, in
@@ -393,10 +390,17 @@ func (s *Server) tryOnce(ctx context.Context, in *input) (Reply, error) {
 	return s.save(ctx, in, k, rec, view, event, ans, snap)
 }
 
-// call calls a kind's entry. An error or a panic of the entry is the server's failure (the
-// contract's answers are ok and err), but for the entry's refusal of what a person sent
-// (entryInput).
-func (s *Server) call(k *kind, start bool, ticket, event, part json.RawMessage, now time.Time) (out json.RawMessage, err error) {
+// call calls a kind's entry, with the part of the organization the event is given. An error or a
+// panic of the entry is the server's failure (the contract's answers are ok and err), but for the
+// entry's refusal of what a person sent (entryInput).
+func (s *Server) call(k *kind, start bool, ticket, event json.RawMessage, snap *orgSnapshot, now time.Time) (out json.RawMessage, err error) {
+	part, err := snap.part(k, k.day(now), ticket, event)
+	if err != nil {
+		return nil, err
+	}
+	if part == nil {
+		return nil, fmt.Errorf("%s: no version of the organization is in effect on %s", k.Name, k.day(now))
+	}
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(error); ok {

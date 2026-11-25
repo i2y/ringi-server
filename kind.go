@@ -83,6 +83,9 @@ func (p *Package) Kinds() []Kind {
 // Files answers the package's requests directory.
 func (p *Package) Files() fs.FS { return p.files }
 
+// Lang answers the language the package's entries write the sentences of their errors in.
+func (p *Package) Lang() string { return p.lang }
+
 // Load reads a generated package: contract is ticketkinds.Contract, lang is ticketkinds.Lang (the
 // language the entries write the sentences of their errors in), kinds is ticketkinds.Kinds, and
 // requests is the directory `ritsu gen --target requests` wrote (openapi.json, types/, vectors/).
@@ -154,6 +157,9 @@ func LoadKinds(contract int, lang string, kinds []Kind, requests fs.FS) (*Packag
 		if d.SelfApproval == nil {
 			return nil, fmt.Errorf("types/%s.json has no self_approval, which ritsu writes for every kind of contract %d", k.Name, contract)
 		}
+		if d.Organization.Needs == nil {
+			return nil, fmt.Errorf("types/%s.json has no organization.needs, which ritsu writes for every kind of contract %d", k.Name, contract)
+		}
 		zone, err := zoneOf(*d.UTCOffsetMinutes)
 		if err != nil {
 			return nil, fmt.Errorf("types/%s.json: %w", k.Name, err)
@@ -211,12 +217,15 @@ type description struct {
 		Through *string `json:"through"`
 	} `json:"usable"`
 	// Organization is the organization the kind reads: its positions (the lowest first) and kinds of
-	// team (the widest first), each by the name it is declared by and the one its file writes it in.
+	// team (the widest first), each by the name it is declared by and the one its file writes it in,
+	// and what the part of it every event is given has (part). Load refuses a description with no
+	// Needs.
 	Organization struct {
 		Name      string        `json:"name"`
 		Data      string        `json:"data"`
 		Positions []orgDeclared `json:"positions"`
 		TeamKinds []orgDeclared `json:"team_kinds"`
+		Needs     *orgNeeds     `json:"needs"`
 	} `json:"organization"`
 	Events  []string `json:"events"`
 	Masters []struct {
@@ -231,6 +240,7 @@ type description struct {
 			// Written is the name the .ringi file writes the field in, which its file may write
 			// its column in too.
 			Written string `json:"written"`
+			Type    string `json:"type"`
 			// Optional is whether the field may be left empty: its column may be left out of the
 			// file, as its cells left empty (the organization's columns.md says "Needed: no").
 			Optional bool `json:"optional"`
@@ -242,7 +252,8 @@ type description struct {
 	// either null.
 	UTCOffsetMinutes *int  `json:"utc_offset_minutes"`
 	SelfApproval     *bool `json:"self_approval"`
-	// Form is the form's fields, of which the framework reads where the attachments are.
+	// Form is the form's fields, of which the framework reads where the attachments are, and the
+	// people, the teams and the rows of the masters a part is cut for.
 	Form []descField `json:"form"`
 }
 

@@ -41,7 +41,8 @@ The framework holds the code that does not depend on any kind of request:
 
 It knows no kind's types. It passes the JSON of the contract between the API and the generated
 entries, and reads only the parts of that JSON every kind shares (a ticket's status, its stages and
-their approvers, the things to do).
+their approvers, the things to do). Of a form it reads the values of the fields that the kind's
+description says name a person, a team or a row of a master (9.2), or hold files (2.3).
 
 You swap these:
 
@@ -771,15 +772,16 @@ An operation of a person (`Do`):
    submit, the new ticket's ID (`Store.Begin`), before anything is asked of the books. Given again
    with its key before its reply is kept, the operation goes on as the same try, with the same
    names. The ticket is read with its number, which a save raises by one, and a person who may not
-   see it is answered 404 (10.3). The part of the organization is made for the event's day in the
+   see it is answered 404 (10.3). The organization is the version in effect on the event's day in the
    kind's offset (9.2). When no version is in effect on that day, the framework refuses the event as
    `data` itself.
 4. **Gate.** The event is made from the body and the person (`by` is the person; a request made for
    someone else names them in `requester`; a submit and a resubmit carry the name of their try,
    `attempt`, which the API's body does not have). The gate is asked with the values of 8. If it
    says no, the event is refused as `person`.
-5. **`start` or `next`.** The kind's entry is called with the ticket, the event, the part and the
-   time. A refusal is answered (409) and kept with the key: the ticket does not change.
+5. **`start` or `next`.** The kind's entry is called with the ticket, the event, the part of the
+   organization the two need (9.2) and the time. A refusal is answered (409) and kept with the key:
+   the ticket does not change.
 6. **Save.** The move is saved in one transaction (4.1): the ticket, if its number is still the one
    read; the move, with the things to do `next` answered; the timers it sets and cancels, and the
    one that rang; the things to do after the save; who the ticket now waits for, and since when; the
@@ -1303,11 +1305,11 @@ says how long to wait; one it takes no more of may not.
 `Can` is asked as the screen is made, and the ticket may move before the button is pressed: the
 operation is asked of the gate and of `next` again.
 
-A screen costs a `next` for each event the gate allows, and each reads the whole part of the
-organization (9.2): the server asks them at once, each on a goroutine of its own, so that an approver's
-card takes about as long as an operation. On a laptop it takes 0.7 ms for the 24 people of the
-examples, 14 ms for 1,200 people, 58 ms for 5,000 and 220 ms for 20,000. Cutting the part down to
-what a ticket needs (9.2) would cut this with the rest.
+A screen costs a `next` for each event the gate allows, each with the part of the organization its
+event needs (9.2). The server asks them at once, each on a goroutine of its own, so that an approver's
+card takes about as long as an operation: about a millisecond on a laptop (0.6 to 1.6 ms), for the 24
+people of the examples as for 1,200, 5,000 and 20,000 people. The start page, which asks `start` of
+every kind (10.1), takes about as long (0.7 to 0.8 ms).
 
 A screen that does not run an operation, as its button is not offered now, can still be sent one
 that was taken: a button pressed twice, the page before gone back to.
@@ -1371,25 +1373,41 @@ organization is read by its people only, and x9999 is not in the version in effe
 
 ### 9.2 The part an event is given with
 
-`start` and `next` read the organization from the part they are given. The framework gives:
+`start` and `next` read the organization from the part they are given, and from nothing else. The
+server cuts the part for each ticket and event, as the contract says (ringi's DESIGN 7.5):
 
 - `day`: the event's day, read in the kind's UTC offset;
-- `version`: the day of the version in effect that day, with all its teams, people and members;
-  each person is their ID and their names (`{"id", "name", "name_ja"}`, "" for a name the data does
-  not give), by which the entries name a person in a refusal's words: `e1201 (Sales staff 1)`,
-  `e1201（営業担当 1）`, and `e1201` alone for a person with no name (an import refuses one, 13.3;
-  a store written to in another way may still hold one);
+- `version`: the day of the version in effect that day;
+- `teams`, `people` and `members`: the teams and the people of that version the ticket and the event
+  need, and what those people are members of, each in the order of the data. A person is their ID and
+  their names (`{"id", "name", "name_ja"}`, "" for a name the data does not give), by which the
+  entries name a person in a refusal's words: `e1201 (Sales staff 1)`, `e1201（営業担当 1）`, and
+  `e1201` alone for a person with no name (an import refuses one, 13.3; a store written to in another
+  way may still hold one);
 - `positions`: the kind's positions, the lowest first;
-- `proxies`: the proxies in effect that day that name the kind (or name none);
-- `rows`: of each master the kind reads, the rows that may be chosen that day (`valid_from`,
-  `valid_to`), named as the kind names the master.
+- `proxies`: the proxies in effect that day that name the kind (or name none), of the people of the
+  part;
+- `rows`: the rows the form chose of the masters the kind reads, of the rows that may be chosen that
+  day (`valid_from`, `valid_to`), named as the kind names the master.
 
-ritsu cuts the part down to what one ticket needs; the framework does not, because which people and
-teams a route names is not in the kinds' descriptions. A whole version answers the same: each of the
-2,990 vectors of the examples answers the same with the whole version as with the part it was written
-with (the conformance test gives every vector the whole version). The part a ticket needs could be
-cut later, for a large organization, without changing any answer. A part is made once for a kind, a
-version of it and a day, and kept with the snapshot.
+What a ticket and an event need starts from three things. The ticket and the event name people: the
+requester, who made it, each approver, who answered and whose seat it was, who gives the event, and
+the approver it adds or hands a part over from and to. The form names people and teams, and chooses
+rows of masters, whose people it names too; which fields those are is in the kind's description
+(`form`, `masters`). And the kind names people and teams whatever the ticket: its description lists
+them as `organization.needs` (`people`, `teams`, and `members_of`, the teams with every member, as the
+team a part is asked of is too). To these the server adds, until there is nothing to add, the teams of
+each person, the teams above each team and their heads, and the proxies in effect who stand in for
+someone of the part.
+
+The entries answer the same with more of the organization (ritsu's tests hold them to it with the
+whole version), so the cut changes no answer. It changes what an event costs: a part holds the few
+people and teams of one ticket, however large the organization is. `conformance.Vectors` (12) holds
+the server to the cut of every vector.
+
+`Load` refuses a description with no `organization.needs`, which ritsu writes for every kind. Where
+each person, team, member and row of a master is in the data is put in an index the first time a part
+asks for it, and kept with the snapshot.
 
 ### 9.3 The UTC offset and self approval
 
@@ -1626,7 +1644,8 @@ Ten tests check a server against the contract, and all run on any store:
   no `attempt`: the server is given the vector's name for the try (`Config.NewAttempt`). The reply and
   the things to do the store kept must be what the vector says: a refusal of the same kind at the
   same place (`at`; its texts are not compared, as ringi's DESIGN 12.4 says), or the same ticket and
-  the same things to do (a null the same as a missing key, keys in any order). Each answer of the
+  the same things to do (a null the same as a missing key, keys in any order). The part of the
+  organization the kind's entry was called with must be the vector's (9.2). Each answer of the
   HTTP handler must also be of the shape the contract gives the operation's answer of that status
   (`Package.CheckAnswer`, with the checker of 7.2). Before a person's event on a ticket is given,
   `Can` (8.1) must say what the vector says of it: that the person may give it, when the vector takes

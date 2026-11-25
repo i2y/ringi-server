@@ -52,11 +52,8 @@ func (s *Server) Can(ctx context.Context, p Person, ticket string, events []stri
 		return out, nil
 	}
 	day := k.day(now)
-	part, ov, err := snap.part(k, day)
-	if err != nil {
-		return nil, err
-	}
-	if part == nil {
+	ov := snap.at(day)
+	if ov == nil {
 		return out, nil
 	}
 	if see, err := s.maySee(ctx, p, k, rec, t, snap, now); err != nil || !see {
@@ -76,11 +73,11 @@ func (s *Server) Can(ctx context.Context, p Person, ticket string, events []stri
 			allowed = append(allowed, e)
 		}
 	}
-	// `next` is asked of the events at once: it reads the whole part of the organization each time.
+	// `next` is asked of the events at once: a screen waits for the longest of them, not for them all.
 	takes, errs := make([]bool, len(allowed)), make([]error, len(allowed))
 	var asking sync.WaitGroup
 	for i, e := range allowed {
-		asking.Go(func() { takes[i], errs[i] = s.accepts(ctx, p, k, rec, t, ov, part, e, now) })
+		asking.Go(func() { takes[i], errs[i] = s.accepts(ctx, p, k, rec, t, snap, ov, e, now) })
 	}
 	asking.Wait()
 	if err := errors.Join(errs...); err != nil {
@@ -114,11 +111,11 @@ var asItIs = map[string]bool{"state": true, "person": true, "event": true, "limi
 // none of what may be asked of it (asked) for what the ticket is or who the person is (asItIs). Of
 // a comment, the server is asked too whether it takes another from the person (DESIGN 7.4): one it
 // takes later is one they may make.
-func (s *Server) accepts(ctx context.Context, p Person, k *kind, rec TicketRecord, t *ticketView, ov *orgVersion, part json.RawMessage, event string, now time.Time) (bool, error) {
+func (s *Server) accepts(ctx context.Context, p Person, k *kind, rec TicketRecord, t *ticketView, snap *orgSnapshot, ov *orgVersion, event string, now time.Time) (bool, error) {
 	takes := false
 	for _, body := range asked(event, t, ov) {
 		body["revision"], body["comment"] = t.Revision, json.RawMessage(`"."`)
-		out, err := s.call(k, false, rec.Body, eventOf(event, p.ID, body, "asked"), part, now)
+		out, err := s.call(k, false, rec.Body, eventOf(event, p.ID, body, "asked"), snap, now)
 		if err != nil {
 			return false, err
 		}

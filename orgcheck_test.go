@@ -62,7 +62,8 @@ func kindType(name string, version int, from string, through any, accounts bool)
 			"positions": []map[string]string{{"name": "staff", "written": "staff"}, {"name": "manager", "written": "課長"},
 				{"name": "dept_head", "written": "部長"}},
 			"team_kinds": []map[string]string{{"name": "company", "written": "company"}, {"name": "department", "written": "部"},
-				{"name": "section", "written": "section"}}},
+				{"name": "section", "written": "section"}},
+			"needs": map[string][]string{}},
 		"events": []string{}, "masters": []any{}, "utc_offset_minutes": 540, "self_approval": false}
 	if accounts {
 		d["masters"] = []map[string]any{{"name": "accounts", "masters": "co_masters", "master": "accounts", "key": "code", "name_field": "label",
@@ -664,33 +665,6 @@ func TestCheckOrganizationStops(t *testing.T) {
 	v.People = v.People[:400]
 	if err := s.CheckOrganization(&OrgData{Versions: []OrgVersion{v}}); !errors.As(err, &ps) || len(ps.Problems) < 800 || ps.Stopped {
 		t.Errorf("the check of 800 problems and more: %v", err)
-	}
-}
-
-// A snapshot keeps keptParts parts made at the most, whatever the days they are of.
-func TestSnapshotPartsKept(t *testing.T) {
-	s := testOrgServer(t)
-	d, err := ReadOrgFiles(orgFiles(), s.layout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	snap, err := s.checked(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	o, err := newSnapshot(snap)
-	if err != nil {
-		t.Fatal(err)
-	}
-	k := s.kinds["trip"][0]
-	day := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
-	for i := range 3 * keptParts {
-		if p, _, err := o.part(k, day.AddDate(0, 0, i).Format(time.DateOnly)); err != nil || p == nil {
-			t.Fatalf("the part of day %d: %s %v", i, p, err)
-		}
-	}
-	if n := len(o.parts); n > keptParts {
-		t.Errorf("the snapshot keeps %d parts made, past %d", n, keptParts)
 	}
 }
 

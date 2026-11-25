@@ -115,8 +115,8 @@ func TestOrgLanguage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	part, _, err := o.part(k, "2026-11-18")
-	if err != nil || part == nil || strings.Contains(string(part), "language") || strings.Contains(string(part), `"ja"`) {
+	part, err := o.part(k, "2026-11-18", nil, submitOf("T-1", "p1", nil, json.RawMessage("{}"), null, "A-1"))
+	if err != nil || !strings.Contains(string(part), `"p1"`) || strings.Contains(string(part), "language") || strings.Contains(string(part), `"ja"`) {
 		t.Errorf("the part of the organization: %s %v", part, err)
 	}
 }

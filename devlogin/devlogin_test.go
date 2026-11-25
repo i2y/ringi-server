@@ -40,7 +40,7 @@ const tripAPI = `{"openapi":"3.1.0","x-ritsu-contract":3,"paths":{
 
 const tripType = `{"contract":3,"name":"trip","written":"trip","version":1,"title":"Trip","file":"trip.ringi","owner":"office",
 "effective_from":null,"usable":{"from":"2026-01-01","through":null},
-"organization":{"name":"co","data":"org","positions":[{"name":"staff"}],"team_kinds":[{"name":"department"}]},"events":[],"masters":[],
+"organization":{"name":"co","data":"org","positions":[{"name":"staff"}],"team_kinds":[{"name":"department"}],"needs":{"people":[],"teams":[],"members_of":[]}},"events":[],"masters":[],
 "utc_offset_minutes":540,"self_approval":false}`
 
 var tripKinds = []server.Kind{{Name: "trip", Version: 1,

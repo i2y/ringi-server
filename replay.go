@@ -49,13 +49,9 @@ func (s *Server) Replay(ctx context.Context, ticket string) ([]json.RawMessage, 
 		if err != nil {
 			return nil, err
 		}
-		part, _, err := snap.part(k, k.day(m.At))
-		if err != nil || part == nil {
-			return nil, fmt.Errorf("%s: the move %d has no part of the organization: %v", ticket, m.Number, err)
-		}
-		got, err := s.call(k, cur == nil, cur, m.Event, part, m.At)
+		got, err := s.call(k, cur == nil, cur, m.Event, snap, m.At)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: the move %d: %w", ticket, m.Number, err)
 		}
 		ans, err := readAnswer(got)
 		if err != nil {

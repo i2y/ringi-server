@@ -757,6 +757,7 @@ func TestLoadRefuses(t *testing.T) {
 	for _, c := range []struct{ from, to, want string }{
 		{`"utc_offset_minutes":540`, `"utc_offset_minutes":null`, "types/trip.json has no utc_offset_minutes, which ritsu writes for every kind of contract 3"},
 		{`"self_approval":false`, `"self_approval":null`, "types/trip.json has no self_approval, which ritsu writes for every kind of contract 3"},
+		{`"needs":{"people":[],"teams":[],"members_of":[]}`, `"needs":null`, "types/trip.json has no organization.needs, which ritsu writes for every kind of contract 3"},
 		{`"utc_offset_minutes":540`, `"utc_offset_minutes":1440`, "types/trip.json: the UTC offset of 1440 minutes is not one of a day"},
 	} {
 		if err := bad(func(f fstest.MapFS) {

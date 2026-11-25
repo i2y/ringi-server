@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strconv"
 	"sync"
 )
 
@@ -170,13 +169,19 @@ type orgSnapshot struct {
 	id       string
 	data     *OrgData
 	versions []*orgVersion
-	mu       sync.Mutex
-	parts    map[string]json.RawMessage
+	// where the rows of each key of a master are, made when a part first asks for one (keyed)
+	mu   sync.Mutex
+	rows map[string]map[string][]int
 }
 
 type orgVersion struct {
 	*OrgVersion
 	people map[string]*OrgPerson
+	// where each person and team is in the version's lists, and the rows of the members of each
+	// person and of each team, made when a part is first cut from the version (index)
+	indexed          sync.Once
+	personAt, teamAt map[string]int
+	ofPerson, ofTeam map[string][]int
 }
 
 func newSnapshot(s OrgSnapshot) (*orgSnapshot, error) {
@@ -184,7 +189,7 @@ func newSnapshot(s OrgSnapshot) (*orgSnapshot, error) {
 	if err := json.Unmarshal(s.Data, &d); err != nil {
 		return nil, fmt.Errorf("the organization's snapshot %s: %w", s.ID, err)
 	}
-	o := &orgSnapshot{id: s.ID, data: &d, parts: map[string]json.RawMessage{}}
+	o := &orgSnapshot{id: s.ID, data: &d, rows: map[string]map[string][]int{}}
 	for i := range d.Versions {
 		v := &orgVersion{OrgVersion: &d.Versions[i], people: map[string]*OrgPerson{}}
 		for j := range v.People {
@@ -235,127 +240,6 @@ func (o *orgSnapshot) stoodFor(person string) []Proxy {
 		}
 	}
 	return out
-}
-
-// The part of the organization `start` and `next` are given (ritsu's DESIGN, "the part of the
-// organization").
-type part struct {
-	Day       string       `json:"day"`
-	Version   string       `json:"version"`
-	Positions []string     `json:"positions"`
-	Teams     []partTeam   `json:"teams"`
-	People    []partPerson `json:"people"`
-	Members   []Member     `json:"members"`
-	Proxies   []partProxy  `json:"proxies"`
-	Rows      []partRow    `json:"rows"`
-}
-
-type partTeam struct {
-	ID     string  `json:"id"`
-	Kind   string  `json:"kind"`
-	Parent *string `json:"parent"`
-	Head   *string `json:"head"`
-}
-
-// partPerson is a person of the part: their ID and their names, "" for a name the data does not
-// give (the contract's organization/schema.json). The entries name a person in the words of a
-// refusal by them: "e1201 (Sales staff 1)", "e1201（営業担当 1）" (ringi's DESIGN 12.4). Their
-// address and their language are not in it: the machine reads neither.
-type partPerson struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	NameJa string `json:"name_ja"`
-}
-
-type partProxy struct {
-	Person string `json:"person"`
-	Proxy  string `json:"proxy"`
-	Kind   string `json:"kind"`
-}
-
-type partRow struct {
-	Master string      `json:"master"`
-	Key    string      `json:"key"`
-	Values []namedText `json:"values"`
-}
-
-type namedText struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-func none(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
-// keptParts is how many parts a snapshot keeps made (a kind's version, a day): each holds the
-// people and the teams of a version, and the days go on.
-const keptParts = 64
-
-// part answers the part a kind's event of day is given, and the version it is of; nil when no
-// version is in effect that day. It keeps at most keptParts made.
-func (o *orgSnapshot) part(k *kind, day string) (json.RawMessage, *orgVersion, error) {
-	v := o.at(day)
-	if v == nil {
-		return nil, nil, nil
-	}
-	key := k.Name + "\x00" + strconv.Itoa(k.Version) + "\x00" + day
-	o.mu.Lock()
-	b, ok := o.parts[key]
-	o.mu.Unlock()
-	if ok {
-		return b, v, nil
-	}
-	p := part{Day: day, Version: v.Day, Positions: []string{}, Teams: []partTeam{}, People: []partPerson{}, Members: []Member{}, Proxies: []partProxy{}, Rows: []partRow{}}
-	for _, x := range k.desc.Organization.Positions {
-		p.Positions = append(p.Positions, x.Name)
-	}
-	for _, t := range v.Teams {
-		p.Teams = append(p.Teams, partTeam{ID: t.ID, Kind: t.Kind, Parent: none(t.Parent), Head: none(t.Head)})
-	}
-	for _, x := range v.People {
-		p.People = append(p.People, partPerson{ID: x.ID, Name: x.Name, NameJa: x.NameJa})
-	}
-	p.Members = append(p.Members, v.Members...)
-	for _, x := range o.data.Proxies {
-		if x.on(day, k.Name) {
-			p.Proxies = append(p.Proxies, partProxy{Person: x.Person, Proxy: x.Proxy, Kind: x.Kind})
-		}
-	}
-	for _, m := range k.desc.Masters {
-		for _, r := range o.data.Masters[m.Masters+"."+m.Master] {
-			if !validOn(r, day) {
-				continue
-			}
-			row := partRow{Master: m.Name, Key: r[m.Key], Values: []namedText{}}
-			for _, f := range m.Fields {
-				row.Values = append(row.Values, namedText{Name: f.Name, Value: r[f.Name]})
-			}
-			p.Rows = append(p.Rows, row)
-		}
-	}
-	b, err := json.Marshal(p)
-	if err != nil {
-		return nil, nil, err
-	}
-	o.mu.Lock()
-	if len(o.parts) >= keptParts {
-		for k := range o.parts {
-			delete(o.parts, k) // any one: a part is made again when it is asked for
-			break
-		}
-	}
-	o.parts[key] = b
-	o.mu.Unlock()
-	return b, v, nil
-}
-
-// validOn reports whether a master's row may be chosen on day.
-func validOn(r map[string]string, day string) bool {
-	return (r["valid_from"] == "" || r["valid_from"] <= day) && (r["valid_to"] == "" || day <= r["valid_to"])
 }
 
 // organization answers the latest snapshot, looking for a newer one now and then.

@@ -108,15 +108,22 @@ type Counts struct {
 }
 
 // Vectors gives every vector of the packages to a server through its API and checks the answers:
-// a refusal of the same kind, or the same ticket and the same things to do, kept by the store. A
-// person's operation goes through the HTTP handler, and each answer the handler gives must be of
-// the shape the contract gives it (Package.CheckAnswer); a timer, a flow's answer, an
-// administrator's operation with no person, and a body the API does not take (answered 400) go
-// through Deliver. It answers the counts of each kind.
+// a refusal of the same kind, or the same ticket and the same things to do, kept by the store. It
+// checks the part of the organization the kind's entry was called with too: the vector's, cut as
+// ringi's DESIGN 7.5 says. A person's operation goes through the HTTP handler, and each answer the
+// handler gives must be of the shape the contract gives it (Package.CheckAnswer); a timer, a flow's
+// answer, an administrator's operation with no person, and a body the API does not take (answered
+// 400) go through Deliver. It answers the counts of each kind.
 func Vectors(t *testing.T, s Setup) []Counts {
 	t.Helper()
 	org := &onceSource{src: s.Organization}
 	var all []Counts
+	g := &given{}
+	packages, err := g.watch(s.Packages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Packages = packages
 	for _, p := range s.Packages {
 		for _, k := range p.Kinds() {
 			if len(s.Kinds) > 0 && !contains(s.Kinds, k.Name) {
@@ -130,7 +137,7 @@ func Vectors(t *testing.T, s Setup) []Counts {
 			t.Run(k.Name, func(t *testing.T) {
 				for _, v := range vs {
 					c.Vectors++
-					if why := runVector(t, s, org, p, k.Name, v, &c); why != "" {
+					if why := runVector(t, s, org, p, k.Name, v, g, &c); why != "" {
 						c.Failures = append(c.Failures, v.From+": "+why)
 						if len(c.Failures) <= 20 {
 							t.Errorf("%s, %s: %s", k.Name, v.From, why)
@@ -145,6 +152,61 @@ func Vectors(t *testing.T, s Setup) []Counts {
 		}
 	}
 	return all
+}
+
+// given keeps what the kinds' entries were called with: each event, with the part of the organization
+// it was given with.
+type given struct {
+	mu    sync.Mutex
+	calls [][2]json.RawMessage
+}
+
+func (g *given) forget() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.calls = nil
+}
+
+func (g *given) add(event, part json.RawMessage) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.calls = append(g.calls, [2]json.RawMessage{bytes.Clone(event), bytes.Clone(part)})
+}
+
+// part answers the part the event was last given with.
+func (g *given) part(event json.RawMessage) (json.RawMessage, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, c := range slices.Backward(g.calls) {
+		if server.SameJSON(c[0], event) {
+			return c[1], true
+		}
+	}
+	return nil, false
+}
+
+// watch answers the packages with entries that keep what they are called with.
+func (g *given) watch(packages []*server.Package) ([]*server.Package, error) {
+	var out []*server.Package
+	for _, p := range packages {
+		kinds := p.Kinds()
+		for i, k := range kinds {
+			kinds[i].Start = func(submit, part json.RawMessage, now int64) (json.RawMessage, error) {
+				g.add(json.RawMessage(`{"submit":`+string(submit)+`}`), part)
+				return k.Start(submit, part, now)
+			}
+			kinds[i].Next = func(ticket, event, part json.RawMessage, now int64) (json.RawMessage, error) {
+				g.add(event, part)
+				return k.Next(ticket, event, part, now)
+			}
+		}
+		w, err := server.LoadKinds(p.Contract(), p.Lang(), kinds, p.Files())
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, nil
 }
 
 func contains(xs []string, x string) bool {
@@ -273,7 +335,7 @@ func placeOf(at *string) string {
 
 // runVector runs one vector on a server of its own, and answers why it does not agree ("" when it
 // does).
-func runVector(t *testing.T, s Setup, org server.OrgSource, p *server.Package, kind string, v vector, c *Counts) string {
+func runVector(t *testing.T, s Setup, org server.OrgSource, p *server.Package, kind string, v vector, g *given, c *Counts) string {
 	ctx := context.Background()
 	store := s.Store(t)
 	clock := servertest.NewClock(time.Unix(v.Now, 0))
@@ -291,6 +353,7 @@ func runVector(t *testing.T, s Setup, org server.OrgSource, p *server.Package, k
 		return "the vector's answer: " + err.Error()
 	}
 	ticket, submit := v.ids()
+	g.forget()
 	srv := newServer(t, s, store, org, clock, func() string { return ticket }, v.attempt, newParts())
 	if why := v.prepare(ctx, srv, submit); why != "" {
 		return why
@@ -350,6 +413,11 @@ func runVector(t *testing.T, s Setup, org server.OrgSource, p *server.Package, k
 		if reply, err = srv.Deliver(ctx, d); err != nil {
 			return "Deliver: " + err.Error()
 		}
+	}
+	if part, ok := g.part(v.Event); !ok {
+		return "the event was not given to the kind's entry"
+	} else if !server.SameJSON(part, v.Organization) {
+		return fmt.Sprintf("the event was given another part of the organization: %s, and the vector's is %s", clip(part), clip(v.Organization))
 	}
 	after, err := store.Ticket(ctx, ticket)
 	if err != nil && !errors.Is(err, server.ErrNotFound) {
