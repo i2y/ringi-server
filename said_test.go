@@ -145,7 +145,7 @@ func TestSaidAsTheEntries(t *testing.T) {
 	for _, c := range []struct{ op, body, want string }{
 		{"submit_leave", `{"form":` + with(form, "color", `"red"`) + `}`, `form: "color" is not one of its fields`},
 		{"submit_leave", `[]`, "the body: object is expected"},
-		{"submit_leave", `{`, "the body is not JSON: unexpected EOF"},
+		{"submit_leave", `{`, "the body is not JSON: it ends before its JSON does"},
 	} {
 		r, err := checkFailed(a.ops[c.op].checkBody([]byte(c.body)), a.ops[c.op], "ja")
 		if err != nil || r.Problem != c.want {

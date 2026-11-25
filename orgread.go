@@ -1000,12 +1000,12 @@ func (r *orgReading) jsonType(at, place, what, whatJa string) {
 func (r *orgReading) jsonError(name string, lines *lineCounter, err error) {
 	var se *json.SyntaxError
 	switch {
+	case jsonEnds(err):
+		r.add(fileAt(name, lines.at(int64(len(lines.b)))), "The file does not read as JSON: "+jsonProblem(err),
+			"JSON として読めません。JSON の途中でファイルが終わっています")
 	case errors.As(err, &se):
 		r.add(fileAt(name, lines.at(se.Offset-1)), "The file does not read as JSON: "+err.Error(),
 			jatext.Join("JSON として読めません（", err.Error(), "）"))
-	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
-		r.add(fileAt(name, lines.at(int64(len(lines.b)))), "The file does not read as JSON: it ends before its JSON does",
-			"JSON として読めません。JSON の途中でファイルが終わっています")
 	default:
 		r.unreadable(name, err)
 	}

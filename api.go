@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"slices"
 	"sort"
@@ -504,13 +505,30 @@ func shapeErr(path, format string, args ...any) error {
 	return &errShape{path + ": " + fmt.Sprintf(format, args...)}
 }
 
+// jsonEnds reports whether an error of encoding/json is that the input ends before its JSON does.
+// Which error it is depends on the Go that the server is built with: io.ErrUnexpectedEOF, or a
+// json.SyntaxError of Go 1.27.
+func jsonEnds(err error) bool {
+	var se *json.SyntaxError
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.As(err, &se) && se.Error() == "unexpected end of JSON input"
+}
+
+// jsonProblem says an error of encoding/json.
+func jsonProblem(err error) string {
+	if jsonEnds(err) {
+		return "it ends before its JSON does"
+	}
+	return err.Error()
+}
+
 // decode reads a body that is one JSON value, with its numbers as they are written.
 func decode(body []byte) (any, error) {
 	d := json.NewDecoder(bytes.NewReader(body))
 	d.UseNumber()
 	var v any
 	if err := d.Decode(&v); err != nil {
-		return nil, &errShape{"the body is not JSON: " + err.Error()}
+		return nil, &errShape{"the body is not JSON: " + jsonProblem(err)}
 	}
 	if d.More() {
 		return nil, &errShape{"the body has more than one JSON value"}

@@ -407,10 +407,7 @@ func strictJSON(body []byte, v any) string {
 		}
 	}
 	notRead := func(err error) string {
-		if err == io.EOF {
-			err = io.ErrUnexpectedEOF // the body ends inside the object
-		}
-		return "the body does not read: " + err.Error()
+		return "the body does not read: " + jsonProblem(err)
 	}
 	d := json.NewDecoder(bytes.NewReader(body))
 	if tok, err := d.Token(); err != nil {
@@ -444,7 +441,7 @@ func strictJSON(body []byte, v any) string {
 	case err == nil:
 		return "the body has more than one JSON value"
 	case err != io.EOF:
-		return "the body does not read: " + err.Error()
+		return notRead(err)
 	}
 	// The keys are v's own, each once: they read into its fields alone.
 	if err := json.Unmarshal(body, v); err != nil {
