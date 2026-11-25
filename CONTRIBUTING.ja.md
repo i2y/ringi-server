@@ -65,7 +65,7 @@ RINGI_TEST_DATABASE="postgres://localhost:5432/ringi_test" go test -race ./...
 | `RINGI_TEST_DATABASE`（試験が書き込んでよい PostgreSQL のデータベース） | PostgreSQL の上の Store、突き合わせ、帳簿 |
 | `PATH` にある `node` | 画面と、ページのスクリプト（ブラウザと同じように実行する） |
 | `PATH` にある `bash`、`curl`、`jq` | 文書のコマンド |
-| ritsu（`PATH` か、環境変数 `RITSU`） | `ritsu ringi init` が書くプロジェクト（`scaffold`。10 分ほど）と、例の flow（`temporal`） |
+| ritsu（`PATH` か、環境変数 `RITSU`） | `ritsu ringi init` が書くプロジェクトと、README に載せた `ritsu ringi init` のコマンド（どちらも `scaffold`。数分）、例の flow（`temporal`） |
 | Temporal の CLI（SDK のキャッシュか、環境変数 `TEMPORAL_CLI`） | Temporal の開発用サーバーの上の flow |
 
 ### 例での結果
@@ -106,7 +106,7 @@ RINGI_SHOTS=../docs/images RINGI_BROWSER=/path/to/a/browser go test -tags browse
 
 ## 文書
 
-どの文書にも英語版があり、隣に日本語版があります。`TestDocuments` は、README.md、docs/api.md、web/README.md、mcp/README.md と、それぞれの日本語版にあるコマンドを、書いてあるとおりに例のサーバーで実行し、出力を文書と突き合わせます。ほかの試験は、二つの言語のコマンドとコードが同じであること、Go のコードがコンパイルしているファイルのとおりであること、SQL が表に合うこと、リンクの先があることを確かめます。
+どの文書にも英語版があり、隣に日本語版があります。`TestDocuments` は、README.md、docs/api.md、web/README.md、mcp/README.md と、それぞれの日本語版にあるコマンドを、書いてあるとおりに例のサーバーで実行し、出力を文書と突き合わせます。ほかの試験は、二つの言語のコマンドとコードが同じであること、Go のコードがコンパイルしているファイルのとおりであること、SQL が表に合うこと、リンクの先があることを確かめます。`scaffold` の `TestReadme` は、README に載せた `ritsu ringi init` のコマンドを実行し、表示を README と突き合わせます。
 
 出力が変わるのが正しいときは、文書に書き直して、差分を読みます。
 

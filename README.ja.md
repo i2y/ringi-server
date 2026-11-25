@@ -79,7 +79,7 @@ ritsu ringi init shinsei --module example.com/acme/shinsei --lang ja
 ```
 
 ```
-shinsei に 49 個のファイルを書きました（モジュール example.com/acme/shinsei）。project/ に申請の種類と組織と gate、go/ と requests/ にそこから ritsu が生成したコード、cmd/server/ にフレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー、それと試験です。次に:
+shinsei に 53 個のファイルを書きました（モジュール example.com/acme/shinsei）。project/ に申請の種類と組織と gate、go/ と requests/ にそこから ritsu が生成したコード、cmd/server/ にフレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー、それと試験です。次に:
   cd shinsei
   go mod tidy
   go test ./...
@@ -110,7 +110,7 @@ ritsu ringi init shinsei --module example.com/acme/shinsei --lang ja --mcp --tem
 ```
 
 ```
-shinsei に 82 個のファイルを書きました（モジュール example.com/acme/shinsei）。project/ に申請の種類二つ（一つは flow を持つ）と組織と gate、go/ と requests/ にそこから ritsu が生成したコード、cmd/server/ にフレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー（/mcp にエージェントのツール）、cmd/worker/ に flow のワーカー、それと試験です。次に:
+shinsei に 89 個のファイルを書きました（モジュール example.com/acme/shinsei）。project/ に申請の種類二つ（一つは flow を持つ）と組織と gate、go/ と requests/ にそこから ritsu が生成したコード、cmd/server/ にフレームワーク github.com/i2y/ringi-server v0.1.0 のサーバー（/mcp にエージェントのツール）、cmd/worker/ に flow のワーカー、それと試験です。次に:
   cd shinsei
   go mod tidy
   go test ./...

@@ -738,17 +738,19 @@ Two options add what a project can do without, each with the framework's module 
   `temporal`'s tests do.
 
 The project's `go.mod` requires the version of the framework the ritsu that wrote it names: each
-version of ritsu is made against one version of the framework, and writes that one, for the
-modules `mcp` and `temporal` as for the framework's. These three are the modules a project
-requires. The examples' module is not published, and none of the three requires it: a project's
-`go mod tidy` reads the tests of the packages it imports too, so the tests of `mcp` that run the
-examples are in the examples' module. The test in `scaffold/` writes a project in each language and
-with each set of options (none, `--mcp`, `--temporal`, both) with the `ritsu` on PATH (or the one
-`RITSU` names), points it at this repository's modules with `replace` (the three, those the
-options need), and, with no network, runs `go mod tidy`, `go generate` (which must change nothing),
-`go vet` and the project's tests: the code `init` writes is tested against the framework as it is
-here. With no ritsu, it skips, saying so. `TestPublishedModules` reads the three modules' `go.mod`,
-with no ritsu: none of them requires or replaces a module of this repository but the three.
+version of ritsu is made against one version of the framework, and writes that one, for the modules
+`mcp` and `temporal` as for the framework's. These three are the modules a project requires. The
+examples' module is not published, and none of the three requires it: a project's `go mod tidy`
+reads the tests of the packages it imports too, so the tests of `mcp` that run the examples are in
+the examples' module. The test in `scaffold/` writes a project in each language and with each set
+of options (none, `--mcp`, `--temporal`, both) with the `ritsu` on PATH (or the one `RITSU` names),
+points it at this repository's modules with `replace` (the three, those the options need), and,
+with no network, runs `go mod tidy`, `go generate` (which must change nothing), `go vet` and the
+project's tests: the code `init` writes is tested against the framework as it is here. `TestReadme`
+runs the commands of the README that start a project, in both languages, and holds what they print
+to what it shows. With no ritsu, both skip, saying so. `TestPublishedModules` reads the three
+modules' `go.mod`, with no ritsu: none of them requires or replaces a module of this repository but
+the three.
 
 ### 2.8 Publishing a version
 

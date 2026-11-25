@@ -72,7 +72,7 @@ more than Go, and are skipped without it; with `-v`, `go test` names them on lin
 | `RINGI_TEST_DATABASE`, a PostgreSQL database the tests may write in | the store, the conformance tests and the books on PostgreSQL |
 | `node` on the `PATH` | the screens and the pages' script, run as a browser runs them |
 | `bash`, `curl` and `jq` on the `PATH` | the commands of the documents |
-| ritsu, on the `PATH` or named by `RITSU` | the projects `ritsu ringi init` writes (`scaffold`, about ten minutes), and the flows of the examples (`temporal`) |
+| ritsu, on the `PATH` or named by `RITSU` | the projects `ritsu ringi init` writes and the README's commands that start them (`scaffold`, a few minutes), and the flows of the examples (`temporal`) |
 | the Temporal CLI, in the SDK's cache or named by `TEMPORAL_CLI` | the flows on Temporal's dev server |
 
 ### What the examples show
@@ -126,7 +126,8 @@ Each document is in English and, beside it, in Japanese. `TestDocuments` runs th
 README.md, docs/api.md, web/README.md and mcp/README.md (and of their Japanese versions) as they are
 written, on the example server, and holds what they print to what the document shows. Other tests
 hold the two languages to the same commands and code, the Go code to files that are compiled, the SQL
-to the tables, and the links to what is there.
+to the tables, and the links to what is there. `TestReadme`, in `scaffold`, runs the README's commands
+that start a project, and holds what they print to what it shows.
 
 When an output changes for a good reason, write it into the documents again, and read the difference:
 

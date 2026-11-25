@@ -104,7 +104,7 @@ ritsu ringi init approvals --module example.com/acme/approvals
 ```
 
 ```
-wrote 48 files in approvals (module example.com/acme/approvals): a request type, its organization and a gate in project/, the code ritsu generates from them in go/ and requests/, a server of the framework github.com/i2y/ringi-server v0.1.0 in cmd/server/, and tests. Next, run
+wrote 52 files in approvals (module example.com/acme/approvals): a request type, its organization and a gate in project/, the code ritsu generates from them in go/ and requests/, a server of the framework github.com/i2y/ringi-server v0.1.0 in cmd/server/, and tests. Next, run
   cd approvals
   go mod tidy
   go test ./...
@@ -141,7 +141,7 @@ ritsu ringi init approvals --module example.com/acme/approvals --mcp --temporal
 ```
 
 ```
-wrote 81 files in approvals (module example.com/acme/approvals): two request types, one with a flow, their organization and a gate in project/, the code ritsu generates from them in go/ and requests/, a server of the framework github.com/i2y/ringi-server v0.1.0 in cmd/server/ with the agents' tools at /mcp, a worker of the flow in cmd/worker/, and tests. Next, run
+wrote 88 files in approvals (module example.com/acme/approvals): two request types, one with a flow, their organization and a gate in project/, the code ritsu generates from them in go/ and requests/, a server of the framework github.com/i2y/ringi-server v0.1.0 in cmd/server/ with the agents' tools at /mcp, a worker of the flow in cmd/worker/, and tests. Next, run
   cd approvals
   go mod tidy
   go test ./...
