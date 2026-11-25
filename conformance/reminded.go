@@ -169,13 +169,14 @@ func taken(v *vector) bool {
 	return json.Unmarshal(v.Answer, &a) == nil && a.OK != nil
 }
 
-// stageOf answers a stage of a ticket's JSON, as the contract writes it.
+// stageOf answers a stage of a ticket's JSON, as the contract writes it: the last of its name, as a
+// stage that waited for a later one is in the list twice (ringi's DESIGN 5.12).
 func stageOf(ticket json.RawMessage, name string) map[string]json.RawMessage {
 	var t struct {
 		Stages []map[string]json.RawMessage `json:"stages"`
 	}
 	json.Unmarshal(ticket, &t)
-	for _, st := range t.Stages {
+	for _, st := range slices.Backward(t.Stages) {
 		var n string
 		if json.Unmarshal(st["name"], &n) == nil && n == name {
 			return st

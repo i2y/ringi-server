@@ -398,9 +398,13 @@ func startedAt(base json.RawMessage, started int64) (json.RawMessage, error) {
 	if err := d.Decode(&tk); err != nil {
 		return nil, err
 	}
+	// the stage is the one the revision places: a stage that waited for a later one is in the list twice
+	rev, _ := tk["revision"].(map[string]any)
+	at, _ := rev["stage"].(json.Number)
+	i, err := at.Int64()
 	stages, _ := tk["stages"].([]any)
-	for _, st := range stages {
-		if st, _ := st.(map[string]any); st != nil && st["name"] == tk["stage"] {
+	if err == nil && i >= 0 && i < int64(len(stages)) {
+		if st, _ := stages[i].(map[string]any); st != nil {
 			st["started"] = started
 			return json.Marshal(tk)
 		}
