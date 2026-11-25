@@ -34,14 +34,16 @@ type stageView struct {
 }
 
 type partView struct {
-	Way       string   `json:"way"`
-	Key       string   `json:"key"`
-	Approvers []string `json:"approvers"`
-	State     string   `json:"state"`
-	Answers   []struct {
-		By   string `json:"by"`
-		Seat string `json:"seat"`
-	} `json:"answers"`
+	Way       string       `json:"way"`
+	Key       string       `json:"key"`
+	Approvers []string     `json:"approvers"`
+	State     string       `json:"state"`
+	Answers   []answerView `json:"answers"`
+}
+
+type answerView struct {
+	By   string `json:"by"`
+	Seat string `json:"seat"`
 }
 
 // readTicket reads a ticket's JSON: one the store keeps, or one an entry answers. A ticket of
@@ -69,17 +71,17 @@ func deref(s *string) string {
 	return *s
 }
 
-// current answers the stage the ticket is at, or nil.
+// current answers the stage the ticket is at, or nil: the one its revision places (`revision.stage`,
+// ringi's DESIGN 7.1). Its name does not say which: a stage that waited for a later one is in the
+// list twice, the first time as it was when it waited (`again`, ringi's DESIGN 5.12).
 func (t *ticketView) current() *stageView {
-	if t.Stage == nil {
+	var rev struct {
+		Stage *int `json:"stage"`
+	}
+	if json.Unmarshal(t.Revision, &rev) != nil || rev.Stage == nil || *rev.Stage < 0 || *rev.Stage >= len(t.Stages) {
 		return nil
 	}
-	for i := range t.Stages {
-		if t.Stages[i].Name == *t.Stage {
-			return &t.Stages[i]
-		}
-	}
-	return nil
+	return &t.Stages[*rev.Stage]
 }
 
 // waitingFor answers who the ticket waits for: while it is at a stage, the approvers of its active
@@ -91,18 +93,7 @@ func waitingFor(t *ticketView) []string {
 	case "in_progress", "paused":
 		if st := t.current(); st != nil {
 			for _, p := range st.Parts {
-				if p.State != "active" {
-					continue
-				}
-				answered := map[string]bool{}
-				for _, a := range p.Answers {
-					answered[a.Seat] = true
-				}
-				for _, a := range p.Approvers {
-					if !answered[a] {
-						out = append(out, a)
-					}
-				}
+				out = append(out, p.waiting()...)
 			}
 		}
 	case "with_requester":
@@ -112,6 +103,21 @@ func waitingFor(t *ticketView) []string {
 		}
 	}
 	return uniq(out)
+}
+
+// waiting answers who an active part waits for: its approvers who have not answered it, in their
+// order; none for another part.
+func (p partView) waiting() []string {
+	if p.State != "active" {
+		return nil
+	}
+	var out []string
+	for _, a := range p.Approvers {
+		if !slices.ContainsFunc(p.Answers, func(x answerView) bool { return x.Seat == a }) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // stageApprovers answers the approvers of the stage the ticket is at, all its parts.

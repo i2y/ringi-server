@@ -387,7 +387,67 @@ func runVector(t *testing.T, s Setup, org server.OrgSource, p *server.Package, k
 	if why := checkPeople(ctx, store, ticket, before, after); why != "" {
 		return why
 	}
+	if why := checkWaiting(ctx, store, ticket, after); why != "" {
+		return why
+	}
 	return checkKept(ctx, store, ticket, want.OK.Effects)
+}
+
+// checkWaiting checks whom the store lists a ticket for after a move (Store.Waiting): at a stage (the
+// one the ticket's revision places: a stage that waited for a later one is in the list twice, under
+// one name), the approvers of its active parts who have not answered; back with its requester, the
+// requester and the one who made it; and no one else it names.
+func checkWaiting(ctx context.Context, store server.Store, ticket string, after server.TicketRecord) string {
+	var t struct {
+		Status    string  `json:"status"`
+		Requester string  `json:"requester"`
+		MadeBy    *string `json:"made_by"`
+		Revision  struct {
+			Stage *int `json:"stage"`
+		} `json:"revision"`
+		Stages []struct {
+			Parts []struct {
+				State     string   `json:"state"`
+				Approvers []string `json:"approvers"`
+				Answers   []struct {
+					Seat string `json:"seat"`
+				} `json:"answers"`
+			} `json:"parts"`
+		} `json:"stages"`
+	}
+	if err := json.Unmarshal(after.Body, &t); err != nil {
+		return "the ticket kept does not read: " + err.Error()
+	}
+	waits := map[string]bool{}
+	switch {
+	case t.Status == "with_requester":
+		waits[t.Requester] = true
+		if t.MadeBy != nil {
+			waits[*t.MadeBy] = true
+		}
+	case t.Revision.Stage != nil && *t.Revision.Stage < len(t.Stages):
+		for _, p := range t.Stages[*t.Revision.Stage].Parts {
+			answered := map[string]bool{}
+			for _, a := range p.Answers {
+				answered[a.Seat] = true
+			}
+			for _, a := range p.Approvers {
+				if p.State == "active" && !answered[a] {
+					waits[a] = true
+				}
+			}
+		}
+	}
+	for _, who := range named(after.Body) {
+		list, err := store.Waiting(ctx, []string{who}, server.WaitingQuery{})
+		if err != nil {
+			return "Waiting: " + err.Error()
+		}
+		if lists := slices.ContainsFunc(list, func(r server.TicketRecord) bool { return r.ID == ticket }); lists != waits[who] {
+			return fmt.Sprintf("Waiting of %s lists the ticket: %v; it waits for them: %v", who, lists, waits[who])
+		}
+	}
+	return ""
 }
 
 // ids answers the ID of the vector's ticket, and whether its event is a submit (of a new ticket of

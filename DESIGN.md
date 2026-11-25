@@ -1240,7 +1240,10 @@ The question carries the values ritsu decides for the gate:
   proxies who may submit it for them that day (the `submit` rows of the proxies that name the kind or
   name none).
 - `Approvers`: while the ticket is at a stage, the approvers of that stage and their proxies in
-  effect that day; while it is back with the requester, the one who sent it back; else none.
+  effect that day; while it is back with the requester, the one who sent it back; else none. The
+  stage is the one the ticket's revision places (`revision.stage`), not the first of its name: a
+  stage that waited for a later one is in the list twice, the first time as it was when it waited
+  (ringi's DESIGN 5.12). So are the people a ticket waits for, and since when (10.2).
 - `Owner`: the team that owns the kind; `SelfApproval`: whether its route lets a requester approve
   their own request (9.3).
 - `Org`: the version of the organization in effect that day, for a gate that reads the person's
@@ -1566,7 +1569,8 @@ Ten tests check a server against the contract, and all run on any store:
   same place (`at`; its texts are not compared, as ringi's DESIGN 12.4 says), or the same ticket and
   the same things to do (a null the same as a missing key, keys in any order). Each answer of the
   HTTP handler must also be of the shape the contract gives the operation's answer of that status
-  (`Package.CheckAnswer`, with the checker of 7.2).
+  (`Package.CheckAnswer`, with the checker of 7.2). After a move, the store must list the ticket
+  (`Store.Waiting`), of the people it names, for exactly the ones it waits for (10.2).
 - **What a form works out** (`conformance.Worked`): each line of `vectors/worked/<name>.jsonl` is
   given to `worked_<name>` through the HTTP handler where the version is the one a new request takes
   on the day of the vectors (2026-11-16, at 10:00 in the kind's offset), and to `Server.Worked`
