@@ -88,7 +88,7 @@ func TestBrowserAdmin(t *testing.T) {
 	if got := b.text(`location.pathname + location.search`); got != "/pages/admin/kinds?done=switched&lang=en" {
 		t.Errorf("after the switch, the page is %s", got)
 	}
-	if b.text(`document.activeElement.id`) != "summary" || !strings.Contains(b.text(`document.getElementById("summary").textContent`), "The version was switched.") {
+	if b.focused("summary") != "summary" || !strings.Contains(b.text(`document.getElementById("summary").textContent`), "The version was switched.") {
 		t.Errorf("after the switch, the focus is at %q", b.text(`document.activeElement.id || document.activeElement.tagName`))
 	}
 	if how, day := startOf(); how != "day" || day != "2027-05-01" {
@@ -126,7 +126,7 @@ func TestBrowserAdmin(t *testing.T) {
 		t.Fatal("the import was not sent")
 	}
 	if got := b.text(`location.pathname + location.search`); got != "/pages/admin/organization?done=imported&lang=en" ||
-		b.text(`document.activeElement.id`) != "summary" {
+		b.focused("summary") != "summary" {
 		t.Errorf("after the import, the page is %s, the focus at %q", got, b.text(`document.activeElement.id || document.activeElement.tagName`))
 	}
 	people, err := srv.People(t.Context())

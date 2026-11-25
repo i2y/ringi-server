@@ -362,6 +362,19 @@ func (b *tab) until(expr string) bool {
 	return ok
 }
 
+// focused answers where the focus is (the element's id, or its name), once it is at the one given or
+// three seconds have passed. A browser moves the focus to a page's autofocus when it draws the page,
+// which can be after the page has loaded.
+func (b *tab) focused(id string) string {
+	b.t.Helper()
+	for end := time.Now().Add(3 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		at := b.text(`document.activeElement.id || document.activeElement.tagName`)
+		if at == id || time.Now().After(end) {
+			return at
+		}
+	}
+}
+
 // key presses a key: Tab, Enter.
 func (b *tab) key(name string) {
 	b.t.Helper()
@@ -737,7 +750,7 @@ func TestBrowserWithoutScript(t *testing.T) {
 		if b.moved(func() { b.click(x.press, 1) }) == "" {
 			t.Fatalf("%s posted nothing", x.press)
 		}
-		if got := b.text(`document.activeElement.id || document.activeElement.tagName`); got != x.focus {
+		if got := b.focused(x.focus); got != x.focus {
 			t.Errorf("after %s the focus is at %s, not %s", x.press, got, x.focus)
 		}
 	}
