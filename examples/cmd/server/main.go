@@ -38,6 +38,9 @@ import (
 	"github.com/i2y/ringi-server/servertest"
 )
 
+// startAt is the time the server starts at, when the linker sets it (examples.ClockFrom).
+var startAt string
+
 func main() {
 	var f serve.Flags
 	f.Register(flag.CommandLine)
@@ -82,6 +85,10 @@ func run(ctx context.Context, f serve.Flags, verdict string, log *slog.Logger) e
 		books = examples.Books{Pool: st.Pool}
 		log.Info("the books are in PostgreSQL; each department has 50,000,000 yen, and each person 20 days of leave")
 	}
+	clock, err := examples.ClockFrom(startAt)
+	if err != nil {
+		return err
+	}
 	agents := &examples.Agents{Log: log, Verdict: verdict}
 	notices := &examples.LogNotifier{Log: log}
 	return st.Serve(ctx, server.Config{
@@ -92,6 +99,7 @@ func run(ctx context.Context, f serve.Flags, verdict string, log *slog.Logger) e
 		Flows:        examples.LogFlows{Log: log},
 		Agents:       agents,
 		Books:        books,
+		Clock:        clock,
 		Logger:       log,
 	}, func(srv *server.Server) { agents.Server, notices.Server = srv, srv })
 }

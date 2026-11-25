@@ -2,8 +2,8 @@
 # Takes one leave request from the request to the decision through the pages of the example server
 # (go run ./cmd/server -dev-login), with curl, as a browser with no script does: each person signs
 # in on the page of the development sign-in, and each form is sent with the fields the page holds
-# and the values typed in. Each step prints what the server answered. The API answers the last
-# step, with jq.
+# and the values typed in. Each step prints what the server answered. The last one reads the API,
+# with jq.
 #
 #	./pages.sh                          # the server at http://127.0.0.1:8080
 #	SERVER=http://127.0.0.1:9090 ./pages.sh
@@ -66,9 +66,12 @@ echo "3. e1101 opens the card and approves:"
 card=$(curl -sS -b "$approver" "$SERVER/pages/tickets/$id?lang=en")
 echo "   $(send "$approver" "/pages/tickets/$id?lang=en" "$card" --data-urlencode "_do=button.approve" --data-urlencode "comment=Enjoy the holidays.")"
 
-echo "4. The same card, sent again, is refused: the request changed after it was shown:"
-send "$approver" "/pages/tickets/$id?lang=en" "$card" --data-urlencode "_do=button.approve" | sed 's/^/   /'
+echo "4. The same card sent again, as a second press of the button sends it, is answered as the first was:"
+echo "   $(send "$approver" "/pages/tickets/$id?lang=en" "$card" --data-urlencode "_do=button.approve" --data-urlencode "comment=Enjoy the holidays.")"
 
-echo "5. The ticket, as the API answers e1203 with the same cookie:"
+echo "5. The same card sent with another comment is refused: the request changed after it was shown:"
+send "$approver" "/pages/tickets/$id?lang=en" "$card" --data-urlencode "_do=button.approve" --data-urlencode "comment=Have a good trip." | sed 's/^/   /'
+
+echo "6. The ticket, as the API returns it to e1203 with the same cookie:"
 curl -sS -b "$requester" "$SERVER/tickets/$id" |
 	jq -r '"   \(.ticket.status)", (.history[] | "   \(.did)  \(.by // "")  \(.comment // "")")'

@@ -1,37 +1,37 @@
 # mcp
 
-The agents' tools of a ringi server, over MCP. ritsu writes the tools of a set of kinds of request
-in `requests/mcp/tools.json`; this module serves them as an MCP server. A person's agent calls a
-tool, and the call is one operation of the framework's `Server.Do`, done as that person: the gate,
-the ticket's revision and the refusals hold as they do for the screens and the API, and the
-ticket's history names the person.
+The agents' tools of a ringi server, over the Model Context Protocol (MCP). ritsu writes the tools of
+your request types in `requests/mcp/tools.json`, and this module serves them. A tool's call is one
+operation of the framework, done as the person the agent works for: the gate, the ticket's revision
+and the refusals are those of the pages and the API, and the ticket's history names the person.
 
-The module is a Go module of its own beside the framework's, and depends on the MCP Go SDK
-(`github.com/modelcontextprotocol/go-sdk` v1.8.0). The design is in [DESIGN.md](DESIGN.md).
+The module is a Go module of its own, and depends on the MCP Go SDK
+(`github.com/modelcontextprotocol/go-sdk` v1.8.0). The design is in [DESIGN.md](DESIGN.md). Japanese:
+[README.ja.md](README.ja.md).
 
-Japanese: [README.ja.md](README.ja.md).
+## What an agent can do
 
-## What an agent gets
+| Tool | What it does |
+|---|---|
+| `list_requests` | lists the kinds of request the person may make, each with its title |
+| `list_waiting`, `list_mine` | list what waits for the person, and the person's own requests, a page at a time, the newest first |
+| `get_ticket` | reads a ticket |
+| `submit_…`, `resubmit_…`, `edit_…` | make a request of a kind, make one sent back again, correct the fields an approver gives |
+| `approve`, `reject`, `send_back`, `retract`, `comment`, `withdraw`, `discard` | do what the person may do to a ticket |
+| `get_organization`, `get_master_…` | read the organization and the masters |
+| `find_people`, `find_teams`, `find_master_…` | find people, teams and the rows of a master by words, the closest first |
+| `check_operation` | tries a tool that changes a ticket, and saves nothing: it says what the ticket would be and who it would wait for, or the refusal. The books are asked too, so it sees a budget that is used up |
 
-- The tools of `tools.json`, as they are: the kinds the person may make (`list_requests`), what
-  waits for them (`list_waiting`), their own requests (`list_mine`), a ticket (`get_ticket`), a
-  request of each kind (`submit_…`), resubmitting and editing, approving, sending back, rejecting,
-  withdrawing, discarding a request sent back, retracting an approval, commenting, the
-  organization and the masters, and finding people, teams and a master's rows by words
-  (`find_people`, `find_teams`, `find_master_…`), the closest first. `list_requests` names each kind
-  with its title in the language of the answer. The two lists answer a page at a time, the newest
-  first, and say how to read the next page when there is one. Managing a ticket (`pause`, `resume`, `add_approver`, `hand_over`) has
-  no tool.
-- `check_operation`, which tries a tool that changes a ticket without saving anything: the ticket
-  the call would make and who it would wait for, or the refusal it would get. The books are asked
-  whether they would take the call, so a budget used up is seen. An agent points out what does not
-  agree before it submits.
-- Each kind's description (`types/<kind>.json`) as a resource, for the meaning of the fields.
-- Instructions: find the kinds with `list_requests`, check before changing, read a ticket and pass
-  its revision, and a new `idempotency_key` for each new operation.
+Each kind's description (`types/<kind>.json`) is a resource, for the meaning of the fields. The
+server's instructions say to find the kinds with `list_requests`, to check before changing, to read a
+ticket and pass its revision, and to use a new `idempotency_key` for each new operation. No tool
+manages a ticket (`pause`, `resume`, `add_approver`, `hand_over`).
 
-A refusal is a tool's error with the refusal's kind, its text, its place in the form (`at`) when it
-has one, and a lead that says what it means, in the person's language, English or Japanese.
+A refusal is a tool's error, with its kind, its text, its place in the form (`at`) if it has one, and
+a sentence that says what it means.
+
+Sentences and refusals are in English or Japanese: the language `Accept-Language` asks for, else the
+person's in the organization's data, else English. `mcp.Config.Language` chooses in another way.
 
 ## Wiring
 
@@ -46,7 +46,7 @@ import (
 srv, err := server.New(cfg)
 tools, err := mcp.New(srv, mcp.Config{})
 
-// Over streamable HTTP: Verify answers the person a bearer token stands for.
+// Over streamable HTTP: Verify returns the person a bearer token stands for.
 h, err := tools.Handler(mcp.HTTP{Verify: verify})
 mux.Handle("/mcp", h)
 
@@ -54,11 +54,9 @@ mux.Handle("/mcp", h)
 err = tools.Serve(ctx, &sdkmcp.StdioTransport{}, server.Person{ID: "e1201"})
 ```
 
-A server that package `serve` runs takes the tools at `/mcp`, behind the guards and the sign-in of
-its pages and its API. There `HTTP.Person` finds the person, in place of a bearer token: the one the
-server's sign-in found (the header `X-Person` or the cookie of `-dev-login` on one's own computer, a
-session of the provider for people). A request with no one signed in is answered 401 before it
-reaches the tools.
+On a server that package `serve` runs, the tools go at `/mcp`, behind the sign-in of the pages and the
+API. `HTTP.Person` then finds the person in place of a bearer token: the one the server's sign-in
+found. A request with no one signed in is answered 401 before it reaches the tools.
 
 ```go
 st, err := serve.Open(ctx, flags, log)
@@ -72,10 +70,9 @@ st.Handle("/mcp", func(srv *server.Server) (http.Handler, error) {
 err = st.Serve(ctx, cfg, nil)
 ```
 
-Each package's requests directory holds `mcp/tools.json` beside `openapi.json`: embed `requests/mcp`
-with the generated files. A tool's call goes to `Server.Do` as the person, marked as come through
-the tools (`Call.Via` is `"mcp"`, which the audit log keeps); `check_operation` goes to
-`Server.Try`, which saves nothing.
+Each package's requests directory needs `mcp/tools.json` beside `openapi.json`: embed `requests/mcp`
+with the other generated files. A call goes to `Server.Do`, and is marked as come through the tools
+(`Call.Via` is `"mcp"`, which the audit log keeps). `check_operation` goes to `Server.Try`.
 
 ```go
 func verify(ctx context.Context, token string, r *http.Request) (mcp.Token, error) {
@@ -89,31 +86,22 @@ func verify(ctx context.Context, token string, r *http.Request) (mcp.Token, erro
 
 ## Trying it with the examples
 
-`cmd/mcp` of the examples' module runs the examples' server (the ten kinds of `examples/`, the
-tickets in memory) with the API at `/` and the tools at `/mcp`, on `127.0.0.1:8081`. Its bearer
-token is taken as the person's ID, for trying only, as the API's `X-Person` header is: as neither
-checks anyone, it listens only on a loopback address and answers only requests sent to one. It
-serves the examples' package as it is built in; `-requests <directory>` reads a requests directory
-from the disk instead.
+`cmd/mcp` of the examples serves their ten kinds, with the API at `/` and the tools at `/mcp`, on
+`127.0.0.1:8081`. The tickets are in memory. The bearer token is the person's ID as it is, for trying
+only: it checks no one, so the command listens only on an address of your own computer, and answers
+only requests sent to one.
 
 ```sh
 cd examples
 go run ./cmd/mcp
 ```
 
-It checks its flags and the environment before it reads or serves anything, and stops with what is
-wrong: a `-lang` other than `en` or `ja`; `-addr` with `-stdio`, or `-stdio` with an empty
-`-person`; `-person` without `-stdio` (over HTTP, each call's bearer token names its person); an
-address that is not a loopback one; and an environment with a setting of signing in through the
-provider (`RINGI_OIDC_CLIENT_SECRET`, `RINGI_SESSION_KEYS`), where neither way of naming the person
-runs, as they check no one.
-
-In another terminal, a small function sends one tool's call and prints the sentence of the answer
-(the structured content is in `.result.structuredContent`):
+In another terminal, a small function sends one tool's call and prints the sentence of its result (the
+structured content is in `.result.structuredContent`):
 
 ```sh
-call() {  # call <token> <tool> <arguments>: one tool's call, and the sentence of its answer
-  curl -s http://127.0.0.1:8081/mcp -H "Authorization: Bearer $1" \
+call() {  # call <token> <tool> <arguments>: one tool's call, and the sentence of its result
+  curl -s http://127.0.0.1:8081/mcp -H "Authorization: Bearer $1" -H 'Accept-Language: en' \
     -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$2\",\"arguments\":$3}}" |
     jq -r '.result.content[0].text'
@@ -136,11 +124,10 @@ The tickets that wait for the person, the newest first: 2 tickets, 01M7NQQD3B6EG
 The person's requests, the newest first: 1 ticket, 01M7NQQD3B6EGBZJC6NHGMTVPD (expense). There are more: the next page is read with before 01M7NQQD3B6EGBZJC6NHGMTVPD.
 ```
 
-The same call with the same key answers the same ticket: there is one; another key makes another.
-A list's structured content says whether more tickets follow the page (`"more":true`), and then its
-sentence says how to read the next one; the last page says nothing of a next one. With
-`-H 'Accept-Language: ja'`, the sentences and the refusals' texts are in Japanese. A form the
-request does not take, checked:
+The call with the same key made one ticket; another key made another. `more` in a list's structured
+content says whether more tickets follow, and the sentence then says how to read the next page.
+
+A form the kind does not take, checked:
 
 ```sh
 HIGH='{"category":"purchase","items":[{"what":"Server","price":1000001}],"purpose":"A server for the test lab","used_on":"2026-11-16","receipt":"receipt.pdf"}'
@@ -152,13 +139,12 @@ Nothing was saved. Done now, the call would be refused (form). The form has a va
 `1_000_001JPY` is outside the range of `items[0].price` (`>=1JPY <=1_000_000JPY`)
 ```
 
-The second line is the refusal's text as the kind's code answered it, in the person's language.
-The structured content names its place too, `"at":"items[0].price"`: the `price` of the first row.
-A request with no bearer token is answered 401.
+The second line is the refusal's text. Its structured content names the place too,
+`"at":"items[0].price"`, the `price` of the first row.
 
-With `-stdio`, the command serves the tools of one person (`-person`, default `e1201`) on stdin and
-stdout, as a client that starts a command does. Stdio has no header: `-lang ja` gives the sentences
-in Japanese.
+With `-stdio`, the command serves the tools of one person (`-person`, `e1201` when not given) on stdin
+and stdout, as a client that starts a command uses them. `-lang` chooses the language, as stdio has no
+header:
 
 ```sh
 { printf '%s\n' \
@@ -166,14 +152,17 @@ in Japanese.
     '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
     '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_organization","arguments":{}}}'
   sleep 3; } |
-  go run ./cmd/mcp -stdio -person e1101 2>/dev/null | jq -r 'select(.id == 2) | .result.content[0].text'
+  go run ./cmd/mcp -stdio -person e1101 -lang en 2>/dev/null | jq -r 'select(.id == 2) | .result.content[0].text'
 ```
 
 ```text
 The version of the organization in effect today: 24 people, 14 teams.
 ```
 
-(These were run on 2026-11-18; the tickets' IDs differ at each run.)
+`-requests <directory>` serves a requests directory from the disk instead of the examples' own, such
+as one ritsu has just written. The command stops before it serves anything when flags do not go
+together, on an address other computers reach, and where the environment has a setting of signing in
+through a provider.
 
 ## Testing
 
@@ -184,19 +173,11 @@ cd ../mcp
 go test ./...
 ```
 
-The tests that run the examples are in the examples' module, beside the command: `go mod tidy` in
-a project reads the tests of the packages it imports too, so a test here that imported the examples
-would make every project with the tools need the examples' module, which is not published. The
-tests here need no examples: the choice of the version a kind's tools come from, and the call a
-tool's arguments make.
-
-The tests of the examples' module use the framework's memory store and the examples' packages and
-organization; no database. They check that `tools/list` is the examples' `tools.json` (66 tools of the ten kinds, five of
-them finds) and `check_operation`; that every vector whose event is a person's goes through the tools as the
-API takes it (2,058 of the examples' 2,990 vectors, all agreeing, the refusals at the same place;
-10 of them answered invalid, as the API answers them 400); that the read tools answer what the API
-answers; the lists in pages; the keys the contract takes; who may see a ticket; the refusals as
-tool errors, in English and Japanese; streamable HTTP with and without a token; the tools at `/mcp`
-of a server `serve` runs, as the person its sign-in finds (the header `X-Person`, `-dev-login`), and
-401 with no one; one ticket for the same call made again; the audit entries of the tools' calls;
-that a check asks the books and saves nothing; and the settings the example command stops on.
+The tests that run the examples are in the examples' module: a test here that imported it would make
+every project with the tools need a module that is not published. They check that `tools/list` is the
+examples' `tools.json` (66 tools) and `check_operation`; that every vector whose event is a person's
+goes through the tools as through the API (2,058 of 2,990, all agreeing); that the reading tools
+return what the API returns; the lists a page at a time, who may see a ticket, the refusals in both
+languages, HTTP with and without a token, the tools on a server of package `serve`, calls made again,
+the audit log, and that a check saves nothing. The tests here check the choice of the version a kind's
+tools come from, and the call a tool's arguments make.

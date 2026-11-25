@@ -1,10 +1,13 @@
 # screens
 
-The screens of the requests a server runs: this Go package fills the A2UI 1.0 templates ritsu writes
-(`ritsu gen --target requests`) with a ticket's values for one viewer, and makes the message a
-renderer sends when a button is pressed into the operation of the API it is. It depends on the
-standard library alone, keeps nothing, and knows no kind of request: every kind runs through the
-same code. [DESIGN.md](DESIGN.md) says how; [README.ja.md](README.ja.md) is this page in Japanese.
+The A2UI 1.0 screens of a ringi server's requests. ritsu writes the templates (`ritsu gen --target
+requests`). This package fills one with a ticket's values for one viewer, and turns the message a
+renderer sends when a button is pressed into the API operation it stands for. It depends on the
+standard library alone and keeps nothing, and every kind of request runs through the same code.
+
+The design: [DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md). Package `web` serves
+these screens over HTTP ([../web/README.md](../web/README.md)), so a server that uses `web` need not
+call this package itself.
 
 ## Use
 
@@ -16,29 +19,30 @@ sub, _ := fs.Sub(generated, "requests")
 set, err := screens.Load(sub) // openapi.json, types/, a2ui/
 ```
 
-To show a ticket's approval card, ask which of the actions the card has the viewer may do now, and
-fill it:
+To show a ticket's approval card, find which of the card's actions the viewer may take now, and fill
+it:
 
 ```go
 actions, _ := set.Actions("expense", "card") // edit, approve, reject, send_back, …, comment
-can := allowed(viewer, ticket, actions)       // the server asks the gate and the kind (Server.Can)
+can := allowed(viewer, ticket, actions)       // the server checks with the gate and the kind (Server.Can)
 serving := screens.Serving{Find: "/a2ui/find", Upload: "/files"}
 card, err := set.Card(screens.Card{Language: "en", Ticket: ticketJSON, Can: can, Names: directory, Serving: serving})
 // card.Messages: createSurface, updateDataModel, updateComponents, to send the renderer in order
 ```
 
-`directory` is the server's `screens.Lookup`: asked once for each table, with the IDs the screen
-shows, it answers the people's names, the names of a master's rows, and the addresses of files.
-`serving` holds the addresses the server chooses for the screen's parts: where its pickers find
-people, teams and the rows of masters (`/find`), and where a file is uploaded (`/upload`, on a
-screen of a kind with attachments); after a refusal it holds the refusal too (`/refused`). The
-card the tests keep in `testdata/golden/expense.card.en.json` starts with
+`directory` is the server's `screens.Lookup`. It is called once for each table, with the IDs the
+screen shows, and returns the people's names, the names of a master's rows, and the addresses of
+files. `serving` holds the addresses the server chooses for the screen's parts: where its pickers
+find people, teams and the rows of masters (`/find`), and, on a screen of a kind with attachments,
+where a file is uploaded (`/upload`). After a refusal it holds the refusal too (`/refused`).
+
+The card the tests keep in `testdata/golden/expense.card.en.json` starts with
 
 ```json
 {"version":"1.0","createSurface":{"catalogId":"https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json","surfaceId":"expense.card.T-1"}}
 ```
 
-and its data holds, among the rest,
+and its data has, among other things,
 
 ```json
 "ticket": {"id": "T-1", "made_by": null, "requester": "e1201", "revision": {"edits": 0, "round": 1, "stage": 0}, "stage": "first", "status": "in_progress"},
@@ -49,15 +53,15 @@ and its data holds, among the rest,
 "refused": {"field": null, "text": null}
 ```
 
-A new request's form needs a `Surface` of its own each time it is shown (a random ID): the key of
-its submit is made from it.
+A new request's form needs a `Surface` of its own each time it is shown (a random ID): the
+idempotency key of its submit is made from it.
 
 ```go
 form, err := set.Form(screens.Form{Kind: "leave", Language: "en", Surface: newID(), Can: []string{"submit"}, Serving: serving})
 ```
 
 The two lists are filled with the tickets the server reads for the viewer: `set.List` with those
-that wait for them, `set.Mine` with their own requests (those they are the requester of, or made
+that wait for them, and `set.Mine` with their own requests (those they are the requester of, or made
 for someone else).
 
 ```go
@@ -65,8 +69,8 @@ waiting, err := set.List(screens.List{Kind: "expense", Language: "en", Tickets: 
 mine, err := set.Mine(screens.List{Kind: "expense", Language: "en", Tickets: ownTickets, Names: directory})
 ```
 
-When a button is pressed, the renderer sends an action message. Make it into the operation, and run
-that as the same operation over HTTP is run, for the person who sent it:
+When a button is pressed, the renderer sends an action message. Turn it into the operation, and run
+that for the person who sent it, as the same operation sent over HTTP is run:
 
 ```go
 a, err := screens.ParseAction(message)
@@ -74,54 +78,53 @@ op, err := set.Operation(a)
 // op.ID, op.Method, op.Path, op.Ticket, op.Body, op.Key
 ```
 
-From `testdata/golden/operations.json`:
+For example, in `testdata/golden/operations.json`, this message
 
 ```json
 {"version":"1.0","action":{"name":"approve","surfaceId":"expense.card.T-1","sourceComponentId":"button.approve","timestamp":"2026-11-16T09:05:00.000Z","context":{"ticket":"T-1","revision":{"round":1,"stage":0,"edits":0},"comment":"Fine."}}}
 ```
 
-is
+becomes this operation:
 
 ```json
 {"id":"approve","method":"POST","path":"/tickets/T-1/approve","ticket":"T-1","body":{"revision":{"round":1,"stage":0,"edits":0},"comment":"Fine."},"key":"screen-8d0467a0aadff7e480af24d481d53aa2e36df49c83ecfc2172995b9eeded1a9b"}
 ```
 
-The body is checked against the operation's schema by the server, as any body is. The key is the
-operation's idempotency key: one for each form and body for a new request, one for each press for an
-operation on a ticket (DESIGN.md, 3.1).
+The server checks the body against the operation's schema, as it checks any body. The key is the
+operation's idempotency key: for a new request there is one for each form and body, and for an
+operation on a ticket one for each press (DESIGN.md, 3.1).
 
-When the server refuses the operation, `screens.Refusal` holds what the API answers: the kind, the
-text in English and in Japanese, and, for a refusal of `form`, the place of the form it names (`at`,
-`items[1].price` with the row from 0, read by `screens.ReadPlace`). `set.Refused` makes the message
-that says it on the form or the card shown, and leaves what the person typed as it is; the screen
-shows the text beside the field the place names, under the comment for a refusal of the kind
-`comment`, or else at its head. From
-`testdata/golden/expense.form.refused.ja.json`, a refusal at `items[0].price` on a Japanese form:
+When the server refuses the operation, `screens.Refusal` holds what the API returns: the kind, the
+text in English and in Japanese, and, for a refusal of `form`, the place in the form it names (`at`,
+such as `items[1].price`, with the rows counted from 0; `screens.ReadPlace` reads it). `set.Refused`
+makes the message that shows the refusal on the form or the card, and leaves what the person typed
+as it is. The screen shows the text beside the field the place names, under the comment for a
+refusal of the kind `comment`, and at its head otherwise. A refusal at `items[0].price` on a
+Japanese form, from `testdata/golden/expense.form.refused.ja.json`:
 
 ```json
 {"version":"1.0","updateDataModel":{"surfaceId":"expense.form.f1","path":"/refused","value":{"comment":false,"field":"items","text":"`1_000_001JPY` は、`items[0].price` の範囲（`>=1JPY <=1_000_000JPY`）の外です"}}}
 ```
 
-`screens.RefusalWords(lang, kind)` answers the sentence told to the person with it, from the kind of
-the refusal alone (DESIGN.md, 3.2): one table for the screens and the plain HTML pages. In the same
-way, `LimitedWords` says a comment is not taken now, and `OfferedWords` the day a kind with no
-version in effect may be requested from — the 404 a form's answer of a package without the
-`offered` screen, the pages and the agents' tools say it too. To one who may make the request from
-that day (`Server.Offered`), the `offered` screen itself, when the package writes one (a package
-written before it was part of the contract does not, and loads all the same), is filled with the
-day and the way back: `set.Offered(screens.Offered{Kind: "leave", Language: "en", From: "2027-04-01",
-Home: "/pages/", Surface: newID()})`.
+`screens.RefusalWords(lang, kind)` returns the sentence shown with a refusal. It depends on the
+refusal's kind alone (DESIGN.md, 3.2), and the screens and the plain HTML pages use the same table.
+`LimitedWords` returns the sentence for a comment the server does not take now, and `OfferedWords`
+the one for a kind that has no version in effect yet and may be requested from a day. Someone who
+may make the request from that day (`Server.Offered`) is shown the `offered` screen, filled with the
+day and the way back: `set.Offered(screens.Offered{Kind: "leave", Language: "en", From:
+"2027-04-01", Home: "/pages/", Surface: newID()})`. A package ritsu generated before that screen was
+part of the contract loads all the same; its form is then a 404 with the sentence of `OfferedWords`,
+which the pages and the agents' tools use too.
 
-The renderer also reads ritsu's catalog and its functions; `set.Asset("catalog.json")` and
-`set.Asset("functions.js")` answer each with its content type and ETag, and `set.Assets()` both as a
-file system.
+The renderer also reads ritsu's catalog and its functions. `set.Asset("catalog.json")` and
+`set.Asset("functions.js")` return each with its content type and ETag, and `set.Assets()` returns
+both as a file system.
 
 ## Plain HTML
 
-The package `page` shows the same screens as plain HTML pages, for a browser with no A2UI renderer
-and, if need be, no JavaScript, and reads what the browser posts into the same operations:
-[page/README.md](page/README.md). The package `web` serves both, the screens and the pages, over
-HTTP ([../web/README.md](../web/README.md)).
+Package `page` shows the same screens as plain HTML pages, and turns what the browser posts into the
+same operations. A browser needs no A2UI renderer for them, and no JavaScript
+([page/README.md](page/README.md)).
 
 ## Tests
 
@@ -130,18 +133,19 @@ go test .            # about 6 seconds; ./... adds the pages (page/), about 9 se
 go test -race .      # about 65 seconds; ./... about 95
 ```
 
-The tests read ritsu's examples as generated into `testdata/` (120 templates of ten kinds, their
+The tests read ritsu's examples, generated into `testdata/` (120 templates of ten kinds, their
 vectors, and the Go package ritsu generates from them), and read the screens in Node 24 as a
-renderer does, through `testdata/driver.mjs`; without Node those tests say `SKIP:` and pass. They
-fill 5,542 screens from the vectors, press each of the 336 buttons, and make the vectors' events on
-their screens in 2,230 presses and give what the screens send to the generated code: each of the
-2,052 sent is answered as the vector answers, and the kind refuses each of the 176 the screens'
-checks stop, each of the 2 that give a field the screen hides (which it leaves out of what it
-sends), and each of the 138 lines that ask what no screen sends. DESIGN.md, 7, lists them.
+renderer does, through `testdata/driver.mjs`; without Node those tests print `SKIP:` and pass. They
+fill 5,542 screens from the vectors, press each of the 336 buttons, make the vectors' events on
+their screens in 2,230 presses, and give what the screens send to the generated code. Each of the
+2,052 sent has the result its vector says. The kind also refuses each of the 176 that the screens'
+checks stop, each of the 2 that give a field the screen hides (which the screen leaves out of what
+it sends), and each of the 138 lines that ask for what no screen sends. DESIGN.md, 7, lists the
+tests.
 
-To read a newer ritsu's examples, from a ritsu checkout with `ritsu` on `PATH`:
+To take in a newer ritsu's examples, with a ritsu checkout, and `ritsu` on `PATH`:
 
 ```sh
 testdata/regen.sh <ritsu checkout>/crates/ringi/examples
-testdata/bless.sh   # the golden files; read their difference before keeping it
+testdata/bless.sh   # the golden files; read their diff before you commit them
 ```

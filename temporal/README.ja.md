@@ -1,24 +1,22 @@
 # temporal
 
-このリポジトリのフレームワークのために、申請の種類が始める flow を Temporal で動かすモジュールです。ritsu の申請の種類が始める flow は三つあります。チケットが終わったあとに始める flow（`launch`）、エージェントのステップ（`ask_agent`）、メモ（`ask_note`）です。flow は dandori が Temporal の Go の SDK 向けに生成します。このモジュールはそれを始め、エージェントの答えとメモをサーバーに返します。フレームワークのモジュールがどの SDK にも依存しないよう、別のモジュールにしています。
+ringi のサーバーの申請が始める flow を、Temporal で動かすモジュールです。申請の種類が始める flow は三つあります。チケットが終わったあとに動かす flow（`launch`）、エージェントのステップ（`ask_agent`）、メモ（`ask_note`）です。flow は、dandori が Temporal の Go の SDK 向けに生成します。このモジュールは flow を始め、エージェントの答えとメモをサーバーに返します。フレームワークのモジュールが SDK に依存しないように、独立した Go のモジュールにしてあります。
 
-名前は仮です。
-
-英語版：[README.md](README.md)。設計：[DESIGN.ja.md](DESIGN.ja.md)。
+設計：[DESIGN.ja.md](DESIGN.ja.md)。英語：[README.md](README.md)。
 
 ## すること
 
-- `Launch` は、することのキーをワークフロー ID にして flow を始めます。前に始めたキーなら何も始めません。
-- `Ask` は、キーごとにこのモジュールの小さなワークフローを始めます。そのワークフローは flow を子ワークフローとして動かし、終わり方から答え（`ok`、`doubt`、メモの出力、`Failed`）を作り、アクティビティで `Server.Answered` に渡します。サーバーが受け取るまで、Temporal がリトライします。途中でプロセスが止まっても、答えは失われません。
-- `FlowsOf` は、申請の種類の説明（`types/<種類>.json`）から Runner の flow を作ります。説明は、種類が使う flow を、ワークフローの型、タスクキュー、出力と一緒に挙げています。
+- `Launch` は、フレームワークが渡すキーをワークフロー ID にして、flow を始めます。前に始めたキーなら、何も始めません。
+- `Ask` は、キーごとに、このモジュールの小さなワークフローを始めます。そのワークフローは、flow を子ワークフローとして動かし、終わり方から答え（`ok`、`doubt`、メモの出力、`Failed`）を作り、アクティビティで `Server.Answered` に渡します。サーバーが答えを受け取るまで、Temporal がリトライします。途中でプロセスが止まっても、答えは失われません。
+- `FlowsOf` は、申請の種類の説明（`types/<種類>.json`）から、Runner の flow を作ります。説明には、種類が使う flow が、ワークフローの型、タスクキュー、出力と一緒に並んでいます。
 - `Run` は、そのワークフローのワーカーと、このプロセスで動かす flow のワーカー（`Config.Workers`。タスクキューごと）を動かします。
-- `CheckWorkers` は、Runner が実行を始めるすべてのタスクキューについて、ポーリングしているワーカーがいるかを Temporal に聞き、ワーカーのいないキューを挙げます。そのキューでの実行とそのチケットは、ワーカーが来るまで待つことになるからです。
+- `CheckWorkers` は、Runner が実行を始めるすべてのタスクキューについて、ポーリングしているワーカーがいるかを Temporal に問い合わせ、ワーカーのいないキューの名前を返します。そのキューでの実行とそのチケットは、ワーカーが来るまで待つことになるためです。
 
-`Runner` は `server.Flows` でもあり、`server.Agents` でもあります。
+`Runner` は、`server.Flows` と `server.Agents` の両方として使えます。
 
 ## つなぎ方
 
-Temporal のサーバー、ritsu が生成したパッケージ（`ritsu gen --target go` が `flows/` の下に flow を書きます）、フレームワークが要ります。申請の種類が使う flow は、`temporal.FlowsOf` が種類の説明から読みます。その flow と、このプロセスで動かす flow のワーカー（タスクキューごと）を Runner に渡し、できた Runner をサーバーに渡します。`testdata/examples` の試験 `TestOneProcess` は、次のコードを動かしています。
+Temporal のサーバー、ritsu が生成したパッケージ（`ritsu gen --target go` が `flows/` の下に flow を書きます）、フレームワークを用意します。申請の種類が使う flow は、`temporal.FlowsOf` が種類の説明から読みます。その flow と、このプロセスで動かす flow のワーカー（タスクキューごと）を Runner に渡し、その Runner をサーバーに渡します。`testdata/examples` の試験 `TestOneProcess` は、次のコードを動かしています。
 
 ```go
 p, err := server.Load(ticketkinds.Contract, ticketkinds.Lang, ticketkinds.Kinds, os.DirFS(filepath.Join("..", "..", "requests")))
@@ -75,19 +73,28 @@ case err := <-checked:
 }
 ```
 
-`p` は ritsu が生成したパッケージで、申請の種類（`ticketkinds`）と requests のディレクトリから読みます。`c` は Temporal のサーバーのクライアントです（`client.Dial(client.Options{HostPort: "localhost:7233"})`）。`ctx` と `running` は、試験が二つのループを止めるための物で、`t.Fatal` の所では、使う人が自分の方法でエラーを扱います。サーバーのループは `ctx` が終わるまで返りません。Runner の `Run` は、ワーカーが始められなければすぐに、続けられない誤りでワーカーが止まればそのときに返ります。そのため、ワーカーを待つ所は、`CheckWorkers` の 30 秒を待たずに、そのエラーで終わります。受け付けを始めたあとも、サーバーは `stopped` を見張ります。ここのパッケージの種類は経費と契約なので、`FlowsOf` は `precheck_agent`、`travel_decision`、`pay`、`summarize` の四つの flow を挙げます。このプロセスが動かすのは、そのうちの二つ、日帰りの出張の決裁と支払いです。`travelAgents{}` は試験の偽の `Transport` です。flow の `Transport` に `nil` を渡すと、そのパッケージの既定の `Transport` になります。これは環境変数の鍵で、エージェントのプロバイダーを呼びます。`own` は使う人のタスク（`expense_payment.OwnTasks`）です。メモリの保管先、ヘッダーでのサインイン（`servertest.Header`）、`server.AllowAll`、`servertest.Books`、組織のファイルは、使う人が用意する物の代わりです。`CheckWorkers` がどのキューにもワーカーを見つけたら、サーバーが受け付けを始めます（`http.ListenAndServe(":8080", srv)`）。試験では、日帰りの出張が、申請からエージェントの決裁を経て支払いまで進みます。
+このコードの中身は、次のとおりです。
 
-`Workers` は、このプロセスで flow を動かすタスクキューを挙げます。ここにワーカーの無いタスクキューの flow は、別のプロセスが動かします。そのプロセスは、エージェントのプロバイダーの鍵を持ち、パッケージのワーカーを動かします。ここでは経費の確かめと契約の要約で、`expense_precheck.NewWorker(c, nil, nil, "").Run(worker.InterruptCh())` と、`contract_summary` の同じ物です。試験では、`TestOneProcess` が、そのようなプロセスと同じに、この二つのワーカーを例の前に動かします。ワーカーを動かすのは、このモジュールの試験が開発用サーバーに作る、この試験だけのネームスペースです。`c` も、そのネームスペースのクライアントです。そこをポーリングするほかの試験のワーカーはいないので、`CheckWorkers` が日帰りの出張のキューに見つけるワーカーは、このプロセスのワーカーです。出張を動かすのも、そのワーカーです。
+- `p` は、ritsu が生成したパッケージです。申請の種類（`ticketkinds`）と requests のディレクトリから読みます。
+- `c` は、Temporal のサーバーのクライアントです（`client.Dial(client.Options{HostPort: "localhost:7233"})`）。
+- `ctx` と `running` は、試験が二つのループを止めるのに使います。`t.Fatal` のところは、自分のエラーの扱いに置き換えてください。
+- メモリのストア、人をヘッダーで渡すログイン（`servertest.Header`）、`server.AllowAll`、`servertest.Books`、組織のファイルは、自分のサーバーのものに置き換えてください。
+- ここのパッケージの種類は経費と契約なので、`FlowsOf` は `precheck_agent`、`travel_decision`、`pay`、`summarize` の四つの flow を返します。このプロセスが動かすのは、そのうちの二つ、日帰りの出張の決裁と支払いです。
+- `travelAgents{}` は、試験用の偽の `Transport` です。`nil` を渡すと、flow のパッケージの既定の `Transport` になり、環境変数の鍵でエージェントのプロバイダーを呼びます。`own` は、自分で書くタスク（`expense_payment.OwnTasks`）です。
 
-`New` は、どの flow のタスクキューでもないキューのワーカーを受け付けません。`CheckWorkers` は、Runner が実行を始めるすべてのキュー（問い合わせの実行の `Config.TaskQueue` も含みます）をワーカーがポーリングするまで待ちます。Temporal への問いが失敗しても、もう一度聞きます。先にコンテキストが終われば、ワーカーが見つからなかったキューを挙げます。最後の問いが失敗したキューには、そのエラーを付けます。Temporal は、止まったワーカーも、最後のポーリングからしばらくのあいだ（開発用サーバーでは 5 分ほど）挙げるので、`CheckWorkers` は、止まったばかりのワーカーもいるものとして数えます。メモの出力は、flow が宣言した順に渡します。その順は、`FlowsOf` が種類の説明（`outputs`）から読みます。
+サーバーの `Run` は、`ctx` が終わるまで戻りません。Runner の `Run` は、ワーカーが始められなければすぐに、続けられないエラーでワーカーが止まればそのときに戻ります。このためワーカーを待つところは、`CheckWorkers` の 30 秒を待たずに、そのエラーで終わります。受け付けを始めたあとも、`stopped` にエラーが来るのを待ち続けます。`CheckWorkers` がどのキューにもワーカーを見つけたら、サーバーが受け付けを始めます（`http.ListenAndServe(":8080", srv)`）。試験では、日帰りの出張が、申請からエージェントの決裁を経て、支払いまで進みます。
+
+`Workers` には、このプロセスで flow を動かすタスクキューを書きます。ここにないタスクキューの flow は、別のプロセスが動かします。そのプロセスは、エージェントのプロバイダーの鍵を持ち、パッケージのワーカーを動かします。この例では経費の確認と契約の要約で、`expense_precheck.NewWorker(c, nil, nil, "").Run(worker.InterruptCh())` と、`contract_summary` の同じものです。`TestOneProcess` は、この二つのワーカーを、別のプロセスの代わりに例の前に起動します。場所は、このモジュールの試験が開発用サーバーに作る、この試験だけのネームスペースです。`c` も、そのネームスペースのクライアントです。そこをポーリングするほかの試験のワーカーはないので、`CheckWorkers` が日帰りの出張のキューに見つけるのはこのプロセスのワーカーで、出張を動かすのもそのワーカーです。
+
+`New` は、どの flow のものでもないタスクキューのワーカーを受け付けません。`CheckWorkers` は、Runner が実行を始めるすべてのキュー（答えを求めるワークフローの `Config.TaskQueue` も含みます）をワーカーがポーリングするまで待ちます。Temporal への問い合わせが失敗したら、もう一度問い合わせます。先にコンテキストが終わったときは、ワーカーが見つからなかったキューの名前を返します。最後の問い合わせが失敗したキューには、そのエラーも付けます。Temporal は、止まったワーカーも、最後のポーリングからしばらく（開発用サーバーでは 5 分ほど）一覧に残します。そのため `CheckWorkers` は、止まったばかりのワーカーもいるものとして数えます。メモの出力は、flow が宣言した順に渡します。順番は、`FlowsOf` が種類の説明（`outputs`）から読みます。
 
 ## Temporal の中の名前
 
 | 何か | 名前 |
 |---|---|
-| launch した flow、問い合わせた flow | ワークフロー ID `<チケット>/<回>/<通し番号>`、flow の型とタスクキュー |
-| 問い合わせて答えるワークフロー | ワークフロー ID `<チケット>/<回>/<通し番号>/ask`、型 `requests.ask`、タスクキュー `requests.ask`（`Config.TaskQueue`） |
-| 答えを渡す | アクティビティ `requests.answer` |
+| `launch` や `ask_agent`、`ask_note` で始めた flow | ワークフロー ID `<チケット>/<回>/<通し番号>`、flow の型とタスクキュー |
+| 答えを求めるワークフロー | ワークフロー ID `<チケット>/<回>/<通し番号>/ask`、型 `requests.ask`、タスクキュー `requests.ask`（`Config.TaskQueue`） |
+| 答えをサーバーに渡す | アクティビティ `requests.answer` |
 
 ## 試験
 
@@ -97,18 +104,26 @@ go test ./...
 go test -race ./...
 ```
 
-試験は Temporal の開発用サーバーを自分で起動します。ダウンロードはしません。
+試験は、Temporal の開発用サーバーを自分で起動します。ダウンロードはしません。
 
-| 環境変数 | 中身 | 無いとき |
+| 環境変数 | 中身 | ないとき |
 |---|---|---|
-| `TEMPORAL_CLI` | 開発用サーバーを動かす Temporal の CLI | SDK が OS の一時ディレクトリに置くファイル（`temporal-cli-go-sdk-<版>`）。それも無ければ、サーバーの要る試験は `SKIP` と書きます |
-| `RITSU` | 例を生成する `ritsu` | `PATH` の `ritsu`。それも無ければ、`TestExamples` は `SKIP` と書きます |
+| `TEMPORAL_CLI` | 開発用サーバーを動かす Temporal の CLI | SDK が OS の一時ディレクトリに置くファイル（`temporal-cli-go-sdk-<版>`）。それもなければ、サーバーの要る試験は `SKIP` と書きます |
+| `RITSU` | 例を生成する `ritsu` | `PATH` の `ritsu`。それもなければ、`TestExamples` は `SKIP` と書きます |
 | `RINGI_EXAMPLES` | 例のプロジェクト | `../examples/project` |
-| `RINGI_EXAMPLES_GOMOD` | 例のモジュールに要件（と go.sum）を足す go.mod。モジュールのキャッシュだけで組む機械で、キャッシュにある版を使う物を指定します | 生成した flow が書いている要件だけを使います |
+| `RINGI_EXAMPLES_GOMOD` | 例のモジュールに要件（と go.sum）を足す go.mod。モジュールのキャッシュだけでビルドする環境で、キャッシュにある版のものを指定します | 生成した flow が書いている要件だけを使います |
 
-`TestFlowsOf` と `TestFlowsOfVersions` は、例の種類の説明（`../examples/requests`。無ければ `SKIP` と書きます）から flow を読みます。`TestCheckWorkers` は、それぞれのキューをワーカーがポーリングしているかを開発用サーバーに聞きます。問いの途中でコンテキストを終わらせたり、問いを失敗させたりするクライアントも通します。コンテキストがどこで終わっても、ワーカーのいないキューは同じように挙がり、失敗した問いはもう一度聞きます。
+`TestFlowsOf` と `TestFlowsOfVersions` は、例の種類の説明（`../examples/requests`。なければ `SKIP` と書きます）から flow を読みます。`TestCheckWorkers` は、どのキューもワーカーがポーリングしているかを、開発用サーバーに問い合わせます。問い合わせの途中でコンテキストを終わらせるクライアントや、問い合わせを失敗させるクライアントも使います。コンテキストがどこで終わっても、ワーカーのいないキューは同じように返り、失敗した問い合わせはやり直します。
 
-`TestExamples` は、経費と契約の種類とその flow を一時的なモジュールに生成し、そこへ `testdata/examples` を写して、その試験を動かします。README の例が、日帰りの出張のキューを自分のワーカーだけがポーリングするネームスペースで動く。エージェントが通す、疑う、失敗する、形の合わない答えを返す。契約のメモが付く、期限に遅れる。支払いを二度 launch しても一度だけ動く。サーバーが答えを受け取ってから返事を返すまでのあいだに、ワーカーが止まる。エージェントは偽の `Transport` で答えるので、ネットワークには何も出ません。生成した物は残しません。下の実行では、`TestExamples` は 82 秒かかり、そのうち 31 秒が生成したモジュールの試験でした。その大半は `TestAgentFails` です。この試験の flow は、エージェントを試し直すあいだに 10 秒、次に 20 秒待つからです。残りは、モジュールの生成とビルドです。`go test -v -run TestExamples .` で見た、生成したモジュールの試験は次のとおりです。
+`TestExamples` は、経費と契約の種類とその flow を一時的なモジュールに生成し、そこに `testdata/examples` をコピーして、次の試験を動かします。
+
+- README の例を、日帰りの出張のキューを自分のワーカーだけがポーリングするネームスペースで動かす
+- エージェントが、通す、疑う、失敗する、形の合わない答えを返す
+- 契約のメモが付く、期限に遅れる
+- 支払いを二度 launch しても、一度だけ動く
+- サーバーが答えを受け取ってから返事を返すまでのあいだに、ワーカーが止まる
+
+エージェントは偽の `Transport` で答えるので、ネットワークには何も出ません。生成したものは残りません。下の実行では、`TestExamples` に 82 秒かかり、そのうち 31 秒が生成したモジュールの試験でした。大半は `TestAgentFails` で、この試験の flow は、エージェントを試し直すあいだに 10 秒、次に 20 秒待ちます。残りは、モジュールの生成とビルドです。`go test -v -run TestExamples .` で見た、生成したモジュールの試験は次のとおりです。
 
 ```
 --- PASS: TestOneProcess (0.32s)

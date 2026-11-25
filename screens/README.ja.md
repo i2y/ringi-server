@@ -1,6 +1,8 @@
 # screens
 
-サーバーが動かす申請の画面。この Go のパッケージは、ritsu が書く A2UI 1.0 のテンプレート（`ritsu gen --target requests`）に、一人の見る人のためにチケットの値を入れ、ボタンが押されたときにレンダラが送るメッセージを、それに当たる API の操作にする。依存するのは標準ライブラリだけで、何も保管せず、申請の種類を一つも知らない。どの種類も同じコードを通る。どうしているかは [DESIGN.ja.md](DESIGN.ja.md) に書いた。英語の版は [README.md](README.md) である。
+ringi のサーバーの申請を、A2UI 1.0 の画面で見せるためのパッケージです。画面のテンプレートは ritsu が書きます（`ritsu gen --target requests`）。このパッケージは、そこにチケットの値を、見る人に合わせて入れます。ボタンが押されたときにレンダラが送るメッセージは、それに当たる API の操作に直します。依存するのは標準ライブラリだけで、何も保管しません。どの申請の種類も、同じコードで動きます。
+
+設計：[DESIGN.ja.md](DESIGN.ja.md)。英語：[README.md](README.md)。この画面を HTTP で出すのは、パッケージ `web` です（[../web/README.ja.md](../web/README.ja.md)）。`web` を使うサーバーでは、このパッケージを自分で呼ぶ必要はありません。
 
 ## 使い方
 
@@ -12,23 +14,25 @@ sub, _ := fs.Sub(generated, "requests")
 set, err := screens.Load(sub) // openapi.json、types/、a2ui/
 ```
 
-チケットの承認カードを見せるには、カードの操作のうち、その人が今できる物を尋ねて、値を入れる。
+チケットの承認カードを見せるときは、カードの操作のうち、見る人が今できるものを調べてから、値を入れます。
 
 ```go
 actions, _ := set.Actions("expense", "card") // edit、approve、reject、send_back、…、comment
-can := allowed(viewer, ticket, actions)       // サーバーが gate と種類に尋ねる（Server.Can）
+can := allowed(viewer, ticket, actions)       // サーバーが gate と申請の種類で調べる（Server.Can）
 serving := screens.Serving{Find: "/a2ui/find", Upload: "/files"}
 card, err := set.Card(screens.Card{Language: "ja", Ticket: ticketJSON, Can: can, Names: directory, Serving: serving})
 // card.Messages：createSurface、updateDataModel、updateComponents。この順にレンダラに送る
 ```
 
-`directory` はサーバーの `screens.Lookup` である。表ごとに一度、画面が見せる ID で尋ねられ、人の名前、マスタの行の名前、ファイルの URL を答える。`serving` は、サーバーが画面の部品のために決めたアドレスを持つ。部品が人、チーム、マスタの行を探すアドレス（`/find`）と、添付を預けるアドレス（`/upload`。添付のある種類の画面）である。断りのあとは、その断りも持つ（`/refused`）。試験が `testdata/golden/expense.card.en.json` に置いた承認カードは、
+`directory` は、サーバーが用意する `screens.Lookup` です。表ごとに一度、画面に出す ID を渡されて呼ばれ、人の名前、マスタの行の名前、ファイルの URL を返します。`serving` には、画面の部品が使うアドレスを、サーバーが決めて入れます。人、チーム、マスタの行を探すアドレス（`/find`）と、添付のある申請の種類の画面では、ファイルをアップロードするアドレス（`/upload`）です。拒否のあとは、その拒否も入ります（`/refused`）。
+
+試験が `testdata/golden/expense.card.en.json` に置いている承認カードは、次のように始まります。
 
 ```json
 {"version":"1.0","createSurface":{"catalogId":"https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json","surfaceId":"expense.card.T-1"}}
 ```
 
-で始まり、データには、ほかの物と並んで次を持つ。
+データには、たとえば次のものが入ります。
 
 ```json
 "ticket": {"id": "T-1", "made_by": null, "requester": "e1201", "revision": {"edits": 0, "round": 1, "stage": 0}, "stage": "first", "status": "in_progress"},
@@ -39,20 +43,20 @@ card, err := set.Card(screens.Card{Language: "ja", Ticket: ticketJSON, Can: can,
 "refused": {"field": null, "text": null}
 ```
 
-新しい申請の申請書は、見せるたびに別の `Surface`（ランダムな ID）が要る。申請の冪等キーを面から作るからである。
+新しい申請書には、見せるたびに別の `Surface`（ランダムな ID）を渡します。申請の冪等キーを、そこから作るためです。
 
 ```go
 form, err := set.Form(screens.Form{Kind: "leave", Language: "ja", Surface: newID(), Can: []string{"submit"}, Serving: serving})
 ```
 
-二つの一覧には、サーバーが見る人のために読んだチケットを入れる。`set.List` には見る人の答えを待つチケットを、`set.Mine` には見る人自身の申請（見る人が申請者の物と、見る人が代わりに出した物）を入れる。
+二つの一覧には、見る人のためにサーバーが読んだチケットを入れます。`set.List` には、その人を待っているチケットを入れます。`set.Mine` には、その人の申請（自分が申請者のものと、ほかの人の代わりに出したもの）を入れます。
 
 ```go
 waiting, err := set.List(screens.List{Kind: "expense", Language: "ja", Tickets: waitingTickets, Names: directory})
 mine, err := set.Mine(screens.List{Kind: "expense", Language: "ja", Tickets: ownTickets, Names: directory})
 ```
 
-ボタンが押されると、レンダラがアクションのメッセージを送る。それを操作にし、HTTP から来た同じ操作と同じに、送った人の操作として実行する。
+ボタンが押されると、レンダラがアクションのメッセージを送ります。それを操作に直し、送った人の操作として、HTTP で来た同じ操作と同じように実行します。
 
 ```go
 a, err := screens.ParseAction(message)
@@ -60,33 +64,33 @@ op, err := set.Operation(a)
 // op.ID、op.Method、op.Path、op.Ticket、op.Body、op.Key
 ```
 
-`testdata/golden/operations.json` から。次のメッセージは、
+たとえば、`testdata/golden/operations.json` の次のメッセージは、
 
 ```json
 {"version":"1.0","action":{"name":"approve","surfaceId":"expense.card.T-1","sourceComponentId":"button.approve","timestamp":"2026-11-16T09:05:00.000Z","context":{"ticket":"T-1","revision":{"round":1,"stage":0,"edits":0},"comment":"Fine."}}}
 ```
 
-次の操作になる。
+次の操作になります。
 
 ```json
 {"id":"approve","method":"POST","path":"/tickets/T-1/approve","ticket":"T-1","body":{"revision":{"round":1,"stage":0,"edits":0},"comment":"Fine."},"key":"screen-8d0467a0aadff7e480af24d481d53aa2e36df49c83ecfc2172995b9eeded1a9b"}
 ```
 
-本文は、ほかの本文と同じく、サーバーが操作のスキーマで確かめる。キーは操作の冪等キーで、新しい申請では申請書と本文ごとに一つ、チケットへの操作では押すたびに一つである（DESIGN.ja.md の 3.1）。
+本文は、ほかの本文と同じように、サーバーが操作のスキーマで確かめます。キーは、操作の冪等キーです。新しい申請では申請書と本文ごとに一つ、チケットへの操作では押すたびに一つです（DESIGN.ja.md の 3.1）。
 
-サーバーが操作を断ったときは、API が答えた物を `screens.Refusal` が持つ。種類、英語と日本語の文、`form` の断りなら、断りが指すフォームの場所（`at`。行を 0 から数える `items[1].price` の形で、`screens.ReadPlace` が読む）である。`set.Refused` は、見せている申請書か承認カードで断りを言うメッセージを作り、本人が入れた値はそのまま残す。画面は、場所が指すフィールドの横に文を見せ、種類が `comment` の断りはコメントの下に、どちらでもなければ画面の頭に見せる。`testdata/golden/expense.form.refused.ja.json` は、日本語の申請書での `items[0].price` の断りである。
+サーバーが操作を拒否したとき、API が返したものは `screens.Refusal` に入ります。種類、英語と日本語の文、`form` の拒否ならフォームの場所（`at`。`items[1].price` のように、行を 0 から数えます。`screens.ReadPlace` が読みます）です。`set.Refused` は、見せている申請書や承認カードに拒否を表示するメッセージを作ります。本人が入れた値は、そのまま残ります。文は、場所が指すフィールドの横に出ます。種類が `comment` の拒否はコメントの下に、どちらでもなければ画面の先頭に出ます。次は、日本語の申請書での、`items[0].price` の拒否です（`testdata/golden/expense.form.refused.ja.json`）。
 
 ```json
 {"version":"1.0","updateDataModel":{"surfaceId":"expense.form.f1","path":"/refused","value":{"comment":false,"field":"items","text":"`1_000_001JPY` は、`items[0].price` の範囲（`>=1JPY <=1_000_000JPY`）の外です"}}}
 ```
 
-`screens.RefusalWords(lang, kind)` は、断りとともに本人に伝える一文を、断りの種類だけから答える（DESIGN.ja.md の 3.2）。表は一つで、画面と素の HTML のページが両方使う。同じように、`LimitedWords` はコメントを今は受け付けないことを、`OfferedWords` は、今は効いている版が無い種類を出せるようになる日を言う。`offered` の画面が無いパッケージのフォームの答えの 404、ページ、エージェントのツールが、この文を言う。その日から出せる人（`Server.Offered`）には、パッケージが持っていれば（約束に加わる前に生成されたパッケージは持たず、そのまま読める）、`offered` の画面そのものを、出せる日と戻る先を入れて返す：`set.Offered(screens.Offered{Kind: "leave", Language: "ja", From: "2027-04-01", Home: "/pages/", Surface: newID()})`。
+`screens.RefusalWords(lang, kind)` は、拒否と一緒に見せる文を返します。文は拒否の種類だけで決まり（DESIGN.ja.md の 3.2）、画面と素の HTML のページが同じ表を使います。`LimitedWords` は、コメントを今は受け付けないときの文を返します。`OfferedWords` は、有効な版がまだなく、ある日から出せる申請の種類の文を返します。その日から出せる人（`Server.Offered`）には、出せる日と戻る先を入れた `offered` の画面を見せます（`set.Offered(screens.Offered{Kind: "leave", Language: "ja", From: "2027-04-01", Home: "/pages/", Surface: newID()})`）。この画面が約束に加わる前に生成したパッケージも、そのまま読めます。そのときのフォームは 404 になり、`OfferedWords` の文が返ります。ページとエージェントのツールも、この文を使います。
 
-レンダラは ritsu のカタログと関数も読む。`set.Asset("catalog.json")` と `set.Asset("functions.js")` が、それぞれを Content-Type と ETag 付きで答え、`set.Assets()` が二つをファイルシステムとして答える。
+レンダラは、ritsu のカタログと関数も読みます。`set.Asset("catalog.json")` と `set.Asset("functions.js")` は、それぞれを Content-Type と ETag と一緒に返します。`set.Assets()` は、二つをファイルシステムとして返します。
 
 ## 素の HTML のページ
 
-パッケージ `page` は、同じ画面を素の HTML のページで見せる。A2UI のレンダラが無いブラウザでも、必要なら JavaScript が無くても使え、ブラウザが送ったフォームを同じ操作に読む。[page/README.ja.md](page/README.ja.md) にある。画面もページも、パッケージ `web` が HTTP で出す（[../web/README.ja.md](../web/README.ja.md)）。
+パッケージ `page` は、同じ画面を素の HTML のページで見せ、ブラウザが送ったフォームを同じ操作に直します。A2UI のレンダラがないブラウザでも、JavaScript がなくても使えます（[page/README.ja.md](page/README.ja.md)）。
 
 ## 試験
 
@@ -95,11 +99,11 @@ go test .            # 6 秒ほど。./... ならページ（page/）も含め�
 go test -race .      # 65 秒ほど。./... なら 95 秒ほど
 ```
 
-試験は、`testdata/` に生成した ritsu の例（十の種類の 120 のテンプレート、そのベクタ、そこから ritsu が生成した Go のパッケージ）を読み、`testdata/driver.mjs` を通して、Node 24 で画面をレンダラと同じに読む。Node が無ければ、その試験は `SKIP:` と言って通る。ベクタから 5,542 の画面に値を入れ、336 のボタンを全部押し、ベクタのイベントを、その画面でボタンを 2,230 回押して行い、画面が送る物を生成したコードに渡す。送った 2,052 回の答えはどれもベクタのとおりで、画面の検査が止めた 176 回と、画面が隠すフィールドに値を入れる 2 回（画面はそのフィールドを送らない）と、どの画面も送らない物を求める 138 行は、種類もどれも断る。一覧は DESIGN.ja.md の 7 章にある。
+試験は、`testdata/` に生成してある ritsu の例（十の種類の 120 のテンプレート、そのベクタ、ritsu が生成した Go のパッケージ）を使います。画面は、`testdata/driver.mjs` を通して、Node 24 でレンダラと同じように読みます。Node がなければ、その試験は `SKIP:` と書いて通ります。ベクタから 5,542 の画面に値を入れ、336 のボタンをすべて押します。ベクタのイベントは、画面のボタンを 2,230 回押して行い、画面が送ったものを生成されたコードに渡します。送った 2,052 回の結果は、どれもベクタのとおりです。画面の検査が止めた 176 回、画面が隠すフィールドに値を入れた 2 回（画面はそのフィールドを送りません）、どの画面からも送られないものを求める 138 行は、申請の種類もすべて拒否します。試験の一覧は、DESIGN.ja.md の 7 章にあります。
 
-新しい ritsu の例を読むには、ritsu のチェックアウトから、`ritsu` を `PATH` に置いて次を走らせる。
+新しい ritsu の例を取り込むには、ritsu のチェックアウトを用意し、`ritsu` を `PATH` に置いて、次を実行します。
 
 ```sh
 testdata/regen.sh <ritsu のチェックアウト>/crates/ringi/examples
-testdata/bless.sh   # golden のファイル。残す前に差分を読む
+testdata/bless.sh   # golden のファイル。コミットする前に差分を読む
 ```

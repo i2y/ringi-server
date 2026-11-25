@@ -43,13 +43,16 @@ type options struct {
 	getenv                       func(string) string
 }
 
+// startAt is the time the server starts at, when the linker sets it (examples.ClockFrom).
+var startAt string
+
 func main() {
 	var o options
 	flag.StringVar(&o.addr, "addr", "127.0.0.1:8081", "the address to listen on")
 	flag.BoolVar(&o.stdio, "stdio", false, "serve the tools of one person (-person) on stdin and stdout, and no HTTP")
 	flag.StringVar(&o.person, "person", "e1201", "with -stdio, the person the tools act for")
 	flag.StringVar(&o.requests, "requests", "", "a requests directory to read from the disk, with mcp/tools.json (default: the examples' package as built in)")
-	flag.StringVar(&o.lang, "lang", "", "the language of the answers' sentences, en or ja (default: Accept-Language over HTTP, en on stdio)")
+	flag.StringVar(&o.lang, "lang", "", "the language of the answers' sentences, en or ja (default: the one Accept-Language asks for over HTTP, else the person's in the organization's data, else English)")
 	flag.Parse()
 	o.given = map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { o.given[f.Name] = true })
@@ -109,6 +112,10 @@ func run(o options, log *slog.Logger) error {
 		return err
 	}
 	stdio, person, addr, lang := o.stdio, o.person, o.addr, o.lang
+	clock, err := examples.ClockFrom(startAt)
+	if err != nil {
+		return err
+	}
 	agents := &examples.Agents{Log: log, Verdict: "ok"}
 	notices := &examples.LogNotifier{Log: log}
 	cfg := server.Config{
@@ -121,6 +128,7 @@ func run(o options, log *slog.Logger) error {
 		Flows:         examples.LogFlows{Log: log},
 		Agents:        agents,
 		Books:         &servertest.Books{},
+		Clock:         clock,
 		Logger:        log,
 	}
 	srv, err := server.New(cfg)

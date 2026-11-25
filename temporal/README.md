@@ -1,39 +1,37 @@
 # temporal
 
-Runs the flows of the kinds of request on Temporal, for the framework in this repository. ritsu's
-kinds start three kinds of flow: one that starts after a ticket ends (`launch`), an agent's step
-(`ask_agent`) and a note (`ask_note`). dandori generates the flows for Temporal's Go SDK; this
-module starts them, and gives the agents' answers and the notes back to the server. It is a module
-of its own, so that the framework's module depends on no SDK.
+Runs on Temporal the flows that the requests of a ringi server start. A kind of request can start
+three kinds of flow: one that runs after a ticket ends (`launch`), an agent's step (`ask_agent`) and
+a note (`ask_note`). dandori generates the flows for Temporal's Go SDK. This module starts them, and
+gives the agents' answers and the notes back to the server. It is a Go module of its own, so that the
+framework's module depends on no SDK.
 
-The name is tentative.
-
-Japanese: [README.ja.md](README.ja.md). Design: [DESIGN.md](DESIGN.md).
+The design: [DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md).
 
 ## What it does
 
-- `Launch` starts a flow with the thing to do's key as its workflow ID. A key started before starts
-  nothing.
-- `Ask` starts a small workflow of its own for the key, which runs the flow as a child, makes the
-  answer from how it ended (`ok`, `doubt`, the note's outputs, or `Failed`), and gives it to
-  `Server.Answered` from an activity Temporal tries until the server has taken it. A process that
-  stops in the middle loses no answer.
+- `Launch` starts a flow, with the key the framework gives it as its workflow ID. A key started
+  before starts nothing.
+- `Ask` starts a small workflow of this module for the key. That workflow runs the flow as a child,
+  makes the answer from how the flow ended (`ok`, `doubt`, the note's outputs, or `Failed`), and
+  gives it to `Server.Answered` from an activity, which Temporal tries again until the server has
+  taken the answer. A process that stops in the middle loses no answer.
 - `FlowsOf` makes the runner's flows from the kinds' descriptions (`types/<kind>.json`), which list
-  each flow a kind names with its workflow type, task queue and outputs.
+  each flow a kind uses with its workflow type, task queue and outputs.
 - `Run` runs the worker of those workflows, and the workers of the flows this process runs
   (`Config.Workers`, by task queue).
-- `CheckWorkers` asks Temporal whether a worker polls every task queue the runner starts runs on,
-  and names the queues with none: a run there, and its ticket, would wait until one does.
+- `CheckWorkers` asks Temporal whether a worker polls every task queue that the runner starts runs
+  on, and names the queues with none: a run there, and its ticket, would wait until one does.
 
-A `Runner` is both `server.Flows` and `server.Agents`.
+A `Runner` is both a `server.Flows` and a `server.Agents`.
 
 ## Wiring
 
 You need a Temporal server, the package ritsu generated (`ritsu gen --target go` writes the flows
-under `flows/`), and the framework. `temporal.FlowsOf` reads the flows the kinds name from the
-kinds' descriptions; give the runner those flows and the workers of the ones this process runs, by
-their task queues, and give the server the runner. The test `TestOneProcess` in `testdata/examples`
-runs this code:
+under `flows/`), and the framework. `temporal.FlowsOf` reads the flows the kinds use from the kinds'
+descriptions. Give the runner those flows, and the workers of the ones this process runs, by their
+task queues; then give the server the runner. The test `TestOneProcess` in `testdata/examples` runs
+this code:
 
 ```go
 p, err := server.Load(ticketkinds.Contract, ticketkinds.Lang, ticketkinds.Kinds, os.DirFS(filepath.Join("..", "..", "requests")))
@@ -90,47 +88,53 @@ case err := <-checked:
 }
 ```
 
-`p` is the package ritsu generated, its kinds (`ticketkinds`) and its requests directory. `c` is a
-client of the Temporal server (`client.Dial(client.Options{HostPort: "localhost:7233"})`); `ctx` and
-`running` are what the test stops the two loops with, and `t.Fatal` stands for your own handling of
-an error. The server's loop answers only when `ctx` ends; the runner's `Run` answers at once when a
-worker does not start, and later when one stops on an error it cannot go on from, so the wait for
-the workers ends with that error rather than with `CheckWorkers`'s after its 30 seconds, and a
-server watches `stopped` while it serves as well. The package's kinds here are the expense and the
-contract, so `FlowsOf` lists four flows: `precheck_agent`, `travel_decision`, `pay` and `summarize`.
-This process runs two of them, the day trip's decision and the payment. `travelAgents{}` is the
-test's fake `Transport`; `nil` as a flow's `Transport` is its package's default one, which calls the
-agents' providers with the keys in the environment; `own` is your own tasks
-(`expense_payment.OwnTasks`). The memory store, the sign-in by a header (`servertest.Header`),
-`server.AllowAll`, `servertest.Books` and the organization's files stand in for your own. Once
-`CheckWorkers` has found a worker on every queue, the server serves:
-`http.ListenAndServe(":8080", srv)`. In the test, a day trip goes from its submit through the
-agent's decision to its payment.
+In this code:
 
-`Workers` names the task queues whose flows this process runs. A flow on a queue with no worker
-here is run by another process, which runs its package's worker with the keys of its agents'
-providers: here the expense's check and the contract's summary, as
+- `p` is the package ritsu generated: its kinds (`ticketkinds`) and its requests directory.
+- `c` is a client of the Temporal server
+  (`client.Dial(client.Options{HostPort: "localhost:7233"})`).
+- `ctx` and `running` are what the test stops the two loops with, and `t.Fatal` stands for your own
+  handling of an error.
+- The memory store, the header that says who the person is (`servertest.Header`), `server.AllowAll`,
+  `servertest.Books` and the organization's files stand in for your own.
+- The package's kinds are the expense and the contract, so `FlowsOf` lists four flows:
+  `precheck_agent`, `travel_decision`, `pay` and `summarize`. This process runs two of them, the day
+  trip's decision and the payment.
+- `travelAgents{}` is the test's fake `Transport`. With `nil`, a flow uses its package's default
+  `Transport`, which calls the agents' providers with the keys in the environment. `own` is your own
+  tasks (`expense_payment.OwnTasks`).
+
+The server's `Run` returns only when `ctx` ends. The runner's `Run` returns at once when a worker
+does not start, and later when one stops on an error it cannot go on from. So the wait for the workers
+ends with that error, rather than with that of `CheckWorkers` after its 30 seconds, and a server
+watches `stopped` while it serves as well. Once `CheckWorkers` has found a worker on every queue, the
+server serves: `http.ListenAndServe(":8080", srv)`. In the test, a day trip goes from its submit
+through the agent's decision to its payment.
+
+`Workers` names the task queues whose flows this process runs. A flow on a queue with no worker here
+is run by another process, which runs its package's worker with the keys of its agents' providers.
+Here those are the expense's check and the contract's summary, run with
 `expense_precheck.NewWorker(c, nil, nil, "").Run(worker.InterruptCh())` and the same with
-`contract_summary`. In the test, `TestOneProcess` starts those two workers before the example, as
-such a process would, on a namespace of its own that the module's tests make on the dev server;
-`c` is a client of that namespace. No other test's workers poll there, so the workers
-`CheckWorkers` finds on the day trip's queues are this process's, and they run the trip.
+`contract_summary`. `TestOneProcess` starts those two workers before the example, as such a process
+would, on a namespace of its own that the module's tests make on the dev server; `c` is a client of
+that namespace. No other test's workers poll there, so the workers that `CheckWorkers` finds on the
+day trip's queues are this process's, and they run the trip.
 
-`New` refuses a worker of a queue no flow is on, and `CheckWorkers` waits until a worker polls
-every queue the runner starts runs on, the asking runs' `Config.TaskQueue` among them. It asks
-again after a question to Temporal that fails; when its context ends first, it names the queues it
-has found no worker on, with the error of a queue's last question when that failed. Temporal still
-lists a worker for a while after its last poll (about five minutes on the dev server), so
-`CheckWorkers` counts a worker that has just stopped. A note's outputs are given in the order its
-flow declares them, which `FlowsOf` reads from the kind's description (`outputs`).
+`New` refuses a worker of a queue that no flow is on. `CheckWorkers` waits until a worker polls every
+queue that the runner starts runs on, including the asking workflows' own (`Config.TaskQueue`). It
+asks again after a question to Temporal that fails. When its context ends first, it names the queues
+it has found no worker on, with the error of a queue's last question when that one failed. Temporal
+still lists a worker for a while after its last poll (about five minutes on the dev server), so
+`CheckWorkers` counts a worker that has just stopped. A note's outputs are given in the order its flow
+declares them, which `FlowsOf` reads from the kind's description (`outputs`).
 
 ## Names in Temporal
 
 | What | Name |
 |---|---|
 | a flow launched or asked | workflow ID `<ticket>/<round>/<serial>`, the flow's type and task queue |
-| the workflow that asks and answers | workflow ID `<ticket>/<round>/<serial>/ask`, type `requests.ask`, task queue `requests.ask` (`Config.TaskQueue`) |
-| giving the answer | activity `requests.answer` |
+| the workflow that asks for an answer | workflow ID `<ticket>/<round>/<serial>/ask`, type `requests.ask`, task queue `requests.ask` (`Config.TaskQueue`) |
+| giving the answer to the server | activity `requests.answer` |
 
 ## Testing
 
@@ -144,26 +148,30 @@ The tests start Temporal's dev server themselves, and never download it:
 
 | Variable | What it names | Without it |
 |---|---|---|
-| `TEMPORAL_CLI` | the Temporal CLI the dev server runs from | the file the SDK keeps in the system's temporary directory (`temporal-cli-go-sdk-<version>`); without that file, the tests that need a server say `SKIP` |
-| `RITSU` | the `ritsu` that generates the examples | `ritsu` on `PATH`; without one, `TestExamples` says `SKIP` |
+| `TEMPORAL_CLI` | the Temporal CLI the dev server runs from | the file the SDK keeps in the system's temporary directory (`temporal-cli-go-sdk-<version>`); without that file, the tests that need a server print `SKIP` |
+| `RITSU` | the `ritsu` that generates the examples | `ritsu` on `PATH`; without one, `TestExamples` prints `SKIP` |
 | `RINGI_EXAMPLES` | the examples' project | `../examples/project` |
 | `RINGI_EXAMPLES_GOMOD` | a go.mod whose requirements (and go.sum) the examples' module takes too: for a machine that builds from its module cache only, one whose versions the cache holds | the requirements the generated flows name |
 
 `TestFlowsOf` and `TestFlowsOfVersions` read the flows from the descriptions of the examples' kinds
-(`../examples/requests`; without them they say `SKIP`), and `TestCheckWorkers` asks the dev server
+(`../examples/requests`; without them they print `SKIP`). `TestCheckWorkers` asks the dev server
 whether a worker polls each queue, also through a client that ends the context in the middle of a
 question or makes a question fail: the queues with no worker are named the same way wherever the
 context ends, and a question that fails is asked again.
 
 `TestExamples` generates the expense and contract kinds and their flows into a temporary module,
-copies `testdata/examples` into it, and runs its tests there: the README's example, on a namespace
-where only its own workers poll the day trip's queues; the agent passes, doubts, fails and answers
-out of shape; a contract's note is attached, and comes too late; a payment is launched twice and
-runs once; the worker stops between the server's taking an answer and its reply. The agents answer
-through a fake `Transport`; nothing goes out to a network, and nothing generated is kept. In the
-run below, `TestExamples` took 82 seconds, 31 of them the generated module's tests, most of those
-`TestAgentFails`, whose flow waits 10 and then 20 seconds between its agent's tries; the rest is
-generating the module and building it. The tests of the generated module, from
+copies `testdata/examples` into it, and runs its tests there:
+
+- the README's example, on a namespace where only its own workers poll the day trip's queues
+- the agent passes, doubts, fails, and gives an answer of the wrong shape
+- a contract's note is attached, and comes too late
+- a payment is launched twice and runs once
+- the worker stops between the server's taking an answer and its reply
+
+The agents answer through a fake `Transport`; nothing goes out to a network, and nothing generated is
+kept. In the run below, `TestExamples` took 82 seconds, 31 of them the generated module's tests. Most
+of those are `TestAgentFails`, whose flow waits 10 and then 20 seconds between its agent's tries. The
+rest is generating the module and building it. The tests of the generated module, from
 `go test -v -run TestExamples .`:
 
 ```

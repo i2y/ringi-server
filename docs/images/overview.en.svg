@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="432" viewBox="0 0 900 432" role="img" aria-labelledby="t d" lang="en">
+<title id="t">How ringi-server fits together</title><desc id="d">You write request types and the organization; ritsu generates code from them; ringi-server runs that code for people, programs and agents, and keeps everything in PostgreSQL.</desc>
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; font-size: 13px; fill: #334155; }
+.h { font-weight: 700; font-size: 15px; fill: #0f172a; }
+.s { font-weight: 700; font-size: 13px; fill: #0f172a; }
+.k { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: #1d4ed8; }
+.ground { fill: #f8fafc; }
+.box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2; }
+.main { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 1.8; }
+.arrow { stroke: #64748b; stroke-width: 1.6; fill: none; }
+.head { fill: #64748b; }
+@media (prefers-color-scheme: dark) {
+text { fill: #cbd5e1; } .h, .s { fill: #f1f5f9; } .k { fill: #93c5fd; }
+.ground { fill: #0f172a; } .box { fill: #1e293b; stroke: #475569; } .main { fill: #172554; stroke: #93c5fd; }
+.arrow { stroke: #94a3b8; } .head { fill: #94a3b8; }
+}
+</style>
+<defs><marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<rect class="ground" width="900" height="432" rx="14"/>
+<rect class="box" x="24" y="24" width="262" height="112" rx="10"/>
+<text class="h" x="40" y="51" text-anchor="start">You write</text>
+<text class="t" x="40" y="76" text-anchor="start">request types (.ringi), the gate (.gate),</text>
+<text class="t" x="40" y="96" text-anchor="start">business days (.cal), flows and books,</text>
+<text class="t" x="40" y="116" text-anchor="start">the organization (CSV)</text>
+<path class="arrow" d="M286 80L366 80" marker-end="url(#head)"/>
+<text class="k" x="326" y="70" text-anchor="middle">ritsu gen</text>
+<rect class="box" x="368" y="24" width="258" height="112" rx="10"/>
+<text class="h" x="384" y="51" text-anchor="start">ritsu generates</text>
+<text class="t" x="384" y="76" text-anchor="start">Go code that decides what happens</text>
+<text class="t" x="384" y="96" text-anchor="start">the contract: OpenAPI, screens,</text>
+<text class="t" x="384" y="116" text-anchor="start">test vectors</text>
+<rect class="box" x="658" y="24" width="218" height="112" rx="10"/>
+<text class="h" x="674" y="51" text-anchor="start">Your command</text>
+<text class="t" x="674" y="76" text-anchor="start">gives the server the generated</text>
+<text class="t" x="674" y="96" text-anchor="start">package, the gate, and your own</text>
+<text class="t" x="674" y="116" text-anchor="start">notices, books and flows</text>
+<path class="arrow" d="M497 136L497 196" marker-end="url(#head)"/>
+<path class="arrow" d="M767 136L767 166L590 166L590 196" marker-end="url(#head)"/>
+<rect class="box" x="24" y="204" width="190" height="54" rx="10"/>
+<text class="s" x="40" y="227" text-anchor="start">People</text>
+<text class="t" x="40" y="246" text-anchor="start">pages in a browser</text>
+<path class="arrow" d="M214 231L290 231" marker-end="url(#head)"/>
+<rect class="box" x="24" y="272" width="190" height="54" rx="10"/>
+<text class="s" x="40" y="295" text-anchor="start">Programs</text>
+<text class="t" x="40" y="314" text-anchor="start">the HTTP API</text>
+<path class="arrow" d="M214 299L290 299" marker-end="url(#head)"/>
+<rect class="box" x="24" y="340" width="190" height="54" rx="10"/>
+<text class="s" x="40" y="363" text-anchor="start">Agents</text>
+<text class="t" x="40" y="382" text-anchor="start">MCP tools</text>
+<path class="arrow" d="M214 367L290 367" marker-end="url(#head)"/>
+<rect class="main" x="292" y="198" width="336" height="206" rx="10"/>
+<text class="h" x="308" y="225" text-anchor="start">ringi-server</text>
+<text class="t" x="308" y="250" text-anchor="start">signs people in and guards every request</text>
+<text class="t" x="308" y="282" text-anchor="start">asks the gate, runs the generated code</text>
+<text class="t" x="308" y="314" text-anchor="start">keeps every request and its history</text>
+<text class="t" x="308" y="346" text-anchor="start">rings deadlines and reminders</text>
+<text class="t" x="308" y="378" text-anchor="start">sends what is to be sent, until it is done</text>
+<rect class="box" x="684" y="198" width="192" height="34" rx="10"/>
+<text class="t" x="697" y="220" text-anchor="start">PostgreSQL</text>
+<path class="arrow" d="M628 215L682 215" marker-end="url(#head)"/>
+<rect class="box" x="684" y="240" width="192" height="34" rx="10"/>
+<text class="t" x="697" y="262" text-anchor="start">OpenID Connect sign-in</text>
+<path class="arrow" d="M628 257L682 257" marker-end="url(#head)"/>
+<rect class="box" x="684" y="282" width="192" height="34" rx="10"/>
+<text class="t" x="697" y="304" text-anchor="start">Notices: mail, chat</text>
+<path class="arrow" d="M628 299L682 299" marker-end="url(#head)"/>
+<rect class="box" x="684" y="324" width="192" height="34" rx="10"/>
+<text class="t" x="697" y="346" text-anchor="start">Books: budget, leave</text>
+<path class="arrow" d="M628 341L682 341" marker-end="url(#head)"/>
+<rect class="box" x="684" y="366" width="192" height="34" rx="10"/>
+<text class="t" x="697" y="388" text-anchor="start">Flows: Temporal</text>
+<path class="arrow" d="M628 383L682 383" marker-end="url(#head)"/>
+</svg>

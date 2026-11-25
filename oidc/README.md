@@ -1,12 +1,16 @@
 # oidc
 
-Signing in through the organization's OpenID Connect provider, for the framework: the routes of
-signing in and out, a session in a cookie, and the framework's `Authenticator`, which tells it who
-sends each request. The person is found in the organization's data by the email address the
-provider verified. It depends on the standard library and the framework's core (the package
-`server`) alone, with the rule its Japanese sentences set a name by (`internal/jatext`).
+Signing in through the organization's OpenID Connect provider: the routes of signing in and out, a
+session in a cookie, and the framework's `Authenticator`, which tells it who sends each request. The
+person is found in the organization's data by the email address the provider verified. The package
+depends on the standard library and the framework's core (the package `server`) alone.
 
 The design: [DESIGN.md](DESIGN.md). Japanese: [README.ja.md](README.ja.md).
+
+A server whose command is package `serve` (the one `ritsu ringi init` makes, and the example server)
+already signs people in with this package when it is given its `-oidc-…` flags
+([Signing in](../README.md#signing-in) in the README). Read [Use](#use) below for a server made in
+Go.
 
 ## Register the server at the provider
 
@@ -16,10 +20,10 @@ Ask the people who run the organization's OpenID Connect provider for a client o
 |---|---|
 | The kind of client | a web application that keeps a secret, with the authorization code flow |
 | Redirect URI | `https://<host>/login/callback` |
-| Scopes | `openid email profile` |
+| Scopes | `openid email profile`, and one more where the provider needs it to list a person's roles |
 | How the client proves itself at the token endpoint | `client_secret_basic` (or `client_secret_post`) |
 | How ID tokens are signed | RS256, PS256 or ES256 |
-| Claims in the ID token | `email` and `email_verified`: the package reads the ID token only, not the userinfo endpoint |
+| Claims in the ID token | `email` and `email_verified`, and the claim that lists a person's roles. The package reads the ID token only, not the userinfo endpoint |
 | Post-logout redirect URI | only to sign people out of the provider as well (`Config.ProviderLogout`) |
 
 They give back the issuer URL, the client ID and the client secret. Write the issuer exactly as the
@@ -48,16 +52,17 @@ seal a session as anyone.
 ```go
 keys, err := oidc.ParseKeys(os.Getenv("RINGI_SESSION_KEYS"))
 var srv *server.Server
+people := oidc.ByEmail(func(ctx context.Context) ([]server.OrgPerson, error) {
+	return oidc.PeopleOf(ctx, srv) // the people of the organization's data in effect today
+})
 signin, err := oidc.New(ctx, oidc.Config{
 	Issuer:       os.Getenv("RINGI_OIDC_ISSUER"),
 	ClientID:     os.Getenv("RINGI_OIDC_CLIENT_ID"),
 	ClientSecret: os.Getenv("RINGI_OIDC_CLIENT_SECRET"),
 	RedirectURL:  "https://requests.example.test/login/callback",
 	Keys:         keys,
-	Map: oidc.ByEmail(func(ctx context.Context) ([]server.OrgPerson, error) {
-		return oidc.PeopleOf(ctx, srv) // the people of the organization's data in effect today
-	}),
-	Revocations: store, // the PostgreSQL store: a sign-out holds in every process
+	Map:          oidc.Roles(people, "roles"), // the roles the claim "roles" lists, for the gate
+	Revocations:  store,                       // the PostgreSQL store: a sign-out holds in every process
 })
 srv, err = server.New(server.Config{…, Store: store, Authenticator: signin})
 h, err := web.New(srv, web.Config{
@@ -71,7 +76,10 @@ signin.Mount(h) // GET /login, GET /login/callback, POST /logout, behind the han
 `New` reads the provider's discovery document and keys, so a wrong issuer or a provider that cannot
 be reached stops the server when it starts, not at the first sign-in. Without the handler of the
 pages and the screens (package `web`), `Mount` takes an `*http.ServeMux` (DESIGN.md, section 10).
-The example server signs in this way with its `-oidc-…` flags (the root README).
+
+A person's roles are those of the ID token of their last sign-in. A claim the ID token does not have
+gives no role, and a provider that lists groups by an ID gives the IDs: write the gate with what the
+provider sends.
 
 What people see:
 

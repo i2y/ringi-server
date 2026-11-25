@@ -33,6 +33,26 @@ var project embed.FS
 // descriptions say (utc_offset_minutes 540). The tests tell their times in it.
 var Zone = time.FixedZone("+09:00", 9*60*60)
 
+// ClockFrom is a clock that says the time given (RFC 3339) when it is made and runs on from there:
+// none, for the system's, when the time is empty. The commands are linked with a time
+// (-ldflags "-X main.startAt=…") by the test that runs the documents' commands, so that what they
+// print does not change with the day the test runs on.
+func ClockFrom(text string) (server.Clock, error) {
+	if text == "" {
+		return nil, nil
+	}
+	at, err := time.Parse(time.RFC3339, text)
+	if err != nil {
+		return nil, err
+	}
+	return runningClock(time.Until(at)), nil
+}
+
+// runningClock is the system's clock, put forward (or back) by this much.
+type runningClock time.Duration
+
+func (c runningClock) Now() time.Time { return time.Now().Add(time.Duration(c)) }
+
 // Package loads the generated package, with the files of its contract the server reads.
 func Package() (*server.Package, error) {
 	dir, err := fs.Sub(requests, "requests")
