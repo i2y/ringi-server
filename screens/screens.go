@@ -150,9 +150,9 @@ func (k *kind) screenList() []string {
 	return out
 }
 
-// Actions lists what a screen of a kind asks the gate about, the keys of its /can in their order:
-// submit, resubmit and discard on a form; the operations of the kind, and comment, on a card. The
-// two lists and the history ask nothing.
+// Actions lists what a screen of a kind asks the server of the viewer, whether they may do it: the
+// keys of its /can in their order (submit, resubmit and discard on a form; the operations of the kind,
+// and comment, on a card). The two lists and the history ask nothing.
 func (s *Set) Actions(kindName, screenName string) ([]string, error) {
 	k, ok := s.kinds[kindName]
 	if !ok {

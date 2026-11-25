@@ -632,7 +632,7 @@ func (p *Pages) Form(in Form) (Page, error) {
 	return p.render(v)
 }
 
-// actions are the actions a screen asks the gate about, in their order.
+// actions are the actions a screen asks of the viewer, whether they may do them, in their order.
 func (p *Pages) actions(kind, screen string) []string {
 	a, _ := p.set.Actions(kind, screen)
 	return a

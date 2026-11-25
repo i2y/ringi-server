@@ -299,6 +299,15 @@ func runVector(t *testing.T, s Setup, org server.OrgSource, p *server.Package, k
 	if err != nil && !errors.Is(err, server.ErrNotFound) {
 		return err.Error()
 	}
+	if !submit {
+		kindOfRefusal := ""
+		if want.Err != nil {
+			kindOfRefusal = want.Err.Refused
+		}
+		if why := v.checkCan(ctx, srv, ticket, kindOfRefusal); why != "" {
+			return why
+		}
+	}
 	var reply server.Reply
 	ops := map[string]bool{}
 	for _, op := range srv.Operations() {
@@ -391,6 +400,52 @@ func runVector(t *testing.T, s Setup, org server.OrgSource, p *server.Package, k
 		return why
 	}
 	return checkKept(ctx, store, ticket, want.OK.Effects)
+}
+
+// checkCan checks what the server says, before a vector's event is given, of whether its person may
+// give it (Server.Can): they may where the vector takes it, or refuses what is written with it (form,
+// and the comment of a comment); and may not where it refuses the event for what the ticket is or who
+// the person is (state, person, event, limit). The other refusals say neither (stale, clock, data, a
+// comment refused before the event is read), nor does a refusal of a stage or of people the event
+// names.
+func (v vector) checkCan(ctx context.Context, srv *server.Server, ticket, refused string) string {
+	var event map[string]struct {
+		By *string `json:"by"`
+		To *string `json:"to"`
+	}
+	if json.Unmarshal(v.Event, &event) != nil {
+		return "" // a clock's
+	}
+	for name, x := range event {
+		if x.By == nil {
+			return "" // a flow's answer, or an operation with no person
+		}
+		may, says := false, true
+		switch refused {
+		case "", "form", "book":
+			may = true
+		case "comment":
+			may, says = true, name == "comment"
+		case "state", "limit":
+		case "person":
+			says = name != "add_approver" && name != "hand_over"
+		case "event":
+			says = name != "add_approver" && name != "hand_over" && (name != "send_back" || x.To == nil)
+		default:
+			says = false
+		}
+		if !says {
+			return ""
+		}
+		can, err := srv.Can(ctx, server.Person{ID: *x.By}, ticket, []string{name})
+		if err != nil {
+			return "Can: " + err.Error()
+		}
+		if slices.Contains(can, name) != may {
+			return fmt.Sprintf("Can says %v of %s by %s, and the vector answers it with %q", !may, name, *x.By, refused)
+		}
+	}
+	return ""
 }
 
 // checkWaiting checks whom the store lists a ticket for after a move (Store.Waiting): at a stage (the

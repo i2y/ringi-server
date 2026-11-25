@@ -16,11 +16,12 @@ sub, _ := fs.Sub(generated, "requests")
 set, err := screens.Load(sub) // openapi.json, types/, a2ui/
 ```
 
-To show a ticket's approval card, ask the gate about each action the card has, and fill it:
+To show a ticket's approval card, ask which of the actions the card has the viewer may do now, and
+fill it:
 
 ```go
 actions, _ := set.Actions("expense", "card") // edit, approve, reject, send_back, …, comment
-can := allowed(viewer, ticket, actions)       // the server asks the gate
+can := allowed(viewer, ticket, actions)       // the server asks the gate and the kind (Server.Can)
 serving := screens.Serving{Find: "/a2ui/find", Upload: "/files"}
 card, err := set.Card(screens.Card{Language: "en", Ticket: ticketJSON, Can: can, Names: directory, Serving: serving})
 // card.Messages: createSurface, updateDataModel, updateComponents, to send the renderer in order

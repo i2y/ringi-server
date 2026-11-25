@@ -95,7 +95,7 @@ A renderer that reads the names before A2UI 1.0 (ringi's DESIGN 13.5) asks with 
 | Screen | Filled with |
 |---|---|
 | new request's form | `Form`: the kind's version in effect today, `Can` `submit` when the person may make the request for themselves or for someone, `MaySubmit` and `SubmitFor` (section 4), a new random surface each time, and `Serving` (below) |
-| card | `Card`: the ticket as `get_ticket` answers it, `Can` from the gate (section 4), and `Serving` |
+| card | `Card`: the ticket as `get_ticket` answers it, `Can` from the server (section 4), and `Serving` |
 | form of a ticket | `Form` with the ticket; `Can` of `resubmit` and `discard`; and `Serving` |
 | history | `History`: the ticket and its lines with the times the server kept them |
 | list of what waits | `List` (the screen `list`): the tickets of the kind that wait for the person (`Server.Waiting`, as `list_waiting` answers them), the kind's newest screens |
@@ -337,19 +337,22 @@ example server takes), and not with the settings of a server that serves people 
 
 ## 4. `Can`, and who may make a request
 
-The screens and the pages show a button when the gate allows its event (`/can`). The handler asks
-the server:
+The screens and the pages show a button when the person may give the ticket its event now (`/can`).
+The handler asks the server:
 
 - `Server.Can(ctx, person, ticket, events)` answers which of the events (`Set.Actions` of the screen)
-  the gate allows the person on the ticket as it is now, asking the gate the action of each event as
-  an operation does (the core's DESIGN 8: `edit` is `approve`, `discard` is `withdraw`, …), with the
-  same question. A ticket the person may not see is `server.ErrNotFound`.
+  the person may give the ticket now: the ones the gate allows (the action of each event, as an
+  operation asks it: `edit` is `approve`, `discard` is `withdraw`, …) and the ticket takes from them
+  as it is (the core's DESIGN 8.1). So a ticket that has ended has no button, one back with its
+  requester none of an approver's, and a ticket sent back as often as it may be no button to send it
+  back. A ticket the person may not see is `server.ErrNotFound`.
 - `Server.Submitting(ctx, person, kind)` answers, for a new request, the version in effect today,
   whether the person may make it for themselves (as `list_requests` decides, the core's DESIGN 10.1),
   and the people they may make it for: the people whose `submit` proxy they are that day for the
   kind, each asked of the kind's `start` and the gate as the person themselves would be.
 
-The buttons are only shown or hidden: the operation is asked of the gate again when it runs.
+The buttons are only shown or hidden: the operation is asked of the gate and the kind again when it
+runs.
 
 ## 5. `Lookup`
 
@@ -528,6 +531,7 @@ routes of a sign-in are added this way (section 3.1).
 | `Server.Do` | holds the attachments a `submit`, `resubmit` or `edit` names to the ticket's and the person's own (6.3), when `Config.Files` is set |
 | `server.Call.Via` | the way in, for the audit log: `"screens"` for an action, `"pages"` for a page's post |
 | `Server.Can`, `Server.Submitting` | section 4 |
+| `Server.Replied` | what was answered to a page's post before, for a post of a button that is not offered now (section 9.2; the core's DESIGN 8.1) |
 | `Server.Names`, `Server.MasterRows` | section 5 (`MasterRows` answers a master's `MasterLayout` with its rows: its key and its name field) |
 | `Server.People`, `Server.Teams` | the people and the teams of the version of the organization in effect today, for the pages' pickers (section 5) |
 | `Server.Waiting`, `server.WaitingQuery` | the tickets that wait for a person (`list_waiting`, the core's DESIGN 10.2), the newest first, a page at a time (`Kind`, `Before`, `Limit`; `Limit` 0 for all), for the lists of what waits |
@@ -590,10 +594,14 @@ reading is one of:
 - **stopped by the page's checks** (a value that does not read, a check the kind's functions make, a
   required value left out): the page is shown again with what was typed and each problem at its
   field and at the head of the form, 422;
-- **shown before the ticket changed**: the page showed the ticket at another revision, and the
-  button pressed is not one the gate lets the person press now. The operation is not sent: the page
-  is shown again as the ticket is now, with the refusal `stale`, 409 (a comment is not held to this:
-  a comment needs no revision);
+- **a button that is not offered now** (the person may not press it now, section 4): the operation is
+  not run. When the page showed the ticket at another revision, it is shown again as the ticket is
+  now, with the refusal `stale`, 409 (but for a comment, which needs no revision); else with "You
+  cannot do this now.", 422. The button may be gone because this post was taken before, though
+  (pressed twice with no script, or sent again from a page gone back to): when the same operation was
+  taken with the same key (`Reading.Sent`, `Server.Replied`), the answer is the one it had, 303 to the
+  ticket's card. A request made again and an approver's edit are made from the ticket as it is, so
+  the same page sent again is not the same operation, and is `stale`;
 - **an operation**: it is run as the person (`Server.Do`, `Via: "pages"`).
 
 The answer of the operation:

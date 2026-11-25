@@ -208,8 +208,8 @@ curl -s -w ' %{http_code}\n' -H 'X-Person: e1201' -H 'Idempotency-Key: monitor-2
 ```
 
 **The approver's card.** e1101, the manager of Section 1A, opens the ticket's card in Japanese. The
-buttons are the ones the gate lets e1101 press, the names are in the screen's language, and the
-receipt is linked through the ticket:
+buttons are the ones e1101 may press now, the names are in the screen's language, and the receipt is
+linked through the ticket:
 
 ```sh
 T=01M7KSHBTFEM304GVA00FCBYEH

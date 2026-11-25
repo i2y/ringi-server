@@ -47,6 +47,11 @@ type Reading struct {
 	// shown again instead: a check failed (Problems), or a row was added or removed; and when the
 	// post is Enter pressed in a field (Stay).
 	Operation *screens.Operation
+	// Sent is the operation of a button that is not offered now, when the post makes one (Operation is
+	// nil): it is not run, as the ticket does not take it or the gate does not allow it. The same post
+	// may have been sent before, though, and taken: a server that keeps what it answered (the core's
+	// Server.Replied) answers the post as it did then.
+	Sent *screens.Operation
 	// Problems are the checks the post fails, each at its part.
 	Problems []Problem
 
@@ -98,6 +103,17 @@ func (r *Reading) outdated() {
 	r.Refused(screens.Refusal{Refused: "stale"})
 }
 
+// notOffered reads a post that presses a button that is not offered now: outdated, when the button
+// takes a revision (revised) and the page showed the ticket before it last changed; else the page is
+// shown again with "You cannot do this now."
+func (r *Reading) notOffered(w words, revised bool, post Post, dm data) {
+	if revised && shownBefore(post, dm) {
+		r.outdated()
+		return
+	}
+	r.Problems = append(r.Problems, Problem{Words: w.NotNow()})
+}
+
 // Refusal is the kind of refusal the reading says ("" for none): the API's (Refused), or the page's
 // own of a button the ticket no longer offers, pressed on a page that showed it before it changed
 // ("stale"). A server answers a page shown again with a refusal 409.
@@ -128,7 +144,7 @@ func (r *Reading) answered() {
 	if !r.answer {
 		r.read, r.answer = len(r.Problems), true
 	}
-	r.Operation = nil
+	r.Operation, r.Sent = nil, nil
 	r.refused, r.refusal, r.invalid, r.limited, r.wait, r.stale = "", screens.Refusal{}, "", "", 0, false
 	r.Problems = r.Problems[:r.read:r.read]
 }
@@ -818,8 +834,8 @@ func (p *Pages) operation(k *kind, screen, surface, button string, at time.Time,
 }
 
 // ReadForm reads a post of a request form. in is what the page was made with (the server's ticket,
-// the gate's Can), post what the browser sent, keep where attached files go. A post that is no post
-// of the page is ErrPost.
+// and what the viewer may do, Can), post what the browser sent, keep where attached files go. A post
+// that is no post of the page is ErrPost.
 func (p *Pages) ReadForm(in Form, post Post, keep Keeper) (*Reading, error) {
 	in.Surface = newSurface(in.Form, post)
 	if in.Surface == "" && in.Ticket == nil {
@@ -867,13 +883,13 @@ func (p *Pages) ReadForm(in Form, post Post, keep Keeper) (*Reading, error) {
 	if _, ok := k.buttons["form"][do]; !ok || !strings.HasPrefix(do, "button.") {
 		return nil, fmt.Errorf("%w: the form of %s has no button %q", ErrPost, kn, do)
 	}
-	if !dm.can(action) {
-		if shownBefore(post, dm) {
-			rd.outdated()
+	offered := dm.can(action)
+	if !offered {
+		rd.notOffered(w, true, post, dm)
+		if action != "discard" {
+			// a form made again is made from the ticket as it is now, and is not the one sent before
 			return rd, nil
 		}
-		rd.Problems = append(rd.Problems, Problem{Words: w.NotNow()})
-		return rd, nil
 	}
 	if !fits {
 		r.problem("comment", "comment.fits", phrase{plain(commentFits(lang))})
@@ -910,16 +926,7 @@ func (p *Pages) ReadForm(in Form, post Post, keep Keeper) (*Reading, error) {
 			r.problems = slices.DeleteFunc(r.problems, func(p Problem) bool { return p.Place != "comment" })
 		}
 	}
-	rd.Problems = append(rd.Problems, r.problems...)
-	if len(rd.Problems) > 0 {
-		return rd, nil
-	}
-	op, err := p.operation(k, "form", surface, do, at, ctx)
-	if err != nil {
-		return nil, err
-	}
-	rd.Operation = op
-	return rd, nil
+	return rd, p.made(rd, offered, r.problems, k, "form", surface, do, at, ctx)
 }
 
 // ReadCard reads a post of an approval card, as ReadForm does a form's.
@@ -973,19 +980,24 @@ func (p *Pages) ReadCard(in Card, post Post, keep Keeper) (*Reading, error) {
 	if _, ok := k.buttons["card"][button]; !ok || !strings.HasPrefix(button, "button.") || (part != "") != (action == "add_approver") {
 		return nil, fmt.Errorf("%w: the card of %s has no button %q", ErrPost, kn, do)
 	}
-	if !dm.can(action) {
-		if action != "comment" && shownBefore(post, dm) {
-			rd.outdated()
+	offered := dm.can(action)
+	if action == "add_approver" {
+		// the card has a button for each part of the stage
+		parts := asList(dm.obj("add_approver")["parts"])
+		offered = offered && slices.ContainsFunc(parts, func(x any) bool { m, _ := x.(map[string]any); return str(m["part"]) == part })
+	}
+	if !offered {
+		rd.notOffered(w, action != "comment", post, dm)
+		if action == "edit" {
+			// an edit is made from the ticket as it is now, and is not the one sent before
 			return rd, nil
 		}
-		rd.Problems = append(rd.Problems, Problem{Words: w.NotNow()})
-		return rd, nil
 	}
 	if !fits {
 		r.problem("comment", "comment.fits", phrase{plain(commentFits(lang))})
 	}
 	ticket := dm.obj("ticket")
-	if comment == nil && k.d.reasonAsked(str(ticket["stage"]), action) {
+	if offered && comment == nil && k.d.reasonAsked(str(ticket["stage"]), action) {
 		// the ticket's stage asks for a reason with the event, which the machine would refuse
 		// (comment): said at the comment, as the script says it before the post
 		r.problem("comment", "comment.reason", phrase{plain(reasonGiven(lang))})
@@ -1015,11 +1027,6 @@ func (p *Pages) ReadCard(in Card, post Post, keep Keeper) (*Reading, error) {
 	case "send_back":
 		ctx["to"] = jsonOf(typed("send_back_to"))
 	case "add_approver":
-		parts := asList(dm.obj("add_approver")["parts"])
-		if !slices.ContainsFunc(parts, func(x any) bool { m, _ := x.(map[string]any); return str(m["part"]) == part }) {
-			rd.Problems = append(rd.Problems, Problem{Words: w.NotNow()})
-			return rd, nil
-		}
 		approver := typed("approver")
 		if approver == nil {
 			r.problem("approver", "approver.required", phrase{plain(t(lang, "Choose the approver to add.", "加える承認者を選んでください。"))})
@@ -1035,14 +1042,28 @@ func (p *Pages) ReadCard(in Card, post Post, keep Keeper) (*Reading, error) {
 		}
 		ctx["of"], ctx["to"] = jsonOf(of), jsonOf(to)
 	}
-	rd.Problems = append(rd.Problems, r.problems...)
-	if len(rd.Problems) > 0 {
-		return rd, nil
+	return rd, p.made(rd, offered, r.problems, k, "card", surface, button, at, ctx)
+}
+
+// made makes the operation of a button from what it sends, unless a check failed: the reading's
+// operation where the button is offered, else the one it may have sent before (Sent), whose checks
+// say nothing.
+func (p *Pages) made(rd *Reading, offered bool, problems []Problem, k *kind, screen, surface, button string, at time.Time, ctx map[string]json.RawMessage) error {
+	if offered {
+		rd.Problems = append(rd.Problems, problems...)
+		problems = rd.Problems
 	}
-	op, err := p.operation(k, "card", surface, button, at, ctx)
+	if len(problems) > 0 {
+		return nil
+	}
+	op, err := p.operation(k, screen, surface, button, at, ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	rd.Operation = op
-	return rd, nil
+	if offered {
+		rd.Operation = op
+	} else {
+		rd.Sent = op
+	}
+	return nil
 }

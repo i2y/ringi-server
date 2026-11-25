@@ -6,6 +6,7 @@ import (
 	"html"
 	"mime/multipart"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -538,6 +539,20 @@ func TestNotAPost(t *testing.T) {
 	if rd.Refusal() != "" {
 		t.Errorf("approving when the viewer may not is a refusal: %s", rd.Refusal())
 	}
+	// and the operation it would have sent, which is not run, is read, as it may have been sent before:
+	// the same as with the button offered, its key too
+	offered, err := p.ReadCard(in, good, nil)
+	must(t, err)
+	if offered.Operation == nil || offered.Sent != nil {
+		t.Fatalf("approving: %v %v", offered.Operation, offered.Sent)
+	}
+	if rd.Sent == nil || !reflect.DeepEqual(rd.Sent, offered.Operation) {
+		t.Errorf("approving when the viewer may not was sent before as %+v, and approving is %+v", rd.Sent, offered.Operation)
+	}
+	rd.Refused(screens.Refusal{Refused: "stale"})
+	if rd.Sent != nil {
+		t.Errorf("a reading the server answered keeps the operation")
+	}
 	// the same from a page that showed the ticket before it changed: it is not sent, and the page
 	// says that the ticket changed, as the API does, showing it as it is now with the comment typed
 	var tk map[string]any
@@ -552,6 +567,9 @@ func TestNotAPost(t *testing.T) {
 	must(t, err)
 	if rd.Operation != nil || rd.Refusal() != "stale" || len(rd.Problems) != 0 {
 		t.Errorf("approving from a page of an older revision: %v %s %v", rd.Operation, rd.Refusal(), rd.Problems)
+	}
+	if rd.Sent == nil || rd.Sent.ID != "approve" || !strings.Contains(string(rd.Sent.Body), `"revision":{"number":99,"round":99}`) {
+		t.Errorf("approving from a page of an older revision was sent before as %+v", rd.Sent)
 	}
 	in3 := in2
 	in3.Again = rd
@@ -569,8 +587,15 @@ func TestNotAPost(t *testing.T) {
 	// a comment has no revision: not offered now, it is not sent
 	rd, err = p.ReadCard(Card{Card: screens.Card{Language: "en", Ticket: raw, Can: []string{"approve"}}, Action: "/post", Now: testNow}, change(FieldDo, "button.comment"), nil)
 	must(t, err)
-	if rd.Operation != nil || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
-		t.Errorf("a comment when the viewer may not: %v %v", rd.Operation, rd.Problems)
+	if rd.Operation != nil || rd.Sent != nil || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
+		t.Errorf("a comment when the viewer may not: %v %v %v", rd.Operation, rd.Sent, rd.Problems)
+	}
+	said := change(FieldDo, "button.comment")
+	said.Values.Set("comment", "Fine.")
+	rd, err = p.ReadCard(Card{Card: screens.Card{Language: "en", Ticket: raw, Can: []string{"approve"}}, Action: "/post", Now: testNow}, said, nil)
+	must(t, err)
+	if rd.Operation != nil || rd.Sent == nil || rd.Sent.ID != "comment" || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
+		t.Errorf("a comment made, when the viewer may not: %v %v %v", rd.Operation, rd.Sent, rd.Problems)
 	}
 	// the comment button with no comment
 	post, err := b.press("button.comment")
@@ -583,6 +608,99 @@ func TestNotAPost(t *testing.T) {
 	// a page with no Now cannot be shown: its key would be no key
 	if _, err := p.Card(Card{Card: in.Card}); err == nil {
 		t.Errorf("a card the viewer acts on is shown with no time")
+	}
+}
+
+// TestSentBeforeNotOffered reads posts of buttons that are not offered now, of a form made again and of
+// an edit: the form's request made again and the card's edit are made from the ticket as it is now, and
+// are not the ones sent before; dropping the request is.
+func TestSentBeforeNotOffered(t *testing.T) {
+	_, p := testPages(t)
+	raw, _ := ticketWhere(t, "expense", func(m map[string]any) bool { return m["status"] == "with_requester" })
+	in := Form{Form: screens.Form{Language: "en", Ticket: raw, Can: []string{"resubmit", "discard"}}, Action: "/post", Now: testNow}
+	pg, err := p.Form(in)
+	b, err := browse(checkPageBytes(t, pg, err))
+	must(t, err)
+	now := in
+	now.Can = nil
+	for _, c := range []struct {
+		button string
+		sent   bool
+	}{{"button.resubmit", false}, {"button.discard", true}} {
+		post, err := b.press(c.button)
+		must(t, err)
+		offered, err := p.ReadForm(in, post, nil)
+		must(t, err)
+		if offered.Sent != nil || c.sent && offered.Operation == nil {
+			t.Fatalf("%s: %v %v %v", c.button, offered.Operation, offered.Sent, offered.Problems)
+		}
+		rd, err := p.ReadForm(now, post, nil)
+		must(t, err)
+		if rd.Operation != nil || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
+			t.Errorf("%s, not offered: %v %v", c.button, rd.Operation, rd.Problems)
+		}
+		if (rd.Sent != nil) != c.sent || c.sent && !reflect.DeepEqual(rd.Sent, offered.Operation) {
+			t.Errorf("%s, not offered, was sent before as %+v, want %v (%+v)", c.button, rd.Sent, c.sent, offered.Operation)
+		}
+	}
+	raw, _ = ticketWhere(t, "expense", func(m map[string]any) bool { return m["status"] == "in_progress" })
+	card := Card{Card: screens.Card{Language: "en", Ticket: raw, Can: []string{"edit", "comment"}}, Action: "/post", Now: testNow}
+	pg, err = p.Card(card)
+	b, err = browse(checkPageBytes(t, pg, err))
+	must(t, err)
+	post, err := b.press("button.edit")
+	must(t, err)
+	if rd, err := p.ReadCard(card, post, nil); err != nil || rd.Sent != nil {
+		t.Errorf("an edit: %v %v", rd.Sent, err)
+	}
+	card.Can = []string{"comment"}
+	if rd, err := p.ReadCard(card, post, nil); err != nil || rd.Operation != nil || rd.Sent != nil || len(rd.Problems) != 1 {
+		t.Errorf("an edit, not offered: %v %v %v %v", rd.Operation, rd.Sent, rd.Problems, err)
+	}
+	// The step the ticket is at now says nothing of the post: not that it asks for a reason, …
+	raw, _ = ticketWhere(t, "leave", func(m map[string]any) bool { return m["status"] == "in_progress" })
+	card = Card{Card: screens.Card{Language: "en", Ticket: raw, Can: []string{"reject", "comment"}}, Action: "/post", Now: testNow}
+	pg, err = p.Card(card)
+	b, err = browse(checkPageBytes(t, pg, err))
+	must(t, err)
+	post, err = b.press("button.reject")
+	must(t, err)
+	if rd, err := p.ReadCard(card, post, nil); err != nil || rd.Operation != nil || rd.Sent != nil || len(rd.Problems) != 1 || rd.Problems[0].Code != "comment.reason" {
+		t.Errorf("a rejection with no reason: %v %v %v %v", rd.Operation, rd.Sent, rd.Problems, err)
+	}
+	card.Can = []string{"comment"}
+	if rd, err := p.ReadCard(card, post, nil); err != nil || rd.Operation != nil || rd.Sent == nil || rd.Sent.ID != "reject" || len(rd.Problems) != 1 || rd.Problems[0].Words != (words{"en"}).NotNow() {
+		t.Errorf("a rejection with no reason, not offered: %v %v %v %v", rd.Operation, rd.Sent, rd.Problems, err)
+	}
+	// … nor that the part an approver was added to is not among its parts: a button for a part that is
+	// not there is not offered, whether an approver may be added to another or not
+	stage := func(name string) json.RawMessage {
+		raw, _ := ticketWhere(t, "expense", func(m map[string]any) bool {
+			at, _ := m["stage"].(string)
+			return m["status"] == "in_progress" && at == name
+		})
+		return raw
+	}
+	first, decide := stage("first"), stage("decide")
+	card = Card{Card: screens.Card{Language: "en", Ticket: first, Can: []string{"add_approver"}}, Action: "/post", Now: testNow, Picks: manyPicks()}
+	pg, err = p.Card(card)
+	b, err = browse(checkPageBytes(t, pg, err))
+	must(t, err)
+	post, err = b.press("button.add_approver:manager")
+	must(t, err)
+	post.Values.Set("approver", "e1002")
+	added, err := p.ReadCard(card, post, nil)
+	must(t, err)
+	if added.Operation == nil || added.Sent != nil {
+		t.Fatalf("an approver added: %v %v", added.Operation, added.Problems)
+	}
+	for _, can := range [][]string{{"add_approver"}, nil} {
+		card.Ticket, card.Can = decide, can
+		rd, err := p.ReadCard(card, post, nil)
+		must(t, err)
+		if rd.Operation != nil || rd.Refusal() != "stale" || !reflect.DeepEqual(rd.Sent, added.Operation) {
+			t.Errorf("an approver added to a part that is not there now (%v): %v %q %+v", can, rd.Operation, rd.Refusal(), rd.Sent)
+		}
 	}
 }
 

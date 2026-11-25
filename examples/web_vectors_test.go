@@ -612,7 +612,23 @@ type screenCase struct {
 	hasPart  bool
 	lang     string
 	node     nodeCase
+	offered  bool // the screen has the line's button (/can)
 	screened bool // the handler answered the screen
+}
+
+// asItIs are the kinds of refusal that say an event is not one the person may give the ticket as it
+// is, whatever they write with it: a screen and a page have no button for it (Server.Can, the core's
+// DESIGN 8.1). An event that names a stage or people is refused as `person` or `event` for them too.
+func asItIs(op, refused string) bool {
+	switch refused {
+	case "state", "limit":
+		return true
+	case "person":
+		return op != "add_approver" && op != "hand_over" && op != "submit"
+	case "event":
+		return op != "add_approver" && op != "hand_over" && op != "send_back"
+	}
+	return false
 }
 
 // notSent is why no screen sends a line, which the kind must refuse as one of want.
@@ -901,6 +917,18 @@ func replayOnScreens(t *testing.T, store func(testing.TB) server.Store) {
 			fail(c, "the screen: %v", err)
 			continue
 		}
+		c.offered = sc.data["can"].(map[string]any)[c.op] == true
+		switch {
+		case c.offered && asItIs(c.op, c.refused):
+			fail(c, "the screen has a button for what the kind refuses (%s)", c.refused)
+			continue
+		case !c.offered && c.refused == "stale":
+			// the screen showed the ticket before it changed, and had the button then
+			c.set["/can/"+c.op] = true
+		case !c.offered && !asItIs(c.op, c.refused):
+			fail(c, "the screen has no button for a line the kind answers with %q", c.refused)
+			continue
+		}
 		var row *int
 		if c.hasPart {
 			parts, _ := sc.data["add_approver"].(map[string]any)["parts"].([]any)
@@ -945,7 +973,14 @@ func replayOnScreens(t *testing.T, store func(testing.TB) server.Store) {
 			fail(c, "the press threw: %s", p.Threw)
 			continue
 		case p.Drawn == nil || !*p.Drawn:
-			fail(c, "the button is not drawn")
+			if c.offered || c.refused == "stale" {
+				fail(c, "the button is not drawn")
+			} else {
+				counts["no button for it, and refused ("+c.refused+")"]++
+			}
+			continue
+		case !c.offered && c.refused != "stale":
+			fail(c, "a button that is not offered is drawn")
 			continue
 		case len(p.Failed) > 0:
 			if c.refused == "" {

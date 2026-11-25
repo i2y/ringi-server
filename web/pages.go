@@ -496,7 +496,12 @@ func (h *Handler) keeper(ctx context.Context, p server.Person) page.Keeper {
 
 // run runs the operation of a post as the person.
 func (h *Handler) run(ctx context.Context, p server.Person, op *screens.Operation) (server.Reply, error) {
-	return h.srv.Do(ctx, server.Call{Operation: op.ID, Person: p, Ticket: op.Ticket, Body: op.Body, Key: op.Key, Via: "pages"})
+	return h.srv.Do(ctx, callOf(p, op))
+}
+
+// callOf is the call of a page's operation.
+func callOf(p server.Person, op *screens.Operation) server.Call {
+	return server.Call{Operation: op.ID, Person: p, Ticket: op.Ticket, Body: op.Body, Key: op.Key, Via: "pages"}
 }
 
 // answered is what a post of a page came to: the page is shown again (with a status), the browser
@@ -704,6 +709,19 @@ func (h *Handler) ticketPage(screen string) func(http.ResponseWriter, *http.Requ
 				return
 			}
 			status = againStatus(rd)
+			if rd.Sent != nil {
+				// The button is not offered now: the operation is not run. The post sent again, of an
+				// operation taken before, is answered as it was then.
+				rep, ok, err := h.srv.Replied(ctx, callOf(p, rd.Sent))
+				if err != nil {
+					h.pageFail(w, r, &p, "the operation "+rd.Sent.ID, err)
+					return
+				}
+				if ok && rep.Outcome == server.OK {
+					http.Redirect(w, r, keepLang(r, PagesPath+"tickets/"+url.PathEscape(t.id)), http.StatusSeeOther)
+					return
+				}
+			}
 			if rd.Operation != nil {
 				rep, err := h.run(ctx, p, rd.Operation)
 				if err != nil {
@@ -803,25 +821,6 @@ func (h *Handler) ticketInput(ctx context.Context, r *http.Request, p server.Per
 	resubmit := slices.Contains(can, "resubmit")
 	if added {
 		can = slices.DeleteFunc(can, func(e string) bool { return e == "resubmit" })
-	}
-	if resubmit && screen == "card" {
-		// the gate is asked of the form's resubmit its action (submit), which a gate may let a
-		// person do at any state of any ticket: the notice and the way to the form are for a
-		// request back with its requester, shown to their side alone (the requester, the one
-		// who made it for them, or one the gate lets drop or withdraw it, as a submit proxy of
-		// theirs that day)
-		var tk struct {
-			Status    string `json:"status"`
-			Requester string `json:"requester"`
-			MadeBy    string `json:"made_by"`
-		}
-		if err := json.Unmarshal(t.ticket, &tk); err != nil {
-			return out, err
-		}
-		formEvents, _ := t.set.Actions(t.kind, "form")
-		own := p.ID == tk.Requester || p.ID == tk.MadeBy ||
-			slices.Contains(can, "withdraw") || slices.Contains(can, "discard")
-		resubmit = tk.Status == "with_requester" && slices.Contains(formEvents, "resubmit") && own
 	}
 	picks, err := h.picks(ctx, p, t.set, t.kind, lang)
 	if err != nil {

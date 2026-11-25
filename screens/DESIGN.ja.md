@@ -39,7 +39,7 @@ func (s *Set) Kinds() []Kind                                  // 名前、版、
 func (s *Set) Actions(kind, screen string) ([]string, error)  // 画面の /can のキー
 ```
 
-`Actions` は、画面が gate に尋ねる物を並べる。その画面の `/can` のキーで、申請書では `submit`、`resubmit`、`discard`、承認カードではその種類の操作と `comment` である。二つの一覧と履歴は何も尋ねない。サーバーはそれぞれを gate に尋ね、許された物を値を入れる関数に渡す。
+`Actions` は、見る人ができるかを画面が尋ねる物を並べる。その画面の `/can` のキーで、申請書では `submit`、`resubmit`、`discard`、承認カードではその種類の操作と `comment` である。二つの一覧と履歴は何も尋ねない。サーバーは、それぞれを gate に尋ね、チケットがその人からそれを受けるかを種類に尋ねて（`Server.Can`。本体の DESIGN 8.1）、その人ができる物を値を入れる関数に渡す。
 
 画面を自分で作るパッケージ（素の HTML のページの `page`。[page/DESIGN.ja.md](page/DESIGN.ja.md)）のために、読む関数がもう二つある。
 
@@ -82,7 +82,7 @@ type Form struct {
 	Ticket    json.RawMessage // もう一度申請するときの、差し戻されたチケット。新しい申請では nil
 	SubmitFor []string        // 新しい申請で、見る人が代わりに申請できる人（DESIGN 5.8、5.13）
 	MaySubmit bool            // `submitted by` のある種類で、見る人が自分で申請できるか
-	Can       []string        // gate がここで見る人に許すこと（Set.Actions）
+	Can       []string        // 見る人がここで今できること（Set.Actions）
 	Names     Lookup          // nil なら ID をそのまま見せる
 	Surface   string          // 2.3
 	Serving                   // サーバーが画面に入れる物。下に書く
@@ -369,7 +369,7 @@ func (s *Set) Assets() fs.FS                     // 二つを、その名前で
 
 ## 6. しないこと
 
-- gate に尋ねること。`Can` が gate の答えで、このパッケージはそれでボタンを見せるか隠すだけである。
+- 見る人に何ができるかを決めること。`Can` は、gate と種類に尋ねたサーバーの答えで、このパッケージはそれでボタンを見せるか隠すだけである。
 - 値を確かめること。画面は確かめられる物を確かめ、`next` が全部をもう一度確かめる（DESIGN 13.7）。
 - 見る人がだれか、だれの代わりに申請できるか（`SubmitFor`、`MaySubmit`）、マスタのどの版がキーに名前を付けるかを知ること。組織と日付を知っているのはサーバーである。
 - HTTP を話すこと、ファイルを保管すること、冪等キーを保管すること。ボタンが送る操作のキーは作るが（3.1）、保管して答えるのはサーバーである。

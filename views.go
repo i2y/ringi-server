@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// What a server serving screens reads of the server (package web): who sends a request, what the
-// gate lets a person do, who may make a request, the names of the organization and the masters,
-// and the files a ticket holds.
+// What a server serving screens reads of the server (package web): who sends a request, who may make
+// a request, the names of the organization and the masters, and the files a ticket holds. What a
+// person may do on a ticket is in can.go.
 
 // Authenticate answers who sends r, as Config.Authenticator says.
 func (s *Server) Authenticate(r *http.Request) (Person, error) {
@@ -32,55 +32,6 @@ func (s *Server) MaxBody() int64 { return s.cfg.MaxBody }
 // MaxOrganization answers the most bytes an upload of the organization's data may have
 // (Config.MaxOrganization).
 func (s *Server) MaxOrganization() int64 { return s.cfg.MaxOrganization }
-
-// Can answers which of the events the gate lets the person give the ticket now, in their order: the
-// gate is asked each event's action (DESIGN 8) as an operation asks it. An event of no action is
-// left out. ErrNotFound when there is no such ticket, or the person may not see it.
-func (s *Server) Can(ctx context.Context, p Person, ticket string, events []string) ([]string, error) {
-	rec, err := s.cfg.Store.Ticket(ctx, ticket)
-	if err != nil {
-		return nil, err
-	}
-	t, err := readTicket(rec.Body)
-	if err != nil {
-		return nil, err
-	}
-	k, err := s.kindOf(rec.Kind, rec.Version)
-	if err != nil {
-		return nil, err
-	}
-	snap, err := s.organization(ctx)
-	if err != nil {
-		return nil, err
-	}
-	now := s.now()
-	day := k.day(now)
-	if see, err := s.maySee(ctx, p, k, rec, t, snap, now); err != nil {
-		return nil, err
-	} else if !see {
-		return nil, ErrNotFound
-	}
-	out := []string{}
-	if snap == nil || snap.at(day) == nil {
-		return out, nil
-	}
-	ov := snap.at(day)
-	for _, e := range events {
-		action := gateAction[e]
-		if action == "" {
-			continue
-		}
-		in := &input{action: action, person: &p, now: now}
-		ok, err := s.cfg.Gate.Allow(ctx, s.question(in, k, t, snap, ov, day))
-		if err != nil {
-			return nil, fmt.Errorf("the gate: %w", err)
-		}
-		if ok {
-			out = append(out, e)
-		}
-	}
-	return out, nil
-}
 
 // Submitting is what a new request's form of a kind needs today.
 type Submitting struct {

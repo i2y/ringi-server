@@ -262,8 +262,9 @@ And the rest of `*Server`:
 - `AdminParts(ctx, person)` answers the parts of the administration a person may use, and
   `Administers(ctx, person)` whether there is one, for the start page's link (13.4, 13.7);
   `MaxOrganization()` is the largest upload of the organization's data the server takes (13.3).
-- The calls the screens and the pages make (`Authenticate`, `Can`, `Submitting`, `Names`,
-  `MasterRows`, `TicketFiles`, `Files`, `MaxBody`, `Packages`) are in `web`'s DESIGN.md.
+- The calls the screens and the pages make (`Authenticate`, `Can` and `Replied`, which 8.1 says,
+  `Submitting`, `Names`, `MasterRows`, `TicketFiles`, `Files`, `MaxBody`, `Packages`) are in `web`'s
+  DESIGN.md.
 
 ### 2.3 The parts you swap
 
@@ -1262,6 +1263,64 @@ An administrator's `add_approver` and `hand_over` name, in the event, the person
 The vectors of these events write no person (`by` is null); given a person, `next` answers the same,
 but for the `by` of the history line.
 
+### 8.1 What a person may do now
+
+A screen offers a person the buttons of the events they may give the ticket now, and no other:
+
+```go
+// Can answers which of the events the person may give the ticket now, in their order.
+func (s *Server) Can(ctx context.Context, p server.Person, ticket string, events []string) ([]string, error)
+```
+
+The gate alone does not say it: it says who may do a thing, and not whether the ticket takes it. The
+requester of a ticket that has ended is still its requester. So `Can` asks both, as an operation is
+asked of both. An event is in the answer when:
+
+1. an operation of the kind gives it to a ticket: not a new request's `submit`, nor an `edit` of a
+   kind whose approvers fill in nothing;
+2. the gate allows its action, with the same question an operation asks;
+3. the kind's `next` does not refuse it for what the ticket is or who the person is (`state`,
+   `person`, `event`, `limit`).
+
+The ticket is the one an operation would find: the timers that are due are given to it first (section
+3), in memory, and nothing is kept, as of a trial (2.2). A ticket whose last day has passed takes no
+approval, though its timer has not rung. A ticket that is not there, or that the person may not see,
+is `ErrNotFound`; with no version of the organization in effect, nothing is taken.
+
+`next` is given what an event asks at the least, at the ticket's revision and with a comment: a
+request made again and an edit with nothing changed, and a send-back to the requester. An event that
+names someone is given, for each part of the stage, a person of the organization who is neither on
+the requester's side nor an approver of the part, and the requester's side: it is taken when one of
+them is. `TestCanIsWhatIsTaken` of the examples holds this to every operation of the kind that names
+someone or a stage.
+
+The other refusals keep the button. They are of what the person writes (`form`, `comment`), or of
+what no screen shows (`data`, `clock`, `unread`, `book`), and the answer to the operation says why.
+`Can` does not ask the books either: a budget used up is said when the operation asks it. A comment is
+asked of the server's own limits too (7.4): one the server takes later may be made, and the answer
+says how long to wait; one it takes no more of may not.
+
+`Can` is asked as the screen is made, and the ticket may move before the button is pressed: the
+operation is asked of the gate and of `next` again.
+
+A screen costs a `next` for each event the gate allows, and each reads the whole part of the
+organization (9.2): the server asks them at once, each on a goroutine of its own, so that an approver's
+card takes about as long as an operation. On a laptop it takes 0.7 ms for the 24 people of the
+examples, 14 ms for 1,200 people, 58 ms for 5,000 and 220 ms for 20,000. Cutting the part down to
+what a ticket needs (9.2) would cut this with the rest.
+
+A screen that does not run an operation, as its button is not offered now, can still be sent one
+that was taken: a button pressed twice, the page before gone back to.
+
+```go
+// Replied answers what was answered to an operation of a person on a ticket before, and whether it was.
+func (s *Server) Replied(ctx context.Context, c server.Call) (server.Reply, bool, error)
+```
+
+`Replied` answers the reply kept with the person's key (section 3), when the key was used for this
+operation on this ticket with this body, and the person may see the ticket. It runs nothing (`web`'s
+DESIGN, 9.2).
+
 ## 9. The organization
 
 ### 9.1 Snapshots
@@ -1569,8 +1628,13 @@ Ten tests check a server against the contract, and all run on any store:
   same place (`at`; its texts are not compared, as ringi's DESIGN 12.4 says), or the same ticket and
   the same things to do (a null the same as a missing key, keys in any order). Each answer of the
   HTTP handler must also be of the shape the contract gives the operation's answer of that status
-  (`Package.CheckAnswer`, with the checker of 7.2). After a move, the store must list the ticket
-  (`Store.Waiting`), of the people it names, for exactly the ones it waits for (10.2).
+  (`Package.CheckAnswer`, with the checker of 7.2). Before a person's event on a ticket is given,
+  `Can` (8.1) must say what the vector says of it: that the person may give it, when the vector takes
+  it or refuses what is written with it (`form`, `book`, a comment of a `comment` event); that they
+  may not, when it refuses it for what the ticket is or who the person is (`state`, `limit`,
+  `person`, `event`, but those of someone or a stage the event names). After a move, the store must
+  list the ticket (`Store.Waiting`), of the people it names, for exactly the ones it waits for
+  (10.2).
 - **What a form works out** (`conformance.Worked`): each line of `vectors/worked/<name>.jsonl` is
   given to `worked_<name>` through the HTTP handler where the version is the one a new request takes
   on the day of the vectors (2026-11-16, at 10:00 in the kind's offset), and to `Server.Worked`
@@ -1685,7 +1749,8 @@ through the HTTP handler, and through `Deliver` 626 timers, 102 operations that 
 administrators' `add_approver` and `hand_over`), 82 answers of agents and flows, 10 bodies the API
 answers 400 (an event with no revision, which the schema requires), and 4 events the API has no
 operation for (an `edit` of a kind that has no edit). The 2,166 answers of the HTTP handler are all
-of the contract's shapes. The 2,176 operations of a person (the 2,166 and the 10 bodies) are tried,
+of the contract's shapes. `Can` says what the vectors say of 1,542 events: that 1,360 may be given,
+and 182 not. The 2,176 operations of a person (the 2,166 and the 10 bodies) are tried,
 and every trial agrees with the operation, on both stores. The answers of the reads, which no
 vector makes, are held to the contract by the examples' `TestAnswersAsTheContract`: the kinds each
 of the 24 people may make, the tickets that wait for them and their own, a ticket and the answer to
@@ -1707,12 +1772,14 @@ The examples also make the vectors on the screens `web` serves (`examples/web_ve
 which needs Node): each of the 2,048 lines a person makes on a screen is made on the screen read
 over HTTP, its button pressed in Node as a renderer presses it, and the message it sends posted back
 (a discard of a ticket sent back, from its card and from its form: 2,136 presses). On both stores,
-the 1,946 presses that reach the server are answered as the vectors answer them (1,664 taken, 282
-refused); the other 190 are of lines the vectors refuse, which the screens stop first (176 by the
-button's own checks, 12 by a screen the person may not open) or do not send as the line has it (2,
-below). The 130 lines no screen sends (an event with no revision, a button the kind's screen does
-not have, a field its form does not have, …) are each refused in the vectors (`stale`, `event` or
-`form`).
+the 1,804 presses that reach the server are answered as the vectors answer them (1,664 taken, 140
+refused); the other 332 are of lines the vectors refuse, which the screens stop first (142 with no
+button for it, 176 by the button's own checks, 12 by a screen the person may not open) or do not send
+as the line has it (2, below). The screen has no button for a line exactly when the vector refuses it
+as 8.1 says: for who the person is (100), the limit (30) or where the ticket is (12). A line made on
+the revision before is pressed on a screen read before the ticket moved, which has its button. The
+130 lines no screen sends (an event with no revision, a button the kind's screen does not have, a
+field its form does not have, …) are each refused in the vectors (`stale`, `event` or `form`).
 
 A line that gives a field the screen hides is counted as one the screen does not send, and is not
 posted, only when all three hold: the vector refuses the line (`form`) at that field; the field is
@@ -1726,12 +1793,24 @@ shown only when `kind is not nda`, to a non-disclosure agreement. The screens mo
 They make the same lines on the plain HTML pages (`examples/pages_test.go`, which needs no Node):
 each line is made on the page read over HTTP, its form posted as a browser posts it, with the values
 of the line typed in, rows added and removed with the page's buttons (450 presses), and files
-chosen. Of the 2,142 posts of the 2,054 lines, the 1,950 that reach the server are answered as the
-vectors answer them, on both stores: 1,664 taken (303), 286 refused, the page shown again with what
-was typed. The pages stop the other 192 first, which the vectors refuse: 160 by their own checks, 12
-on a page the person may not open, and 20 with a value the page does not offer (someone the form
-does not offer to make the request for, a stage to send back to on a card that sends back to the
-requester alone, a field the page holds hidden). Each line no page sends is refused in the vectors too.
+chosen. Of the 2,142 posts of the 2,054 lines, the 1,752 that reach the server are answered as the
+vectors answer them, on both stores: 1,664 taken (303), 88 refused, the page shown again with what
+was typed. The pages stop the other 390 first, which the vectors refuse: 142 with no button for it
+(the same as on the screens), 146 by their own checks, 70 as the page showed the ticket before it
+changed, 12 on a page the person may not open, and 20 with a value the page does not offer (someone
+the form does not offer to make the request for, a stage to send back to on a card that sends back to
+the requester alone, a field the page holds hidden). Each line no page sends is refused in the vectors
+too.
+
+What a person may do is also held to every operation of its kind, which the vectors have a few of
+(`TestCanIsWhatIsTaken`): at each of the 350 places the tickets of the vectors are at, each person of
+the ticket, those who stand in for them and someone else is asked of each event, with a gate that
+allows everything (16,969 events; an approver added and a part handed over are asked of one person,
+as who does them is the gate's alone to say). An event is in `Can`'s answer exactly when some
+operation of it, tried (`Try`), is taken or refused for another reason than 8.1's: 27,263 operations
+are tried, with each person of the organization as the approver added or the one a part is handed
+over to, each approver of the stage as the one it is handed over from, and each stage as the one sent
+back to.
 
 To check your own store, write a test that calls the nine with a function that gives an empty
 store, and your generated package (see the README).

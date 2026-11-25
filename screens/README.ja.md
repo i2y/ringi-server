@@ -12,11 +12,11 @@ sub, _ := fs.Sub(generated, "requests")
 set, err := screens.Load(sub) // openapi.json、types/、a2ui/
 ```
 
-チケットの承認カードを見せるには、カードの操作をそれぞれ gate に尋ねて、値を入れる。
+チケットの承認カードを見せるには、カードの操作のうち、その人が今できる物を尋ねて、値を入れる。
 
 ```go
 actions, _ := set.Actions("expense", "card") // edit、approve、reject、send_back、…、comment
-can := allowed(viewer, ticket, actions)       // サーバーが gate に尋ねる
+can := allowed(viewer, ticket, actions)       // サーバーが gate と種類に尋ねる（Server.Can）
 serving := screens.Serving{Find: "/a2ui/find", Upload: "/files"}
 card, err := set.Card(screens.Card{Language: "ja", Ticket: ticketJSON, Can: can, Names: directory, Serving: serving})
 // card.Messages：createSurface、updateDataModel、updateComponents。この順にレンダラに送る

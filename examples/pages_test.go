@@ -627,6 +627,14 @@ func (ps pageServer) lastEntry() (server.AuditEntry, error) {
 	return es[len(es)-1], nil
 }
 
+// shownBefore is the form of a card that has none now, as a page that showed the ticket before it
+// changed had it: what every card's form sends, for a button that sends nothing else.
+func (r *pageReplay) shownBefore(ps pageServer, target string) *pageForm {
+	id, _ := r.ticket["id"].(string)
+	return &pageForm{action: target, values: url.Values{"_surface": {r.v.Kind + ".card." + id}, "_at": {ps.srv.Now().UTC().Format(time.RFC3339Nano)}, "comment": {""}},
+		files: map[string]string{}, options: map[string][]string{}, kinds: map[string]string{"comment": "textarea"}, off: map[string]bool{}, scales: map[string]scale{}}
+}
+
 // run makes a post on a page, and answers what is wrong, or "".
 func (r *pageReplay) run(store func(testing.TB) server.Store, c pageCase) string {
 	v := r.v
@@ -648,8 +656,26 @@ func (r *pageReplay) run(store func(testing.TB) server.Store, c pageCase) string
 		return "the page's policy is " + got
 	}
 	b, err := formOf(w.Body.Bytes())
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoPageForm) {
 		return fmt.Sprintf("the page: %v", err)
+	}
+	offered := b != nil && slices.ContainsFunc(b.buttons, func(x string) bool {
+		return x == "button."+r.op || strings.HasPrefix(x, "button."+r.op+":")
+	})
+	switch {
+	case offered && asItIs(r.op, r.refused):
+		return "the page has a button for what the kind refuses (" + r.refused + ")"
+	case !offered && r.refused == "stale":
+		// the page showed the ticket before it changed, and had the button then
+		if b == nil {
+			b = r.shownBefore(ps, target)
+		}
+		b.buttons = append(b.buttons, "button."+r.op)
+	case !offered && asItIs(r.op, r.refused):
+		r.counts["no button for it, and refused ("+r.refused+")"]++
+		return ""
+	case !offered:
+		return fmt.Sprintf("the page has no button for a line the kind answers with %q", r.refused)
 	}
 	// rows: added and removed with the page's buttons, which post the form and show it again
 	rowsTo := func(rows string, n int) error {

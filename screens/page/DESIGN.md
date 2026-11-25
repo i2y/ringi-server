@@ -177,6 +177,7 @@ type FileRefusal struct { // what a Keeper answers for a file it does not take
 
 type Reading struct {
 	Operation *screens.Operation // what to run as the person; nil when the page is shown again
+	Sent      *screens.Operation // of a button not offered now: not run, as it may have been sent before (section 4)
 	Problems  []Problem          // why it is shown again, each at its part
 }
 func (r *Reading) Refused(x screens.Refusal) // the API's 409
@@ -237,8 +238,8 @@ bar, err := pages.Bar(page.Bar{Language: "en", Home: "/pages/", Person: "Sales s
 pg, err := pages.Notice("en", page.NoticeNotFound, "/pages/") // the server sends it with 404; its link goes to the start page
 ```
 
-`in` is what the page was made with: the server reads the ticket and asks the gate for `Can` again
-when the post comes, as for the page. A new request's form is shown under a new surface each time
+`in` is what the page was made with: the server reads the ticket and asks what the viewer may do
+(`Can`) again when the post comes, as for the page. A new request's form is shown under a new surface each time
 it is shown, again too (`Form.Surface`, a random ID; section 4.5). To read its post, leave
 `in.Surface` empty: the reading takes the surface from the post, so the server keeps no surface. A
 page of a ticket is read under the ticket's surface, as it was shown.
@@ -640,8 +641,8 @@ minutes to wait). The server's own checks stay the last word; their words are th
 
 ## 4. Reading a post
 
-`ReadForm` and `ReadCard` take the same input the page was made with (the server's ticket and the
-gate's `Can`), the post, and a `Keeper` that keeps attached files. The post's surface (`_surface`)
+`ReadForm` and `ReadCard` take the same input the page was made with (the server's ticket and what
+the viewer may do, `Can`), the post, and a `Keeper` that keeps attached files. The post's surface (`_surface`)
 must be the page's (for a new request, one of the kind's new request forms); the pressed button
 (`_do`) must be one the page has. The reading makes the values of what the button sends (section
 4.1), then a `screens.Action` (its name the button's event, its component the button, its timestamp
@@ -649,12 +650,21 @@ must be the page's (for a new request, one of the kind's new request forms); the
 one of the page (another surface or none, no button or one of no screen, a time or a revision that
 does not read) is `ErrPost`.
 
-A button the viewer may not press now (`/can`) is not sent. Pressed on a page that shows the ticket
+A button the viewer may not press now (`/can`) is not run. Pressed on a page that shows the ticket
 as it is (its `_revision` is the ticket's), the page is shown again with "You cannot do this now."
 Pressed on a page that showed the ticket before it last changed (a second tab, or a page sent again
 after going back), the API would refuse it as stale, so the reading is that refusal: `Refusal()`
 answers `stale`, and the page shown again is the ticket as it is now, with the comment typed and the
 sentence of `stale` (section 4.4). A comment takes no revision, and is not read so.
+
+The button may be gone because this very post took it away: a browser with no script sends a button
+pressed twice twice, and a page gone back to sends it again. So the reading also holds the operation
+the post makes, `Sent`, with the key it makes (section 4.5): the server does not run it, and when the
+same operation with the same key was taken before (`Server.Replied`, the core's DESIGN 8.1), it
+answers the post as it did then. Two posts have no `Sent`, as what they send is made from the
+ticket as it is now, and is no longer what they sent: a request made again, and an approver's edit
+(section 4.1). Neither has one whose values do not read or fail a check. Once the server has answered
+the post, `Sent` is nil, as `Operation` is.
 
 ### 4.1 The values
 

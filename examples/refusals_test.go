@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -217,15 +218,22 @@ func TestNamesInRefusals(t *testing.T) {
 		if w.Code != http.StatusConflict || !server.SameJSON(w.Body.Bytes(), want) {
 			t.Errorf("%s: the API answers %d %s\nwant %s", c.what, w.Code, w.Body.String(), want)
 		}
-		// the pages, in either language: the card offers e1201 to approve (the gate allows it), and
-		// the card shown again says the refusal's text in the page's language
+		// the pages, in either language: the card has no button for e1201 to approve, and one that adds
+		// an approver, which e1201 may not be; the card shown again says the refusal's text in the
+		// page's language
 		for _, l := range []struct{ lang, text string }{{"en", c.en}, {"ja", c.ja}} {
 			page := browse(h, "GET", "/pages/tickets/"+id, "e1201", nil, "Cookie", web.LanguageCookie+"="+l.lang)
 			f, err := formOf(page.Body.Bytes())
 			if page.Code != http.StatusOK || err != nil {
 				t.Fatalf("%s: the card in %s: %d %v", c.what, l.lang, page.Code, err)
 			}
-			body, ct, err := f.body("button.approve")
+			if slices.Contains(f.buttons, "button.approve") {
+				t.Errorf("%s: the card in %s has a button for e1201 to approve their own request", c.what, l.lang)
+			}
+			if err := f.set("approver", "e1201"); err != nil {
+				t.Fatalf("%s: the card in %s: %v", c.what, l.lang, err)
+			}
+			body, ct, err := f.body("button.add_approver:manager")
 			if err != nil {
 				t.Fatalf("%s: the card in %s: %v", c.what, l.lang, err)
 			}

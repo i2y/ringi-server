@@ -72,7 +72,7 @@ type Form struct {
 	Ticket    json.RawMessage // the ticket sent back, to make the request again; nil for a new request
 	SubmitFor []string        // a new request: the people the viewer may make it for (ringi's DESIGN 5.8, 5.13)
 	MaySubmit bool            // a kind with `submitted by`: whether the viewer may make it themselves
-	Can       []string        // what the gate lets the viewer do: submit; or resubmit, discard
+	Can       []string        // what the viewer may do now: submit; or resubmit, discard
 	Names     Lookup          // nil shows IDs as they are
 	// Surface follows "<kind>.form." in the surface's ID. A new request's form needs one of its own
 	// each time it is shown (a random ID will do): the key of its submit is made from it. A request
@@ -86,7 +86,7 @@ type Card struct {
 	Kind     string // may be left out
 	Language string
 	Ticket   json.RawMessage // required
-	Can      []string        // what the gate lets the viewer do (Set.Actions)
+	Can      []string        // what the viewer may do now (Set.Actions)
 	Names    Lookup
 	Surface  string // by default the ticket's ID
 	Serving
@@ -499,7 +499,7 @@ func (f *filling) can(given, only []string, why string) error {
 	obj, ok := f.data["can"].(map[string]any)
 	if !ok {
 		if len(given) > 0 {
-			return fmt.Errorf("%w: the %s of %s asks the gate nothing", ErrInput, f.sc.name, f.k.name)
+			return fmt.Errorf("%w: the %s of %s asks nothing of what the viewer may do", ErrInput, f.sc.name, f.k.name)
 		}
 		return nil
 	}

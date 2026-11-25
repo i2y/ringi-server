@@ -65,9 +65,11 @@ func (s *Set) Kinds() []Kind                                  // name, version, 
 func (s *Set) Actions(kind, screen string) ([]string, error)  // the keys of the screen's /can
 ```
 
-`Actions` lists what a screen asks the gate about: the keys of its `/can` (`submit`, `resubmit` and
-`discard` on a form; on a card the operations of its kind, and `comment`; the two lists and the
-history ask nothing). The server asks the gate for each and hands the allowed ones to the fill.
+`Actions` lists what a screen asks of the viewer, whether they may do it: the keys of its `/can`
+(`submit`, `resubmit` and `discard` on a form; on a card the operations of its kind, and `comment`;
+the two lists and the history ask nothing). The server asks the gate for each, and the kind whether
+the ticket takes it from the viewer (`Server.Can`, the core's DESIGN 8.1), and hands the ones the
+viewer may do to the fill.
 
 Two more readings are for a package that shows the screens itself, as the plain HTML pages
 (`page`, [page/DESIGN.md](page/DESIGN.md)) do:
@@ -114,7 +116,7 @@ type Form struct {
 	Ticket    json.RawMessage // the ticket sent back, to make the request again; nil for a new request
 	SubmitFor []string        // a new request: the people the viewer may make it for (DESIGN 5.8, 5.13)
 	MaySubmit bool            // a kind with `submitted by`: whether the viewer may make it themselves
-	Can       []string        // what the gate lets the viewer do here (Set.Actions)
+	Can       []string        // what the viewer may do here now (Set.Actions)
 	Names     Lookup          // nil shows IDs as they are
 	Surface   string          // see 2.3
 	Serving                   // what the server serves the screen with: below
@@ -519,7 +521,8 @@ as it is.
 
 ## 6. What it does not do
 
-- Ask the gate. `Can` is the gate's answer; this package only shows or hides the buttons by it.
+- Decide what the viewer may do. `Can` is the server's answer, from the gate and the kind; this
+  package only shows or hides the buttons by it.
 - Check values. The screens check what they can, and `next` checks everything again (DESIGN 13.7).
 - Know who the viewer is, what they may submit for (`SubmitFor`, `MaySubmit`), or which version of
   a master names a key. The server knows the organization and the day.

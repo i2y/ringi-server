@@ -515,14 +515,20 @@ does not count them too. `Reminded` rings a stage's reminder, then pauses the ti
 the stage keeps `reminded` on both stores. `Keeping` agrees on both stores, with their files.
 
 Each line a person makes is made again on the screens and on the pages, over HTTP. On the screens,
-its button is pressed on the screen read from the handler: the 1,946 presses that reach the server
-agree. The vectors refuse the other 190: the screens stop 188 of them first, and leave out of the
-other 2 a field they hide. On the pages, the page is
-read from the handler and its form posted as a browser posts it, with rows added with the page's
-buttons and files chosen (2,142 posts: a discard is made from the card and from the form). The
-1,950 posts that reach the server agree: 1,664 are taken and 286 refused as the vectors refuse them.
-The pages stop the other 192 first, which the vectors refuse: 160 by their own checks, 12 on a page
-the person may not open, and 20 with a value the page does not offer.
+its button is pressed on the screen read from the handler: the 1,804 presses that reach the server
+agree. The vectors refuse the other 332: the screens stop 330 of them first (142 with no button for
+it), and leave out of the other 2 a field they hide. On the pages, the page is read from the handler
+and its form posted as a browser posts it, with rows added with the page's buttons and files chosen
+(2,142 posts: a discard is made from the card and from the form). The 1,752 posts that reach the
+server agree: 1,664 are taken and 88 refused as the vectors refuse them. The pages stop the other 390
+first, which the vectors refuse: 142 with no button for it, 146 by their own checks, 70 as the page
+showed the ticket before it changed, 12 on a page the person may not open, and 20 with a value the
+page does not offer.
+
+A button is there exactly when the person may press it: the screens and the pages have no button for
+a line the vectors refuse for who the person is or what the ticket is, and one for every line they
+take. `TestCanIsWhatIsTaken` holds this to every operation of the kinds that names someone or a
+stage, at each of the 350 places the vectors' tickets are at.
 
 The pages are also used in a real browser, by tests behind the build tag `browser`. `RINGI_BROWSER`
 names a browser program that takes `--headless` and `--remote-debugging-pipe`; each test starts it
