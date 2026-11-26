@@ -11,14 +11,16 @@ import (
 
 // Run rings the timers that are due and does the things to do that are due, about once a second
 // and right after a save, until ctx ends. It looks for a newer snapshot of the organization as it
-// goes, and sweeps (Sweep) when it starts and every Config.SweepEvery. Any number of processes may
-// run it on one store.
+// goes, reads the bundles another process approved (DESIGN 15.2), and sweeps (Sweep) when it starts
+// and every Config.SweepEvery. Any number of processes may run it on one store.
 func (s *Server) Run(ctx context.Context) error {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	var swept time.Time
 	for {
-		// The starts of the versions are read again once they are 30 seconds old (DESIGN 13.2).
+		// The store's bundles and the starts of the versions are read again once they are 30
+		// seconds old (DESIGN 15.2, 13.2).
+		s.loadBundles(ctx)
 		if err := s.loadStarts(ctx, false); err != nil && ctx.Err() == nil {
 			s.log.Error("reading the starts of the versions", "err", err)
 		}

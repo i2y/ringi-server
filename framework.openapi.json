@@ -346,7 +346,7 @@
             "name": "what",
             "in": "query",
             "required": false,
-            "description": "move, kind or organization",
+            "description": "move, kind, bundle or organization",
             "schema": {
               "type": "string"
             }
@@ -450,7 +450,7 @@
             "name": "what",
             "in": "query",
             "required": false,
-            "description": "move, kind or organization",
+            "description": "move, kind, bundle or organization",
             "schema": {
               "type": "string"
             }
@@ -730,6 +730,366 @@
           }
         }
       }
+    },
+    "/admin/bundles": {
+      "get": {
+        "operationId": "admin_list_bundles",
+        "tags": [
+          "administration"
+        ],
+        "summary": "The bundles the person may upload or decide, the newest first",
+        "parameters": [
+          {
+            "name": "hidden",
+            "in": "query",
+            "required": false,
+            "description": "true lists the hidden bundles too",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bundles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.bundles"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          }
+        }
+      }
+    },
+    "/admin/bundles/uploads": {
+      "post": {
+        "operationId": "admin_upload_bundle",
+        "tags": [
+          "administration"
+        ],
+        "summary": "Upload a bundle: check it, and keep it for another administrator to decide",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/framework.key"
+          },
+          {
+            "$ref": "#/components/parameters/admin.bundle_signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The bundle and its difference from the server's versions (same: whether it was kept already)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.bundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "description": "A body that does not read, or a bundle that does not pass its checks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/framework.problems"
+                    },
+                    {
+                      "$ref": "#/components/schemas/framework.error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "429": {
+            "$ref": "#/components/responses/framework.too_many"
+          }
+        }
+      }
+    },
+    "/admin/bundles/{digest}": {
+      "get": {
+        "operationId": "admin_get_bundle",
+        "tags": [
+          "administration"
+        ],
+        "summary": "A bundle, and its difference from the server's versions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/admin.bundle"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.bundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          }
+        }
+      }
+    },
+    "/admin/bundles/{digest}/approve": {
+      "post": {
+        "operationId": "admin_approve_bundle",
+        "tags": [
+          "administration"
+        ],
+        "summary": "Approve a bundle another administrator uploaded: the server serves it at once",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/admin.bundle"
+          },
+          {
+            "$ref": "#/components/parameters/framework.key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/admin.approve_bundle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approved: the bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.bundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "description": "A body that does not read, or a bundle that does not pass its checks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/framework.problems"
+                    },
+                    {
+                      "$ref": "#/components/schemas/framework.error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "409": {
+            "$ref": "#/components/responses/framework.refused"
+          }
+        }
+      }
+    },
+    "/admin/bundles/{digest}/decline": {
+      "post": {
+        "operationId": "admin_decline_bundle",
+        "tags": [
+          "administration"
+        ],
+        "summary": "Decline a bundle another administrator uploaded",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/admin.bundle"
+          },
+          {
+            "$ref": "#/components/parameters/framework.key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/admin.bundle_reason"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Declined: the bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.bundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "409": {
+            "$ref": "#/components/responses/framework.refused"
+          }
+        }
+      }
+    },
+    "/admin/bundles/{digest}/hide": {
+      "post": {
+        "operationId": "admin_hide_bundle",
+        "tags": [
+          "administration"
+        ],
+        "summary": "Hide a bundle: no longer listed, and its archive forgotten when no ticket uses it",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/admin.bundle"
+          },
+          {
+            "$ref": "#/components/parameters/framework.key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/admin.bundle_reason"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Hidden: the bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.bundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "409": {
+            "$ref": "#/components/responses/framework.refused"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -761,7 +1121,10 @@
             "enum": [
               "stale",
               "owner",
-              "locks_out"
+              "locks_out",
+              "uploader",
+              "api_changes",
+              "taken"
             ]
           },
           "text": {
@@ -1164,6 +1527,7 @@
                 "type": "string",
                 "enum": [
                   "kind",
+                  "bundle",
                   "organization"
                 ]
               },
@@ -1200,7 +1564,7 @@
             "additionalProperties": false
           }
         ],
-        "description": "A line of the record: a move of a ticket, with the lines of history it made; or a record of a switch or an import, with what it changed"
+        "description": "A line of the record: a move of a ticket, with the lines of history it made; or a record of a switch, a bundle or an import, with what it changed"
       },
       "admin.switched": {
         "type": "object",
@@ -1635,6 +1999,424 @@
         },
         "additionalProperties": false,
         "description": "A file kept: its ID, which a form's field holds, its name and type as given, its size in bytes, and where to read it"
+      },
+      "admin.bundle_act": {
+        "type": "object",
+        "required": [
+          "person",
+          "at",
+          "reason"
+        ],
+        "properties": {
+          "person": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "Who did it (null for the server, as it started), when (Unix seconds) and why"
+      },
+      "admin.bundle_difference": {
+        "type": "object",
+        "required": [
+          "digest",
+          "api_changes",
+          "kinds"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "description": "names the difference: an approval names the one it was decided on"
+          },
+          "api_changes": {
+            "type": "boolean",
+            "description": "whether a version the bundle adds changes the API: its approval says it knows (api_changes: true)"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "version",
+                "against",
+                "new",
+                "api_changes",
+                "starts",
+                "lines",
+                "said"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer"
+                },
+                "against": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "the version it is compared with: the highest below it the server has (null for none)"
+                },
+                "new": {
+                  "type": "boolean",
+                  "description": "a kind the server does not have"
+                },
+                "api_changes": {
+                  "type": "boolean"
+                },
+                "starts": {
+                  "type": "object",
+                  "required": [
+                    "day",
+                    "usable"
+                  ],
+                  "properties": {
+                    "day": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "usable": {
+                      "type": "object",
+                      "required": [
+                        "from",
+                        "through"
+                      ],
+                      "properties": {
+                        "from": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "through": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "section",
+                      "text",
+                      "text_ja",
+                      "api"
+                    ],
+                    "properties": {
+                      "section": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "text_ja": {
+                        "type": "string"
+                      },
+                      "api": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "said": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "from",
+                        "base",
+                        "text",
+                        "text_ja"
+                      ],
+                      "properties": {
+                        "from": {
+                          "type": "integer"
+                        },
+                        "base": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "text_ja": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "what the bundle says the version changes (ritsu's `ringi diff`): against which version, of which bundle (its digest; null for none)"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false,
+        "description": "What a bundle changes: of each version it adds, the difference from the version below it, as the server makes it and as the bundle says it"
+      },
+      "admin.bundle": {
+        "type": "object",
+        "required": [
+          "digest",
+          "state",
+          "hidden",
+          "source",
+          "size",
+          "signed",
+          "checks",
+          "uploaded",
+          "decided",
+          "hid",
+          "adds",
+          "holds",
+          "may"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "declined"
+            ]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "upload",
+              "start"
+            ],
+            "description": "uploaded, or read from the server's directory of bundles as it started"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "signed": {
+            "type": "boolean",
+            "description": "whether a key the server takes signed it"
+          },
+          "checks": {
+            "type": "object",
+            "required": [
+              "vectors",
+              "worked"
+            ],
+            "properties": {
+              "vectors": {
+                "type": "integer"
+              },
+              "worked": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false,
+            "description": "how many vectors of the events and of the forms ran on its code and agreed"
+          },
+          "uploaded": {
+            "$ref": "#/components/schemas/admin.bundle_act"
+          },
+          "decided": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/admin.bundle_act"
+              }
+            ]
+          },
+          "hid": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/admin.bundle_act"
+              }
+            ]
+          },
+          "adds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "version",
+                "owner",
+                "new",
+                "title"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer"
+                },
+                "owner": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "new": {
+                  "type": "boolean"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "the versions it adds"
+          },
+          "holds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "version"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "the versions it holds that the server has, alike"
+          },
+          "may": {
+            "type": "object",
+            "required": [
+              "decide",
+              "hide"
+            ],
+            "properties": {
+              "decide": {
+                "type": "boolean"
+              },
+              "hide": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "difference": {
+            "$ref": "#/components/schemas/admin.bundle_difference"
+          },
+          "same": {
+            "type": "boolean",
+            "description": "of an upload: whether the store kept the bundle already"
+          }
+        },
+        "additionalProperties": false,
+        "description": "A bundle: a version of a kind, or a new kind, added to the running server"
+      },
+      "admin.bundles": {
+        "type": "object",
+        "required": [
+          "bundles",
+          "may_upload",
+          "signed",
+          "max_size"
+        ],
+        "properties": {
+          "bundles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/admin.bundle"
+            }
+          },
+          "may_upload": {
+            "type": "boolean"
+          },
+          "signed": {
+            "type": "boolean",
+            "description": "whether the server takes only signed bundles"
+          },
+          "max_size": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.approve_bundle": {
+        "type": "object",
+        "required": [
+          "digest"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "description": "the digest of the difference the approval was decided on"
+          },
+          "api_changes": {
+            "type": "boolean",
+            "description": "true: the approver knows the bundle changes the API"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.bundle_reason": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
       }
     },
     "responses": {
@@ -1782,6 +2564,25 @@
         "name": "ticket",
         "in": "path",
         "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "admin.bundle": {
+        "name": "digest",
+        "in": "path",
+        "required": true,
+        "description": "the bundle's digest: the SHA-256 of its archive, 64 digits of lowercase hexadecimal",
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "admin.bundle_signature": {
+        "name": "Bundle-Signature",
+        "in": "header",
+        "required": false,
+        "description": "the bundle's signature, the content of the file `ringi-bundle sign` writes: required when the server takes only signed bundles",
         "schema": {
           "type": "string"
         }

@@ -221,7 +221,8 @@ same thing has the same number (its key).
 | reminder | To tell an approver again, before the deadline | 催促、reminder |
 | notice | To tell a person something. The part that sends it is the notifier | 通知、`Notifier` |
 | history | Who did what on one request, and when. Read on the request's page | 履歴、history |
-| record | Every operation on requests, switch of a version and import of the organization's data: who did it, and when. Read on the pages for administrators | 記録、record、audit |
+| record | Every operation on requests, switch of a version, bundle and import of the organization's data: who did it, and when. Read on the pages for administrators | 記録、record、audit |
+| bundle | One zip file of new versions of request types, built into WebAssembly, put on a server while it runs. One administrator uploads it, and another approves it | バンドル、bundle |
 | organization's data | The data of the people, teams, positions, memberships and proxies | 組織のデータ、organization |
 | position | The manager of a section, the head of a department and so on. In the organization's data | 役職、position |
 | role | One who administers, one who audits and so on. The sign-in gives it to a person | 役割、role |

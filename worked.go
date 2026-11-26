@@ -137,7 +137,7 @@ func checkWith(s *schema, body []byte) error {
 // let, it answers as for a path there is not, saying nothing of the kind's versions; to a person it
 // lets, it says the day the nearest later version starts (Reply.From), when one is to start.
 func (s *Server) unoffered(ctx context.Context, name string, p Person, now time.Time) (Reply, error) {
-	ks := s.kinds[name]
+	ks := s.cat().kinds[name]
 	if len(ks) == 0 {
 		return notFound("no such path"), nil
 	}
@@ -186,7 +186,7 @@ func (s *Server) unoffered(ctx context.Context, name string, p Person, now time.
 // from …" where a kind has no form to show yet.
 func (s *Server) Offered(ctx context.Context, p Person, kind string) (from string, ok bool, err error) {
 	now := s.now()
-	if len(s.kinds[kind]) == 0 || s.current(kind, now) != nil {
+	if len(s.cat().kinds[kind]) == 0 || s.current(kind, now) != nil {
 		return "", false, nil
 	}
 	r, err := s.unoffered(ctx, kind, p, now)
@@ -202,7 +202,7 @@ func (s *Server) Offered(ctx context.Context, p Person, kind string) (from strin
 func (s *Server) nextStart(name string, now time.Time) (*kind, time.Time) {
 	var next *kind
 	var at time.Time
-	for _, k := range s.kinds[name] {
+	for _, k := range s.cat().kinds[name] {
 		t, ok := startAt(k, s.startOf(k))
 		if !ok || !t.After(now) {
 			continue

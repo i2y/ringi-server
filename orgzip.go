@@ -61,18 +61,55 @@ func readUpload(archive []byte, want OrgLayout, max int64) (*OrgData, error) {
 	if want.Data == "" {
 		return nil, errors.New("the kinds name no directory of the organization's data")
 	}
+	paths := uploadPathsOf(want)
+	zr, err := checkZip(archive, max, zipRules{
+		maxFiles: MaxOrgFiles, tooLarge: ErrOrganizationTooLarge, what: "the organization's data",
+		file: paths.file, dir: paths.dir, hold: paths.hold(), holdJa: paths.holdJa(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	d, err := ReadOrgFiles(zr, want)
+	var ps *OrgProblems
+	if err == nil || errors.As(err, &ps) {
+		return d, err
+	}
+	// every byte is in memory: a file that does not read is a broken zip file
+	at := ""
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		at, err = escaped(pe.Path, 200), pe.Err
+	}
+	return nil, &OrgProblems{Problems: []OrgProblem{{At: at, Text: "The file does not read: " + err.Error(), TextJa: jatext.Join("ファイルを読めません（", err.Error(), "）")}}}
+}
+
+// zipRules are what an upload in the zip format may hold: at most maxFiles entries, the files file
+// takes and the directories dir takes (hold and holdJa say what that is, to one whose entry is
+// refused), and, past a limit, an error that wraps tooLarge, saying what may be no larger.
+type zipRules struct {
+	maxFiles     int
+	tooLarge     error
+	what         string
+	file, dir    func(name string) bool
+	hold, holdJa string
+}
+
+// checkZip checks an upload in the zip format before a file of it is read, and every byte of its
+// files (readUpload says what it refuses), and answers it to be read. A refusal is a problem that
+// names the entry (*OrgProblems) or, past a limit, an error that wraps r.tooLarge.
+func checkZip(archive []byte, max int64, r zipRules) (*zip.Reader, error) {
 	if max < 0 {
 		max = 0
 	}
 	// archive/zip reads every entry of the central directory into memory, and reads on past the
 	// number its end records (a number cut to 16 bits where the file is no zip64 file): the number
 	// recorded, and the headers of the central directory as archive/zip reads them, are counted first
-	dir, found := zipDirectoryOf(archive, MaxOrgFiles)
-	if found && dir.says > MaxOrgFiles {
-		return nil, fmt.Errorf("%w: the zip file says it holds %d entries, and it may hold %d", ErrOrganizationTooLarge, dir.says, MaxOrgFiles)
+	dir, found := zipDirectoryOf(archive, r.maxFiles)
+	if found && dir.says > uint64(r.maxFiles) {
+		return nil, fmt.Errorf("%w: the zip file says it holds %d entries, and it may hold %d", r.tooLarge, dir.says, r.maxFiles)
 	}
-	if len(dir.local) > MaxOrgFiles {
-		return nil, fmt.Errorf("%w: the zip file holds more than %d entries", ErrOrganizationTooLarge, MaxOrgFiles)
+	if len(dir.local) > r.maxFiles {
+		return nil, fmt.Errorf("%w: the zip file holds more than %d entries", r.tooLarge, r.maxFiles)
 	}
 	if !found {
 		return nil, uploadProblem("", "The upload is not a zip file", "アップロードしたファイルが zip ではありません")
@@ -81,8 +118,8 @@ func readUpload(archive []byte, want OrgLayout, max int64) (*OrgData, error) {
 	if err != nil && !errors.Is(err, zip.ErrInsecurePath) {
 		return nil, uploadProblem("", "The zip file is broken: "+err.Error(), jatext.Join("zip ファイルが壊れています（", err.Error(), "）"))
 	}
-	if len(zr.File) > MaxOrgFiles {
-		return nil, fmt.Errorf("%w: the zip file holds more than %d entries", ErrOrganizationTooLarge, MaxOrgFiles)
+	if len(zr.File) > r.maxFiles {
+		return nil, fmt.Errorf("%w: the zip file holds more than %d entries", r.tooLarge, r.maxFiles)
 	}
 	if len(zr.File) != len(dir.local) {
 		// zipDirectoryOf reads the directory as archive/zip does: another count is a zip file that
@@ -95,14 +132,13 @@ func readUpload(archive []byte, want OrgLayout, max int64) (*OrgData, error) {
 	for _, f := range zr.File {
 		size := f.UncompressedSize64
 		if size > uint64(max) {
-			return nil, fmt.Errorf("%w: %s is %d bytes once uncompressed, and the organization's data may be %d", ErrOrganizationTooLarge, escaped(f.Name, 200), size, max)
+			return nil, fmt.Errorf("%w: %s is %d bytes once uncompressed, and %s may be %d", r.tooLarge, escaped(f.Name, 200), size, r.what, max)
 		}
 		if size > uint64(max)-total {
-			return nil, fmt.Errorf("%w: its files are more than %d bytes once uncompressed", ErrOrganizationTooLarge, max)
+			return nil, fmt.Errorf("%w: its files are more than %d bytes once uncompressed", r.tooLarge, max)
 		}
 		total += size
 	}
-	paths := uploadPathsOf(want)
 	var problems []OrgProblem
 	add := func(f *zip.File, en, ja string) {
 		problems = append(problems, OrgProblem{At: escaped(f.Name, 200), Text: en, TextJa: ja})
@@ -128,13 +164,13 @@ func readUpload(archive []byte, want OrgLayout, max int64) (*OrgData, error) {
 		switch {
 		case mode&fs.ModeSymlink != 0:
 			add(f, "The entry is a symbolic link: put the file itself in the zip file", "シンボリックリンクです。ファイルそのものを zip に入れてください")
-		case isDir && !paths.dir(name):
-			add(f, "The server reads nothing in this directory: "+paths.hold(), jatext.Join("サーバーは、このディレクトリの中を読みません。", paths.holdJa()))
+		case isDir && !r.dir(name):
+			add(f, "The server reads nothing in this directory: "+r.hold, jatext.Join("サーバーは、このディレクトリの中を読みません。", r.holdJa))
 		case isDir:
 		case !mode.IsRegular():
 			add(f, "The entry is neither a file nor a directory", "ファイルでもディレクトリでもありません")
-		case !paths.file(name):
-			add(f, "The server does not read this file: "+paths.hold(), jatext.Join("サーバーは、このファイルを読みません。", paths.holdJa()))
+		case !r.file(name):
+			add(f, "The server does not read this file: "+r.hold, jatext.Join("サーバーは、このファイルを読みません。", r.holdJa))
 		case f.Flags&0x1 != 0:
 			add(f, "The file is encrypted, and the server does not read encrypted files", "ファイルが暗号化されています。暗号化したファイルは読めません")
 		case f.Method != zip.Store && f.Method != zip.Deflate:
@@ -150,10 +186,10 @@ func readUpload(archive []byte, want OrgLayout, max int64) (*OrgData, error) {
 	// the bytes themselves, counted whatever the zip file records, and checked against it
 	left := max
 	for _, f := range files {
-		n, sum, err := readEntry(f, left)
+		n, sum, err := readEntry(f, left, r.tooLarge)
 		switch {
-		case errors.Is(err, ErrOrganizationTooLarge):
-			return nil, fmt.Errorf("%w: its files are more than %d bytes once uncompressed", ErrOrganizationTooLarge, max)
+		case errors.Is(err, r.tooLarge):
+			return nil, fmt.Errorf("%w: its files are more than %d bytes once uncompressed", r.tooLarge, max)
 		case err != nil:
 			add(f, "The file does not read: "+err.Error(), jatext.Join("ファイルを展開できません（", err.Error(), "）"))
 		case uint64(n) != f.UncompressedSize64 || f.CRC32 != 0 && sum != f.CRC32:
@@ -165,18 +201,7 @@ func readUpload(archive []byte, want OrgLayout, max int64) (*OrgData, error) {
 	if len(problems) > 0 {
 		return nil, &OrgProblems{Problems: problems}
 	}
-	d, err := ReadOrgFiles(zr, want)
-	var ps *OrgProblems
-	if err == nil || errors.As(err, &ps) {
-		return d, err
-	}
-	// every byte is in memory: a file that does not read is a broken zip file
-	at := ""
-	var pe *fs.PathError
-	if errors.As(err, &pe) {
-		at, err = escaped(pe.Path, 200), pe.Err
-	}
-	return nil, &OrgProblems{Problems: []OrgProblem{{At: at, Text: "The file does not read: " + err.Error(), TextJa: jatext.Join("ファイルを読めません（", err.Error(), "）")}}}
+	return zr, nil
 }
 
 // uploadProblem is the refusal of an upload for one problem.
@@ -184,10 +209,10 @@ func uploadProblem(at, en, ja string) error {
 	return &OrgProblems{Problems: []OrgProblem{{At: at, Text: en, TextJa: ja}}}
 }
 
-// readEntry reads a file of the zip file to its end, at most left bytes once uncompressed
-// (ErrOrganizationTooLarge past them), by its own count of the bytes and not by the size the zip file
-// records. It answers how many bytes it read and their checksum (CRC-32).
-func readEntry(f *zip.File, left int64) (int64, uint32, error) {
+// readEntry reads a file of the zip file to its end, at most left bytes once uncompressed (tooLarge
+// past them), by its own count of the bytes and not by the size the zip file records. It answers how
+// many bytes it read and their checksum (CRC-32).
+func readEntry(f *zip.File, left int64, tooLarge error) (int64, uint32, error) {
 	raw, err := f.OpenRaw()
 	if err != nil {
 		return 0, 0, err
@@ -205,7 +230,7 @@ func readEntry(f *zip.File, left int64) (int64, uint32, error) {
 	h := crc32.NewIEEE()
 	n, err := io.Copy(h, io.LimitReader(r, limit))
 	if n > left {
-		return n, 0, ErrOrganizationTooLarge
+		return n, 0, tooLarge
 	}
 	return n, h.Sum32(), err
 }

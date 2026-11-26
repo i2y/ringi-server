@@ -135,7 +135,7 @@ func sameProblems(t *testing.T, err error, wants ...orgWant) {
 
 func TestReadOrgFiles(t *testing.T) {
 	s := testOrgServer(t)
-	d, err := ReadOrgFiles(orgFiles(), s.layout)
+	d, err := ReadOrgFiles(orgFiles(), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestReadOrgFiles(t *testing.T) {
 		t.Errorf("the data is\n%s\nnot\n%s", b, want)
 	}
 	// the same version in organization.json reads as the same
-	j, err := ReadOrgFiles(jsonFiles(orgJSON), s.layout)
+	j, err := ReadOrgFiles(jsonFiles(orgJSON), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestReadOrgFilesShapes(t *testing.T) {
 		f["org/2025-04-01/"+name] = f["org/2026-04-01/"+name]
 	}
 	f["masters/accounts.csv"] = orgFile("code,label,valid_from,valid_to\n")
-	d, err := ReadOrgFiles(f, s.layout)
+	d, err := ReadOrgFiles(f, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestReadOrgFilesShapes(t *testing.T) {
 	if string(b) != `{"proxies":[],"masters":{"co_masters.accounts":[]}}` {
 		t.Errorf("no proxies and no rows read as %s", b)
 	}
-	layout := s.layout
+	layout := s.cat().layout
 	layout.Masters = nil
 	d, err = ReadOrgFiles(orgFiles(), layout)
 	if err != nil || d.Masters == nil || len(d.Masters) != 0 {
@@ -229,7 +229,7 @@ func TestReadOrgFilesShapes(t *testing.T) {
 		"  \r\n" +
 		"p2, \"Sam Roe\",,p2@example.com\r\n" +
 		"p3,Kim Poe,,\r\n")
-	d, err = ReadOrgFiles(f, s.layout)
+	d, err = ReadOrgFiles(f, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestReadOrgFilesShapes(t *testing.T) {
 
 // A file that does not read is an error of its own, not a problem of the data.
 func TestReadOrgFilesFailing(t *testing.T) {
-	_, err := ReadOrgFiles(failingFS{orgFiles(), "org/2026-04-01/people.csv"}, testOrgServer(t).layout)
+	_, err := ReadOrgFiles(failingFS{orgFiles(), "org/2026-04-01/people.csv"}, testOrgServer(t).cat().layout)
 	var ps *OrgProblems
 	if !errors.Is(err, errDisk) || errors.As(err, &ps) {
 		t.Errorf("a file that does not read answers %v", err)
@@ -380,7 +380,7 @@ func TestReadOrgFilesProblems(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			f := orgFiles()
 			c.change(t, f)
-			d, err := ReadOrgFiles(f, s.layout)
+			d, err := ReadOrgFiles(f, s.cat().layout)
 			if d != nil {
 				t.Errorf("data with problems is answered")
 			}
@@ -388,7 +388,7 @@ func TestReadOrgFilesProblems(t *testing.T) {
 		})
 	}
 	// a master the kinds name no file of
-	layout := s.layout
+	layout := s.cat().layout
 	layout.Masters = []MasterLayout{{Name: "co_masters.accounts", Key: "code", Fields: []string{"code", "label"}}}
 	_, err := ReadOrgFiles(orgFiles(), layout)
 	sameProblems(t, err, orgWant{"master co_masters.accounts", "The kinds name no file of the rows of the master `co_masters.accounts`"})
@@ -446,7 +446,7 @@ func TestReadOrgJSONProblems(t *testing.T) {
 			[]orgWant{{name + ":13", "`primary` is true, false, `yes`, `no`, empty or null, not `true`"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := ReadOrgFiles(jsonFiles(c.json), s.layout)
+			_, err := ReadOrgFiles(jsonFiles(c.json), s.cat().layout)
 			sameProblems(t, err, c.wants...)
 		})
 	}
@@ -464,7 +464,7 @@ func TestReadOrgFilesStops(t *testing.T) {
 	edit(t, f, peopleFile, "id,name,name_ja,email", "id,name,name_ja,email"+head.String())
 	edit(t, f, teamsFile, "id,name,name_ja,kind,parent,head", "id,name,name_ja,kind,parent,head"+head.String())
 	edit(t, f, membersFile, "person,team,position,primary", "person,team,position,primary"+head.String())
-	_, err := ReadOrgFiles(f, s.layout)
+	_, err := ReadOrgFiles(f, s.cat().layout)
 	var ps *OrgProblems
 	if !errors.As(err, &ps) || len(ps.Problems) != MaxOrgProblems || !ps.Stopped {
 		t.Fatalf("the reading of 2700 columns not read: %v", err)
@@ -535,7 +535,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // descriptions. A problem with the column names it by both.
 func TestReadOrgFilesWrittenColumns(t *testing.T) {
 	s := writtenServer(t)
-	if ms := s.layout.Masters; len(ms) != 1 || len(ms[0].Written) != 1 || ms[0].Written["label"] != "名前" {
+	if ms := s.cat().layout.Masters; len(ms) != 1 || len(ms[0].Written) != 1 || ms[0].Written["label"] != "名前" {
 		t.Fatalf("the masters' layout: %+v", ms)
 	}
 	for _, c := range []struct {
@@ -555,7 +555,7 @@ func TestReadOrgFilesWrittenColumns(t *testing.T) {
 	} {
 		f := orgFiles()
 		f[accountsFile] = orgFile(c.file)
-		d, err := ReadOrgFiles(f, s.layout)
+		d, err := ReadOrgFiles(f, s.cat().layout)
 		if c.wants != nil {
 			sameProblems(t, err, c.wants...)
 			continue
@@ -576,7 +576,7 @@ func TestReadOrgFilesWrittenColumns(t *testing.T) {
 	} {
 		f := orgFiles()
 		f[accountsFile] = orgFile(file)
-		_, err := ReadOrgFiles(f, s.layout)
+		_, err := ReadOrgFiles(f, s.cat().layout)
 		if ps := orgProblems(t, err); len(ps) != 1 || ps[0].TextJa != want {
 			t.Errorf("%q: the problems are %+v", file, ps)
 		}

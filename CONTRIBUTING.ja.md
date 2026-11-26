@@ -19,8 +19,9 @@
 | `Reminded` | 催促を出したかどうかが、一時停止と再開のあとも残ること |
 | `Administration` | 版の切り替え、組織のデータの確認と取り込み、記録。gate が許さない人には何も変えられず、何も読めないこと |
 | `Keeping` | 時刻が UTC であること、古い操作を順に、決まった件数ずつ消すこと、一つのキーのアップロードを一度だけ記録すること |
+| `Bundles` | 新しい版のバンドル。アーカイブ、記録、キーと一緒に保つこと、読んだときの状態からだけ変えること、版ごとに承認済みのバンドルは一つだけであること、順に並べること |
 
-最後の二つは、ベクタなしで動きます。三つの順は、ページに分けて読んだときも確かめます。
+最後の三つは、ベクタなしで動きます。三つの順は、ページに分けて読んだときも確かめます。
 
 ```go
 func TestConformance(t *testing.T) {
@@ -44,6 +45,7 @@ func TestConformance(t *testing.T) {
 	conformance.Reminded(t, s)
 	conformance.Administration(t, s)
 	conformance.Keeping(t, s)
+	conformance.Bundles(t, s)
 }
 ```
 

@@ -174,6 +174,13 @@ type Store interface {
 	// ForgetDrafts forgets up to limit drafts kept before `before`, the oldest first (by time, then by
 	// person, then by ID, as Go compares strings), and answers how many.
 	ForgetDrafts(ctx context.Context, before time.Time, limit int) (int, error)
+
+	// Bundles reads every bundle the store keeps (DESIGN 15.6), without their archives, in the order
+	// they were kept (by Bundle.Uploaded.At, then by digest, as Go compares strings).
+	Bundles(ctx context.Context) ([]Bundle, error)
+	// BundleArchive reads a bundle's archive by its digest, or ErrNotFound: for a digest the store
+	// keeps no bundle of, and for a bundle whose archive it forgot (BundleChange.Forget).
+	BundleArchive(ctx context.Context, digest string) ([]byte, error)
 }
 
 // ErrTooManyImports is SaveChange's answer to an import past the imports a day (Change.ImportsMax,
@@ -190,7 +197,9 @@ type Record struct {
 	Person string
 	// Via is the way it came in: "api", "pages" or "start".
 	Via string
-	// What is "kind" (a switch of the version Kind, Version) or "organization" (an import).
+	// What is "kind" (a switch of the version Kind, Version), "organization" (an import) or "bundle"
+	// (a bundle uploaded, approved, declined, hidden or read at start, by a version it adds: Kind,
+	// Version; DESIGN 15.7).
 	What    string
 	Kind    string
 	Version int
@@ -239,9 +248,18 @@ type Start struct {
 //     person's draft it imports (Draft), forgotten;
 //   - the operation's key with its reply (Key, Digest, Outcome, Reply), at At, only if no reply is
 //     kept with the person's key yet (ErrKeyTaken otherwise), as Save keeps them.
+//   - for a bundle (Bundle, with a record of each version it adds in Records): a new bundle, only if
+//     the store keeps none of its digest (ErrConflict otherwise), or a bundle's new state, only if its
+//     state and whether it is hidden are still the ones read (BundleChange.Was, WasHidden; ErrConflict
+//     otherwise); a bundle that becomes approved (or is kept approved), only if no approved bundle
+//     adds a version it adds (ErrConflict otherwise); and its archive forgotten when Forget says so.
 type Change struct {
 	At     time.Time
 	Record *Record
+	// Records are the records of a change of a bundle: one for each version it adds (DESIGN 15.7).
+	Records []*Record
+
+	Bundle *BundleChange
 
 	Start *Start
 	// Kept are the starts of the kind's other versions, as the server read them to decide whom the
@@ -264,6 +282,67 @@ type Change struct {
 	Reply   json.RawMessage
 }
 
+// Bundle is a bundle of kinds of request, as the store keeps it (DESIGN 15): a zip archive of the
+// requests directory `ritsu gen --extra bundle` writes, with the kinds' code as WebAssembly, which
+// an administrator uploads and another approves, or which the server reads from a directory as it
+// starts.
+type Bundle struct {
+	// Digest is the SHA-256 of the archive, in lowercase hexadecimal: the bundle's name.
+	Digest string
+	// Adds are the versions it adds: those the server had no package of when it was checked. Holds
+	// are all the versions it has, Adds among them; the others are the ones the server had, with the
+	// same description, which the server's own package goes on serving.
+	Adds  []BundleVersion
+	Holds []KindVersion
+	// State is "pending" (checked, and waiting for an administrator to decide), "approved" or
+	// "declined". Hidden says it is not listed.
+	State  string
+	Hidden bool
+	// Source is how it came: "upload" (by an administrator, through the API or the pages) or
+	// "start" (from the directory the server reads as it starts, approved with no one to decide).
+	Source string
+	// Size is the archive's size in bytes, and Signed says a key the server takes signed it.
+	Size   int64
+	Signed bool
+	// Vectors and Worked are how many vectors of the kinds' events and of their forms the checks ran,
+	// all of which agreed.
+	Vectors, Worked int
+	// Uploaded is who uploaded it and when (no person for one read at start); Decided who approved or
+	// declined it, when and why; Hid who hid it. Decided and Hid are nil while not done.
+	Uploaded BundleAct
+	Decided  *BundleAct
+	Hid      *BundleAct
+}
+
+// BundleVersion is a version a bundle adds: the kind, its version, its owner and its title, and
+// whether the kind was new to the server when the bundle was checked.
+type BundleVersion struct {
+	Kind    string
+	Version int
+	Owner   string
+	Title   string
+	New     bool
+}
+
+// BundleAct is who did something to a bundle, when, and why ("" for no reason given).
+type BundleAct struct {
+	Person string
+	At     time.Time
+	Reason string
+}
+
+// BundleChange is the bundle part of a Change: the bundle as it is after the change; its archive,
+// which a new bundle is kept with, and which, given again, replaces the one kept (nil keeps it); the
+// state and the hiding it was read with (Was "" for a new bundle); and whether its archive is
+// forgotten (a bundle no ticket can use, hidden: one that was never approved).
+type BundleChange struct {
+	Bundle    Bundle
+	Archive   []byte
+	Was       string
+	WasHidden bool
+	Forget    bool
+}
+
 // KindVersion names a version of a kind.
 type KindVersion struct {
 	Kind    string
@@ -272,17 +351,17 @@ type KindVersion struct {
 
 // RecordQuery says which lines of the record Store.Records may read, and narrows them.
 type RecordQuery struct {
-	// Versions are the versions whose lines may be read (the moves of their tickets and their
-	// switches), and Organization whether the imports may: the lines the gate allows (DESIGN 13.4).
-	// No other line is read.
+	// Versions are the versions whose lines may be read (the moves of their tickets, their switches
+	// and the records of the bundles that add them), and Organization whether the imports may: the
+	// lines the gate allows (DESIGN 13.4). No other line is read.
 	Versions     []KindVersion
 	Organization bool
 	// From and To keep the lines at or after From and before To; a zero time is no bound.
 	From time.Time
 	To   time.Time
-	// Kind keeps the lines of one kind; What the moves ("move"), the switches ("kind") or the
-	// imports ("organization"); Person the lines of one person (who moved the ticket, who made the
-	// record); Ticket the moves of one ticket. "" keeps all.
+	// Kind keeps the lines of one kind; What the moves ("move"), the switches ("kind"), the imports
+	// ("organization") or the records of the bundles ("bundle"); Person the lines of one person (who
+	// moved the ticket, who made the record); Ticket the moves of one ticket. "" keeps all.
 	Kind   string
 	What   string
 	Person string

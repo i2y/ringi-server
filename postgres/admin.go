@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"hash/fnv"
 	"strconv"
@@ -63,9 +64,9 @@ var adminQueries = map[string]string{
 	  select 'r', r.at, r.id, 0, r.person, '', null, null, '', r.kind, r.version, r.via, r.what, r.before::text, r.after::text,
 	         r.reason, r.source, r.snapshot, r.added
 	  from {s}.records r
-	  where ((r.what = 'kind' and (r.kind, r.version) in (select * from unnest($1::text[], $2::int[])))
+	  where ((r.what in ('kind', 'bundle') and (r.kind, r.version) in (select * from unnest($1::text[], $2::int[])))
 	         or (r.what = 'organization' and $3))
-	    and ($7 = '' or r.what = $7) and ($6 = '' or (r.what = 'kind' and r.kind = $6)) and ($8 = '' or r.person = $8) and $9 = ''
+	    and ($7 = '' or r.what = $7) and ($6 = '' or (r.what in ('kind', 'bundle') and r.kind = $6)) and ($8 = '' or r.person = $8) and $9 = ''
 	    and ($4::timestamptz is null or r.at >= $4) and ($5::timestamptz is null or r.at < $5)
 	) x
 	where $10::timestamptz is null or (x.at, x.id collate "C", x.number) < ($10::timestamptz, $11::text collate "C", $12::bigint)
@@ -82,9 +83,19 @@ var adminQueries = map[string]string{
 	    and ($7::timestamptz is null or m.at >= $7) and ($8::timestamptz is null or m.at < $8)`,
 	"record_before": `select r.at from {s}.records r
 	  where r.id = $1
-	    and ((r.what = 'kind' and (r.kind, r.version) in (select * from unnest($2::text[], $3::int[]))) or (r.what = 'organization' and $4))
-	    and ($5 = '' or r.what = $5) and ($6 = '' or (r.what = 'kind' and r.kind = $6)) and ($7 = '' or r.person = $7)
+	    and ((r.what in ('kind', 'bundle') and (r.kind, r.version) in (select * from unnest($2::text[], $3::int[]))) or (r.what = 'organization' and $4))
+	    and ($5 = '' or r.what = $5) and ($6 = '' or (r.what in ('kind', 'bundle') and r.kind = $6)) and ($7 = '' or r.person = $7)
 	    and ($8::timestamptz is null or r.at >= $8) and ($9::timestamptz is null or r.at < $9)`,
+	// The bundles (DESIGN 15.9).
+	"bundle_new":    `insert into {s}.bundles (digest, state, hidden, uploaded, body) values ($1, $2, $3, $4, $5::json) on conflict (digest) do nothing`,
+	"bundle_update": `update {s}.bundles set state = $2, hidden = $3, body = $4::json where digest = $1 and state = $5 and hidden = $6`,
+	"bundle_keep": `insert into {s}.bundle_archives (digest, archive) values ($1, $2)
+	                on conflict (digest) do update set archive = excluded.archive`,
+	"bundle_forget":  `delete from {s}.bundle_archives where digest = $1`,
+	"bundle_version": `insert into {s}.bundle_versions (kind, version, digest) values ($1, $2, $3) on conflict (kind, version) do nothing`,
+	"bundle_adds":    `select digest from {s}.bundle_versions where kind = $1 and version = $2`,
+	"bundles":        `select digest, state, hidden, body::text from {s}.bundles order by uploaded, digest collate "C"`,
+	"bundle_archive": `select archive from {s}.bundle_archives where digest = $1`,
 }
 
 // recordColumns are the columns of a record, as scanRecord reads them.
@@ -200,7 +211,16 @@ func (s *Store) SaveChange(ctx context.Context, c *server.Change) error {
 			}
 		}
 	}
-	if r := c.Record; r != nil {
+	if b := c.Bundle; b != nil {
+		if err := s.saveBundle(ctx, tx, b); err != nil {
+			return err
+		}
+	}
+	recs := c.Records
+	if c.Record != nil {
+		recs = append([]*server.Record{c.Record}, recs...)
+	}
+	for _, r := range recs {
 		before, after := string(r.Before), string(r.After)
 		if before == "" {
 			before = "null"
@@ -214,6 +234,113 @@ func (s *Store) SaveChange(ctx context.Context, c *server.Change) error {
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// bundleBody is what the table of the bundles keeps of a bundle as JSON.
+type bundleBody struct {
+	Adds     []server.BundleVersion `json:"adds"`
+	Holds    []server.KindVersion   `json:"holds"`
+	Source   string                 `json:"source"`
+	Size     int64                  `json:"size"`
+	Signed   bool                   `json:"signed"`
+	Vectors  int                    `json:"vectors"`
+	Worked   int                    `json:"worked"`
+	Uploaded server.BundleAct       `json:"uploaded"`
+	Decided  *server.BundleAct      `json:"decided"`
+	Hid      *server.BundleAct      `json:"hid"`
+}
+
+// cut cuts a time to the microsecond, in UTC, as the store keeps its times.
+func cut(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
+
+func cutAct(a *server.BundleAct) *server.BundleAct {
+	if a == nil {
+		return nil
+	}
+	x := *a
+	x.At = cut(x.At)
+	return &x
+}
+
+// saveBundle writes a bundle's change in the change's transaction (server.BundleChange): new, or of
+// the state it was read in; ErrConflict else, or when another approved bundle adds a version it
+// adds.
+func (s *Store) saveBundle(ctx context.Context, tx pgx.Tx, c *server.BundleChange) error {
+	b := c.Bundle
+	body, err := json.Marshal(bundleBody{Adds: b.Adds, Holds: b.Holds, Source: b.Source, Size: b.Size, Signed: b.Signed,
+		Vectors: b.Vectors, Worked: b.Worked, Uploaded: *cutAct(&b.Uploaded), Decided: cutAct(b.Decided), Hid: cutAct(b.Hid)})
+	if err != nil {
+		return err
+	}
+	q, args := s.sql["bundle_new"], []any{b.Digest, b.State, b.Hidden, cut(b.Uploaded.At), string(body)}
+	if c.Was != "" {
+		q, args = s.sql["bundle_update"], []any{b.Digest, b.State, b.Hidden, string(body), c.Was, c.WasHidden}
+	}
+	tag, err := tx.Exec(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return server.ErrConflict
+	}
+	if c.Archive != nil {
+		if _, err := tx.Exec(ctx, s.sql["bundle_keep"], b.Digest, c.Archive); err != nil {
+			return err
+		}
+	}
+	if c.Forget {
+		if _, err := tx.Exec(ctx, s.sql["bundle_forget"], b.Digest); err != nil {
+			return err
+		}
+	}
+	if b.State == "approved" {
+		for _, v := range b.Adds {
+			if _, err := tx.Exec(ctx, s.sql["bundle_version"], v.Kind, v.Version, b.Digest); err != nil {
+				return err
+			}
+			var by string
+			if err := tx.QueryRow(ctx, s.sql["bundle_adds"], v.Kind, v.Version).Scan(&by); err != nil {
+				return err
+			}
+			if by != b.Digest {
+				return server.ErrConflict
+			}
+		}
+	}
+	return nil
+}
+
+// Bundles reads every bundle the store keeps, without their archives, in the order they were
+// uploaded.
+func (s *Store) Bundles(ctx context.Context) ([]server.Bundle, error) {
+	rows, err := s.q(ctx).Query(ctx, s.sql["bundles"])
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (server.Bundle, error) {
+		var b server.Bundle
+		var body string
+		if err := r.Scan(&b.Digest, &b.State, &b.Hidden, &body); err != nil {
+			return b, err
+		}
+		var x bundleBody
+		if err := json.Unmarshal([]byte(body), &x); err != nil {
+			return b, err
+		}
+		b.Adds, b.Holds, b.Source, b.Size, b.Signed, b.Vectors, b.Worked = x.Adds, x.Holds, x.Source, x.Size, x.Signed, x.Vectors, x.Worked
+		b.Uploaded, b.Decided, b.Hid = *cutAct(&x.Uploaded), cutAct(x.Decided), cutAct(x.Hid)
+		return b, nil
+	})
+}
+
+// BundleArchive reads a bundle's archive, or ErrNotFound.
+func (s *Store) BundleArchive(ctx context.Context, digest string) ([]byte, error) {
+	var archive []byte
+	err := s.q(ctx).QueryRow(ctx, s.sql["bundle_archive"], digest).Scan(&archive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, server.ErrNotFound
+	}
+	return archive, err
 }
 
 // Starts reads the start of each version an administrator decided.

@@ -53,8 +53,12 @@ const (
 
 // admin runs an operation of the administration.
 func (s *Server) admin(ctx context.Context, c Call) (Reply, error) {
+	s.loadBundles(ctx)
 	if err := s.loadStarts(ctx, false); err != nil {
 		return Reply{}, err
+	}
+	if slices.Contains(bundleOps, c.Operation) {
+		return s.bundleAdmin(ctx, c)
 	}
 	switch c.Operation {
 	case "admin_list_kinds":
@@ -125,7 +129,7 @@ func (s *Server) kindOwner(name string, now time.Time) (owner string, ok bool) {
 // holds it, and no other team takes the kind from a state one team made.
 func (s *Server) noneOwners(name string, start func(*kind) Start, t time.Time) []string {
 	var out []string
-	for _, v := range s.kinds[name] {
+	for _, v := range s.cat().kinds[name] {
 		st := start(v)
 		if (st.How == "never" || st.How == "day" && st.At.After(t)) && !slices.Contains(out, v.desc.Owner) {
 			out = append(out, v.desc.Owner)
@@ -196,7 +200,7 @@ type moved struct {
 // to (none, where it leaves none in effect: no team takes the kind then). starts are the versions'
 // starts as the store has them.
 func (s *Server) switchOwners(k *kind, to Start, starts map[int]Start, now time.Time) []moved {
-	ks := s.kinds[k.Name]
+	ks := s.cat().kinds[k.Name]
 	before := func(v *kind) Start {
 		if st, ok := starts[v.Version]; ok {
 			return st
@@ -253,12 +257,13 @@ func (s *Server) switchOwners(k *kind, to Start, starts map[int]Start, now time.
 // AdminParts are the parts of the administration a person may use (DESIGN 13.7).
 type AdminParts struct {
 	// Kinds: a version of a kind the person may switch; Organization: the organization's page, its
-	// checks and imports; Records: a line of the record the person may read.
-	Kinds, Organization, Records bool
+	// checks and imports; Records: a line of the record the person may read; Bundles: the bundles,
+	// which the person may upload or decide (DESIGN 15.8), of a server that takes them.
+	Kinds, Organization, Records, Bundles bool
 }
 
 // Any reports whether the person may use one of the parts.
-func (a AdminParts) Any() bool { return a.Kinds || a.Organization || a.Records }
+func (a AdminParts) Any() bool { return a.Kinds || a.Organization || a.Records || a.Bundles }
 
 // AdminParts asks the gate which parts of the administration the person may use, as the operations
 // ask it (DESIGN 13.4). An error of the gate is the server's failure.
@@ -293,8 +298,10 @@ func (s *Server) adminParts(ctx context.Context, p Person, first bool) (AdminPar
 	if first && a.Any() {
 		return a, nil
 	}
-	for _, name := range s.order {
-		for _, k := range s.kinds[name] {
+	c := s.cat()
+kinds:
+	for _, name := range c.order {
+		for _, k := range c.kinds[name] {
 			if !a.Kinds {
 				ok, err := s.maySwitch(ctx, p, k, now)
 				if err != nil {
@@ -309,8 +316,11 @@ func (s *Server) adminParts(ctx context.Context, p Person, first bool) (AdminPar
 				}
 				a.Records = ok
 			}
-			if first && a.Any() || a.Kinds && a.Records {
+			if first && a.Any() {
 				return a, nil
+			}
+			if a.Kinds && a.Records {
+				break kinds
 			}
 		}
 	}
@@ -320,6 +330,13 @@ func (s *Server) adminParts(ctx context.Context, p Person, first bool) (AdminPar
 			return a, err
 		}
 		a.Records = ok
+	}
+	if s.cfg.LoadBundle != nil && !(first && a.Any()) {
+		ok, err := s.mayBundles(ctx, p, now)
+		if err != nil {
+			return a, err
+		}
+		a.Bundles = ok
 	}
 	return a, nil
 }

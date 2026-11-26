@@ -209,7 +209,7 @@ func localHeader(t *testing.T, b []byte, name string) int {
 
 func TestReadUpload(t *testing.T) {
 	s := testOrgServer(t)
-	want, err := ReadOrgFiles(orgFiles(), s.layout)
+	want, err := ReadOrgFiles(orgFiles(), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestReadUpload(t *testing.T) {
 		"a zip64 file":               asZip64(t, zipOf(t, entriesOf(orgFiles())...), uint64(len(entriesOf(orgFiles())))),
 		"a data record after a file": zipOf(t, replaced(entriesOf(orgFiles()), rawEntry(proxiesFile, string(orgFiles()[proxiesFile].Data), true, func(h *zip.FileHeader) { h.Flags |= 0x8 }))...),
 	} {
-		d, err := readUpload(archive, s.layout, 1<<20)
+		d, err := readUpload(archive, s.cat().layout, 1<<20)
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
 			continue
@@ -250,14 +250,14 @@ func TestReadUpload(t *testing.T) {
 // by both is not read, and its problem names the two at the line of the columns.
 func TestReadUploadWrittenColumns(t *testing.T) {
 	s := writtenServer(t)
-	want, err := ReadOrgFiles(orgFiles(), s.layout)
+	want, err := ReadOrgFiles(orgFiles(), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b, _ := json.Marshal(want)
 	written := orgFiles()
 	written[accountsFile] = orgFile("code,名前,valid_from,valid_to\n5101,Travel,,\n5102,Meetings,2026-01-01,\n")
-	d, err := readUpload(zipOf(t, entriesOf(written)...), s.layout, 1<<20)
+	d, err := readUpload(zipOf(t, entriesOf(written)...), s.cat().layout, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestReadUploadWrittenColumns(t *testing.T) {
 	}
 	both := orgFiles()
 	both[accountsFile] = orgFile("code,label,valid_from,valid_to,名前\n5101,Travel,,,Travel\n")
-	_, err = readUpload(zipOf(t, entriesOf(both)...), s.layout, 1<<20)
+	_, err = readUpload(zipOf(t, entriesOf(both)...), s.cat().layout, 1<<20)
 	sameProblems(t, err, orgWant{accountsFile + ":1", "The columns `label` and `名前` are the same field, `label`: keep one of them"})
 }
 
@@ -277,11 +277,11 @@ func TestReadUploadWrittenColumns(t *testing.T) {
 func TestReadUploadExamples(t *testing.T) {
 	s := examplesServer(t)
 	dir := os.DirFS("examples/project")
-	want, err := ReadOrgFiles(dir, s.layout)
+	want, err := ReadOrgFiles(dir, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := readUpload(zipOf(t, entriesOf(projectFiles(t, dir, s.layout))...), s.layout, 64<<20)
+	d, err := readUpload(zipOf(t, entriesOf(projectFiles(t, dir, s.cat().layout))...), s.cat().layout, 64<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +410,7 @@ func TestReadUploadProblems(t *testing.T) {
 			[]orgWant{{"org/2026-04-01", "The version `2026-04-01` has no `members.csv`"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			d, err := readUpload(c.archive(t), s.layout, 1<<20)
+			d, err := readUpload(c.archive(t), s.cat().layout, 1<<20)
 			if d != nil {
 				t.Errorf("an upload with problems is answered")
 			}
@@ -427,7 +427,7 @@ func TestReadUploadLimits(t *testing.T) {
 	base := entriesOf(orgFiles())
 	tooLarge := func(name string, archive []byte, max int64) {
 		t.Helper()
-		_, err := readUpload(archive, s.layout, max)
+		_, err := readUpload(archive, s.cat().layout, max)
 		var ps *OrgProblems
 		if !errors.Is(err, ErrOrganizationTooLarge) || errors.As(err, &ps) {
 			t.Errorf("%s: the answer is %v, not ErrOrganizationTooLarge", name, err)
@@ -445,7 +445,7 @@ func TestReadUploadLimits(t *testing.T) {
 	binary.LittleEndian.PutUint16(saysOne[len(saysOne)-22+10:], 1)
 	tooLarge("10,001 entries the end of the directory says are 1", saysOne, 1<<20)
 	tooLarge("a zip64 end that says 10,001 entries", asZip64(t, zipOf(t, base...), MaxOrgFiles+1), 1<<20)
-	_, err := readUpload(zipOf(t, es[:MaxOrgFiles]...), s.layout, 1<<20)
+	_, err := readUpload(zipOf(t, es[:MaxOrgFiles]...), s.cat().layout, 1<<20)
 	var ps *OrgProblems
 	if !errors.As(err, &ps) || len(ps.Problems) != MaxOrgFiles {
 		t.Errorf("10,000 entries answer %.200v", err)
@@ -457,10 +457,10 @@ func TestReadUploadLimits(t *testing.T) {
 	commented := zipOf(t, base...)
 	binary.LittleEndian.PutUint16(commented[len(commented)-2:], uint16(len(sig)))
 	commented = append(commented, sig...)
-	if _, err := readUpload(commented, s.layout, 1<<20); err != nil {
+	if _, err := readUpload(commented, s.cat().layout, 1<<20); err != nil {
 		t.Errorf("a zip file whose comment holds the signature of the directory's headers: %.200v", err)
 	}
-	_, err = readUpload(zipOf(t, append(slices.Clone(base), zipEntry{name: "org/notes.txt", body: sig, stored: true})...), s.layout, 1<<20)
+	_, err = readUpload(zipOf(t, append(slices.Clone(base), zipEntry{name: "org/notes.txt", body: sig, stored: true})...), s.cat().layout, 1<<20)
 	if errors.Is(err, ErrOrganizationTooLarge) {
 		t.Errorf("a zip file of a file that holds the signature of the directory's headers: %v", err)
 	} else {
@@ -477,7 +477,7 @@ func TestReadUploadLimits(t *testing.T) {
 	for _, e := range base {
 		total += int64(len(e.body))
 	}
-	if _, err := readUpload(zipOf(t, base...), s.layout, total); err != nil {
+	if _, err := readUpload(zipOf(t, base...), s.cat().layout, total); err != nil {
 		t.Errorf("files of as many bytes as the limit: %v", err)
 	}
 	tooLarge("files of a byte more than the limit", zipOf(t, base...), total-1)

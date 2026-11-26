@@ -97,6 +97,10 @@ The deadlines that pass while it is stopped are dealt with when it starts.
 If old and new processes run together, an old one cannot open a request of a new type or version (it is the server's
 error, 500). The same happens when you go back to the old executable file after a request of a new version was made.
 
+A new version of a request type, or a new request type, can also be put in with no new server and nothing stopped: as
+a bundle, which two administrators upload and approve, and which every process serves within 30 seconds ([Add a
+version to a running server](bundles.md)).
+
 ### Take out the code of an old version
 
 The code of an old version cannot be taken out while there is even one request of it, as opening a request that has
@@ -104,6 +108,9 @@ ended uses the code of its version too. There is no operation that deletes a req
 was ever used stays for good. If it is taken out, the server stops as it starts, saying how many requests there are of
 which version in which state (as `the store keeps tickets of versions no package has: purchase v1 (12 approved, 1
 in_progress)`). Put the code of that version back.
+
+A version that came in a bundle stays for good in the same way: the store keeps an approved bundle, and every process
+serves it, whatever the executable file holds.
 
 "Tickets (open / all)" on the page for administrators says how many requests there are of which version. In the
 database, this SQL does.

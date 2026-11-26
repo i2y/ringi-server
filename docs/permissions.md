@@ -142,6 +142,9 @@ To use a new value of a person or a request in a rule, such as where they work, 
 | Read the record of requests | `read_audit` |
 | Import the organization's data | `import_organization` |
 | Read the record of the organization's data | `read_organization_audit` |
+| Upload a bundle of a new version, hide it | `upload_bundle`, of each version it adds |
+| Approve or decline a bundle | `approve_bundle`, of each version it adds |
+| Approve a bundle that adds a new request type | `add_request_type` too |
 
 The buttons of the pages come up after the same questions: a button that may not be pressed is not there.
 

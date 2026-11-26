@@ -239,13 +239,35 @@ where t.made is null;
 alter table {s}.tickets alter column made set not null;
 create index tickets_list on {s}.tickets (kind, made desc, id collate "C" desc);
 `,
+	// 14: the bundles (DESIGN 15.9): each by its digest, with its state and the rest of it as JSON;
+	// the archives of those not forgotten; and the approved bundle that adds each version, one at
+	// most.
+	`
+create table {s}.bundles (
+  digest text primary key,
+  state text not null,
+  hidden boolean not null,
+  uploaded timestamptz not null,
+  body json not null
+);
+create table {s}.bundle_archives (
+  digest text primary key,
+  archive bytea not null
+);
+create table {s}.bundle_versions (
+  kind text not null,
+  version integer not null,
+  digest text not null,
+  primary key (kind, version)
+);
+`,
 }
 
 // peopleOf is the people of the ticket t, sorted as Go sorts strings.
 const peopleOf = `array(select q.person from {s}.people q where q.ticket = t.id order by q.person collate "C")`
 
 var queries = map[string]string{
-	"empty":   `truncate {s}.waiting, {s}.people, {s}.moves, {s}.tickets, {s}.timers, {s}.todo, {s}.operations, {s}.begun, {s}.organizations, {s}.files, {s}.revoked, {s}.uploads, {s}.records, {s}.starts, {s}.drafts`,
+	"empty":   `truncate {s}.waiting, {s}.people, {s}.moves, {s}.tickets, {s}.timers, {s}.todo, {s}.operations, {s}.begun, {s}.organizations, {s}.files, {s}.revoked, {s}.uploads, {s}.records, {s}.starts, {s}.drafts, {s}.bundles, {s}.bundle_archives, {s}.bundle_versions`,
 	"ticket":  `select t.id, t.kind, t.version, t.status, t.number, t.body::text, t.updated, ` + peopleOf + `, t.waiting_since from {s}.tickets t where t.id = $1`,
 	"op":      `insert into {s}.operations (person, key, digest, outcome, reply, at) values ($1, $2, $3, $4, $5::json, $6) on conflict do nothing`,
 	"unbegin": `delete from {s}.begun where person = $1 and key = $2`,

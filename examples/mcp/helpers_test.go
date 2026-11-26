@@ -82,6 +82,11 @@ type envOptions struct {
 	language func(server.Person, http.Header) string
 	org      server.OrgSource // the examples' organization when nil
 
+	// config changes the server's Config before the server is made; chooseEvery is the tools'
+	// Config.ChooseEvery.
+	config      func(*server.Config)
+	chooseEvery time.Duration
+
 	// ownLanguage leaves Config.Language out, for the tools to choose the language as the pages do;
 	// else a language left out is English, so that a test reads the sentences in English whoever
 	// its people are (e1201 reads Japanese in the examples' data).
@@ -109,6 +114,9 @@ func newEnv(t testing.TB, o envOptions) *env {
 		Organization: o.org, Notifier: &servertest.Notifier{}, Flows: &servertest.Flows{}, Agents: &servertest.Agents{},
 		Books: e.books, AuditLog: e.audit, Clock: e.clock, NewTicketID: o.id, NewAttempt: o.attempt, Logger: quiet,
 	}
+	if o.config != nil {
+		o.config(&e.cfg)
+	}
 	var err error
 	if e.srv, err = server.New(e.cfg); err != nil {
 		t.Fatal(err)
@@ -119,7 +127,7 @@ func newEnv(t testing.TB, o envOptions) *env {
 	if o.language == nil && !o.ownLanguage {
 		o.language = func(server.Person, http.Header) string { return "en" }
 	}
-	if e.tools, err = mcp.New(e.srv, mcp.Config{Language: o.language, Logger: quiet}); err != nil {
+	if e.tools, err = mcp.New(e.srv, mcp.Config{Language: o.language, Logger: quiet, ChooseEvery: o.chooseEvery}); err != nil {
 		t.Fatal(err)
 	}
 	return e

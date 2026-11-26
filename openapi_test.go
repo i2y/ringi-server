@@ -39,6 +39,8 @@ func TestOwnAPI(t *testing.T) {
 				segs[i] = "2"
 			case "{id}":
 				segs[i] = "d1"
+			case "{digest}":
+				segs[i] = strings.Repeat("0a", 32)
 			}
 		}
 		c, method, ok := adminRoute(segs)

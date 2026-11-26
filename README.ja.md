@@ -83,7 +83,7 @@ every stage
 
 1. 申請の種類、組織のデータ、権限を、ファイルに書きます。
 2. ritsu が、書いたものに食い違いや抜けがないかを検査し、申請をどう進めるかを決める Go のコードを作ります。
-3. ringi-server が、そのコードをサーバーとして動かします。次にだれへ回すか、いつ終わるかは、サーバーが自分で決めるのではなく、作られたコードに尋ねます。
+3. ringi-server が、そのコードをサーバーとして動かします。次にだれへ回すか、いつ終わるかは、サーバーが自分で決めるのではなく、作られたコードに尋ねます。ritsu はそのコードを一つの WebAssembly のモジュールにも組めて、サーバーはそれを代わりに動かせます（[申請の種類を Wasm で動かす](docs/embedding.ja.md#4-申請の種類を-wasm-で動かす)）。その形なら、新しい版を一つのファイル（バンドル）にして、動いているサーバーに足せます。管理する人がアップロードし、サーバーが確かめ、ほかの管理する人が承認します（[動いているサーバーに版を足す](docs/bundles.ja.md)）。
 
 本番で動かすのに要るのは、PostgreSQL と、会社のログイン（OpenID Connect のサービス）です。サーバーは一つの実行ファイルで、何台でも動かせます。承認のあとの処理を Temporal で動かすときだけ、Temporal も要ります。
 
@@ -106,7 +106,7 @@ go run ./cmd/server -dev-login
 | 自分の会社の申請を作り始める | [1. 動かして、申請を承認する](docs/start.ja.md)、[2. 申請の種類を書き換える](docs/change.ja.md)、[3. 通知をメールで送る](docs/mail.ja.md) |
 | どう動くのか、言葉の意味を知る | [しくみと言葉](docs/concepts.ja.md) |
 | 社員に使い方を伝える | [申請する](docs/use/requester.ja.md)、[承認する](docs/use/approver.ja.md)、[管理する](docs/use/admin.ja.md) |
-| 申請の種類を増やす、変える | [申請の種類を足す、変える](docs/types.ja.md)、[フォームの選択肢を一覧から読む](docs/lists.ja.md) |
+| 申請の種類を増やす、変える | [申請の種類を足す、変える](docs/types.ja.md)、[動いているサーバーに版を足す](docs/bundles.ja.md)、[フォームの選択肢を一覧から読む](docs/lists.ja.md) |
 | 自分の会社の人、営業日、権限を入れる | [組織のデータを用意する](docs/organization.ja.md)、[営業日と祝日を決める](docs/calendar.ja.md)、[だれが何をしてよいかを決める](docs/permissions.ja.md) |
 | 会社のログイン、通知、予算、承認のあとの処理とつなぐ | [ログインをつなぐ](docs/sign-in.ja.md)、[通知の送り方を変える](docs/notices.ja.md)、[予算や休暇の残りを確かめる](docs/books.ja.md)、[承認のあとの処理を始める](docs/flows.ja.md) |
 | 自分の画面、プログラム、エージェントから使う | [プログラムから API を呼ぶ](docs/api.ja.md)、[エージェントに申請と承認をさせる](docs/agents.ja.md)、[承認の経路でエージェントに確かめさせる](docs/agent-steps.ja.md)、[自分の画面を作る](docs/screens.ja.md)、[自分のプログラムに組み込む](docs/embedding.ja.md) |

@@ -121,7 +121,7 @@ func New(set *screens.Set, o Options) (*Pages, error) {
 		return nil, err
 	}
 	p.assets["functions.js"] = fn
-	t, err := template.New("page").Funcs(template.FuncMap{"part": partOf, "rowpart": rowOf, "described": describedBy, "size": sizeWords,
+	t, err := template.New("page").Funcs(template.FuncMap{"part": partOf, "rowpart": rowOf, "described": describedBy, "size": sizeWords, "spans": spans,
 		"list": func(xs ...string) []string { return xs }}).ParseFS(files, "files/page.html", "files/admin.html")
 	if err != nil {
 		return nil, err

@@ -16,6 +16,7 @@ import (
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/servertest"
+	"github.com/i2y/ringi-server/wasmkind"
 	"github.com/i2y/ringi-server/web"
 )
 
@@ -135,7 +136,8 @@ func shots(t *testing.T, lang, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, h := newWeb(t, webSetup{Store: memstore.New(), At: monday, Files: &servertest.Files{}, Auth: personOf{}, Gate: &Gate{}, Packages: []*server.Package{p, p2}})
+	srv, h := newWeb(t, webSetup{Store: memstore.New(), At: monday, Files: &servertest.Files{}, Auth: personOf{}, Gate: &Gate{}, Packages: []*server.Package{p, p2},
+		Config: func(c *server.Config) { c.LoadBundle = wasmkind.Load }})
 	// The kinds written in the other language are switched off, so that the pages list those of one.
 	kind := func(name string) string {
 		if lang == "ja" {
@@ -212,6 +214,16 @@ func shots(t *testing.T, lang, dir string) {
 			t.Fatal(marked)
 		}
 	})
+
+	// The page of a bundle (docs/bundles.md): the examples' bundle of version 3 of the leave requests,
+	// uploaded by the administrator of human resources, as the administrator of the whole reads it to
+	// decide it.
+	up := send(h, "POST", "/admin/bundles/uploads", "e6001", leaveV3(t), "Content-Type", "application/zip", "Idempotency-Key", "shot-bundle", "X-Roles", "workflow_admin")
+	var bundle struct{ Digest string }
+	if json.Unmarshal(up.Body.Bytes(), &bundle); up.Code != 200 || bundle.Digest == "" {
+		t.Fatalf("the upload of the bundle: %d %s", up.Code, up.Body)
+	}
+	shot("bundle", "e7001:system_admin", "/pages/admin/bundles/"+bundle.Digest+"?lang="+lang, "form.admin.hide", nil)
 
 	// The look of docs/screens.md (web.Look): a server of its own, in the logo, the name and the colour
 	// of Acme, where a request waits for e1101.

@@ -25,6 +25,8 @@
 | 申請を置く場所 | `Store` | `-db` の PostgreSQL か、メモリ |
 | 添付ファイルを置く場所 | `Files` | `-db` の PostgreSQL か、`-files` のディレクトリか、メモリ |
 
+ほかに、`-bundles` と `-bundle-keys` を `Bundles` と `BundleKeys` に読み、`LoadBundle` には、バンドルの WebAssembly を読む関数（`wasmkind.Load`）を渡します。`LoadBundle` がなければ、サーバーはバンドルを受け取りません（[動いているサーバーに版を足す](bundles.ja.md)）。
+
 ## 同じものを二度渡されることがある
 
 通知、処理の開始、エージェントへの依頼、帳簿の呼び出しには、キー（`EffectKey`）が付きます。`01M89JDENBGHWVJ8XXBRHKCY64/1/17` のように、申請の番号、何回目の提出か、通し番号を並べたものです。
@@ -81,6 +83,9 @@ type AuditLog interface {
 | `apikeys` | プログラムの鍵（`-api-keys`）。ほかのログインの前に置く |
 | `postgres`、`memstore` | 申請と添付ファイルを、PostgreSQL かメモリに置く |
 | `orgfiles` | 組織のデータの CSV を読む |
+| `wasmkind` | ritsu が一つの WebAssembly のモジュールに組んだ申請の種類を動かす（[申請の種類を Wasm で動かす](embedding.ja.md#4-申請の種類を-wasm-で動かす)） |
+| `kinddiff` | 申請の種類の二つの版のあいだで何が変わるかを言う。バンドルのページに使う |
+| `bundlesign`、`cmd/ringi-bundle` | バンドルに署名し、その署名を確かめる（[バンドルに署名する](signing.ja.md)） |
 | `servertest`、`conformance` | 試験に使う部品と、サーバーが約束のとおりかを確かめる試験 |
 | [`mcp`](../mcp/README.ja.md)（モジュール） | エージェントのツール |
 | [`temporal`](../temporal/README.ja.md)（モジュール） | Temporal で処理を動かす |

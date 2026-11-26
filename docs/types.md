@@ -173,6 +173,9 @@ what it says.
 
 ### 4. Give the server both versions
 
+Below, version 1 is built into the server beside version 2. To put a new version on a server that is running
+instead, with no new build, see [Add a version to a running server](bundles.md).
+
 Add a line that makes the code of version 1 to `generate.go`.
 
 Give `--catalog` and `--module` values other than those of version 2. A catalog is a file that lists the parts

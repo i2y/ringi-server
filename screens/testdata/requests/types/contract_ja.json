@@ -384,7 +384,31 @@
           "text": "Manager"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "Manager",
+            "ja": "上長"
+          },
+          "ways": [
+            "manager"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty escalate, then skip",
+          "en": "When nobody can answer it, it goes up to the head above; at the top of the organization, the stage is skipped.",
+          "ja": "答える人がいなければ、上の長へ回ります。組織のいちばん上では、ステップは飛ばされます。"
+        }
+      ]
     },
     {
       "name": "summary",
@@ -396,7 +420,53 @@
           "text": "Summary"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "a summary the flow `要約` writes",
+            "ja": "flow `要約` が書く要約"
+          },
+          "ways": [],
+          "kind": "note",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 3,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 3 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 3 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 2 business days after it starts, at 09:00.",
+          "ja": "始まった日から 2 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty stay",
+          "en": "When nobody can answer it, it waits for an administrator to add an approver.",
+          "ja": "答える人がいなければ、管理する人が承認者を足すまで待ちます。"
+        }
+      ]
     },
     {
       "name": "intake",
@@ -408,7 +478,55 @@
           "text": "Intake"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "Legal",
+            "ja": "法務"
+          },
+          "ways": [
+            "legal"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 3,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 3 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 3 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 2 business days after it starts, at 09:00.",
+          "ja": "始まった日から 2 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty stay",
+          "en": "When nobody can answer it, it waits for an administrator to add an approver.",
+          "ja": "答える人がいなければ、管理する人が承認者を足すまで待ちます。"
+        }
+      ]
     },
     {
       "name": "review",
@@ -420,7 +538,55 @@
           "text": "Review"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "Reviewer",
+            "ja": "担当者"
+          },
+          "ways": [
+            "reviewer"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 3,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 3 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 3 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 2 business days after it starts, at 09:00.",
+          "ja": "始まった日から 2 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty stay",
+          "en": "When nobody can answer it, it waits for an administrator to add an approver.",
+          "ja": "答える人がいなければ、管理する人が承認者を足すまで待ちます。"
+        }
+      ]
     },
     {
       "name": "second",
@@ -432,7 +598,58 @@
           "text": "Second review"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": {
+            "en": "when “Contract value” is more than 5,000,000 JPY",
+            "ja": "「契約の金額」が5,000,000円より大きいとき"
+          },
+          "who": {
+            "en": "at least 2 of Legal",
+            "ja": "法務のうち 2 人以上"
+          },
+          "ways": [
+            "legal"
+          ],
+          "kind": "quorum",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 3,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 3 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 3 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 2 business days after it starts, at 09:00.",
+          "ja": "始まった日から 2 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty stay",
+          "en": "When nobody can answer it, it waits for an administrator to add an approver.",
+          "ja": "答える人がいなければ、管理する人が承認者を足すまで待ちます。"
+        }
+      ]
     },
     {
       "name": "counsel",
@@ -444,7 +661,34 @@
           "text": "General counsel"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": {
+            "en": "when “Contract value” is more than 10,000,000 JPY",
+            "ja": "「契約の金額」が10,000,000円より大きいとき"
+          },
+          "who": {
+            "en": "General counsel",
+            "ja": "部長"
+          },
+          "ways": [
+            "counsel"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty escalate",
+          "en": "When nobody can answer it, it goes up to the head above; at the top of the organization, it waits for an administrator.",
+          "ja": "答える人がいなければ、上の長へ回ります。組織のいちばん上では、管理する人を待ちます。"
+        }
+      ]
     },
     {
       "name": "finance",
@@ -456,7 +700,58 @@
           "text": "Finance"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": {
+            "en": "when “Kind of contract” is “License agreement”",
+            "ja": "「契約の種類」が「ライセンス契約」のとき"
+          },
+          "who": {
+            "en": "circulated to Finance",
+            "ja": "財務部に回覧"
+          },
+          "ways": [
+            "finance"
+          ],
+          "kind": "circulate",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 3,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 3 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 3 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 2 business days after it starts, at 09:00.",
+          "ja": "始まった日から 2 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty stay",
+          "en": "When nobody can answer it, it waits for an administrator to add an approver.",
+          "ja": "答える人がいなければ、管理する人が承認者を足すまで待ちます。"
+        }
+      ]
     }
   ],
   "ways": [
@@ -469,7 +764,11 @@
           "lang": "en",
           "text": "Manager"
         }
-      ]
+      ],
+      "how": {
+        "en": "the requester's manager: the head of the team the requester is mainly in, or of the team above where that head is the requester or there is none",
+        "ja": "申請者の上長。申請者が主に属するチームの長で、その長が申請者自身か空なら、上のチームの長です"
+      }
     },
     {
       "name": "legal",
@@ -480,7 +779,11 @@
           "lang": "en",
           "text": "Legal"
         }
-      ]
+      ],
+      "how": {
+        "en": "the members of the team Legal (`legal`): one of them answers",
+        "ja": "法務部（`legal`）の人。だれか一人が答えます"
+      }
     },
     {
       "name": "reviewer",
@@ -491,7 +794,11 @@
           "lang": "en",
           "text": "Reviewer"
         }
-      ]
+      ],
+      "how": {
+        "en": "the person the approver of the stage before enters in “Reviewer”",
+        "ja": "前のステップの承認者が「担当」に入れた人"
+      }
     },
     {
       "name": "counsel",
@@ -502,7 +809,11 @@
           "lang": "en",
           "text": "General counsel"
         }
-      ]
+      ],
+      "how": {
+        "en": "e9001, always this person",
+        "ja": "e9001。いつもこの人です"
+      }
     },
     {
       "name": "finance",
@@ -513,9 +824,14 @@
           "lang": "en",
           "text": "Finance"
         }
-      ]
+      ],
+      "how": {
+        "en": "the members of the team Finance (`finance`): one of them answers",
+        "ja": "財務部（`finance`）の人。だれか一人が答えます"
+      }
     }
   ],
+  "late_tables": [],
   "endings": [
     "approved",
     "rejected",

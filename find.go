@@ -321,14 +321,14 @@ func (s *Server) FindChoices(ctx context.Context, p Person, among, lang, on stri
 // the API has a find of its rows (find_master_<file>_<master>). ok is false for any other.
 func (s *Server) foundRows(master string) (MasterLayout, bool) {
 	served := false
-	for _, op := range s.ops {
+	for _, op := range s.cat().ops {
 		if op.read == "find_master" && op.master == master {
 			served = true
 			break
 		}
 	}
 	if served {
-		for _, m := range s.layout.Masters {
+		for _, m := range s.cat().layout.Masters {
 			if m.Name == master {
 				return m, true
 			}

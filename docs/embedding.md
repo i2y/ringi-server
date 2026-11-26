@@ -14,7 +14,8 @@ In these cases, put the server together yourself, without `serve`.
 
 To add only routes of pages and of an API, you can keep `serve` ([Add routes](screens.md#add-routes)). The same goes
 for letting programs use the API with keys: `serve` takes them with `-api-keys` ([Call it from a
-program](api.md#call-it-from-a-program)).
+program](api.md#call-it-from-a-program)), and for running the request types as WebAssembly ([4. Run the request
+types as Wasm](#4-run-the-request-types-as-wasm)).
 
 ## 1. Put the server together
 
@@ -249,3 +250,61 @@ Have the proxy add these three headers to every request, and take off headers of
 | `X-Ringi-Roles` | Their roles, separated by commas. Empty when there are none |
 
 A request without the secret, and one with the same header twice, is no one's, and is answered 401.
+
+## 4. Run the request types as Wasm
+
+ritsu can also build the request types into one module of WebAssembly (`requests/kinds.wasm`), and write how to
+call it beside it (`requests/wasm.json`). The package `wasmkind` runs the module in place of the Go code of the
+request types. The server then loads the request types as files, and they are not Go code built into the program.
+This changes only how `Package` of the project loads the code ritsu made, so it works with `serve` too.
+
+Building the module needs Rust's `cargo`, and the standard library of the target `wasm32-unknown-unknown`
+(`rustup target add wasm32-unknown-unknown` adds it). Add `--extra wasm` to the line of `generate.go`.
+
+```go title="generate.go" hl_lines="1"
+//go:generate ritsu gen project --root project --target go --target requests --extra wasm --catalog https://example.com/acme/approvals/a2ui/catalog.json --module example.com/acme/approvals/go --out . --lang en
+```
+
+In `approvals.go`, build the two files into the program with the others, and load the package with `wasmkind`.
+The Go code of the request types (`go/ticketkinds`) is no longer imported.
+
+```go title="approvals.go" hl_lines="2 9"
+import (
+	"context"
+	"embed"
+	"io/fs"
+	"log/slog"
+
+	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/orgfiles"
+	"github.com/i2y/ringi-server/wasmkind"
+)
+```
+
+```go title="approvals.go" hl_lines="1"
+//go:embed requests/openapi.json requests/types requests/a2ui requests/mcp requests/wasm.json requests/kinds.wasm
+```
+
+```go title="approvals.go" hl_lines="2"
+func PackageFrom(dir fs.FS) (*server.Package, error) {
+	return wasmkind.Load(context.Background(), dir)
+}
+```
+
+Make the code again, and test it. The tests of the project run the vectors on the module.
+
+```sh
+go generate ./...
+go mod tidy
+go vet ./...
+go test ./...
+```
+
+`wasmkind.Load` refuses a module that is not the one `wasm.json` was written with (by its SHA-256), and one that
+imports anything. Each call of the module runs within a time (2 seconds) and a memory (64 MiB). A call stopped by
+either is the server's failure: the operation is answered 500, and the log says which limit stopped it. To set
+limits of your own, use `wasmkind.LoadWith` with `wasmkind.Options`.
+
+A call of the module takes about four times as long as one of the Go code: about 0.5 ms in place of 0.1 ms. An
+approver's page asks the code once for each button, at once, so it takes about 0.5 ms more. Loading the module
+when the server starts takes 0.8 seconds for the five request types of the example, each in two languages.

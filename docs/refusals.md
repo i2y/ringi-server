@@ -32,9 +32,12 @@ short"). The page shows it under its own sentence.
 
 | `refused` | When |
 |---|---|
-| `stale` | Another administrator switched it first. Other data was imported after this was checked |
+| `stale` | Another administrator switched it first. Other data was imported after this was checked. A bundle was decided, or what it changes differs, after you read it |
 | `owner` | A switch that moves the request type to another team, which you do not administer |
 | `locks_out` | With this data, you could not import any more. To import it all the same, add `locks_out: true` |
+| `uploader` | An approval or a decline of a bundle you uploaded: another administrator decides it |
+| `api_changes` | An approval of a bundle that changes the API, without `api_changes: true` |
+| `taken` | A hiding of an approved bundle whose versions new requests may still take: set them to never first |
 
 ## Answers without a reason of these kinds
 
@@ -43,6 +46,7 @@ short"). The page shows it under its own sentence.
 | 401 | Not signed in | No one is signed in. The session ended |
 | 403 | The form could not be read | It was sent from a page of another site |
 | 404 | Not found | There is no request of that ID, or the person may not see it |
-| 413 | Too large to send | An attachment or the body is above the limit |
-| 429 | How many seconds to wait, or that there can be no more comments | A comment soon after another. The limit of comments was reached |
+| 400 | What is wrong, and where | The organization's data or a bundle does not pass its checks (`problems`) |
+| 413 | Too large to send | An attachment, a bundle or the body is above the limit |
+| 429 | How many seconds to wait, or that there can be no more comments | A comment soon after another. The limit of comments was reached. The server checks another bundle |
 | 500 | The server failed | The server failed. The log says why ([Watch it](troubleshooting.md#look-at-the-log)) |

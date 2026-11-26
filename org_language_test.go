@@ -32,7 +32,7 @@ func TestOrgLanguage(t *testing.T) {
 	}
 	f := orgFiles()
 	f[peopleFile] = orgFile(peopleLanguages("ja", "", "en"))
-	d, err := ReadOrgFiles(f, s.layout)
+	d, err := ReadOrgFiles(f, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,18 +44,18 @@ func TestOrgLanguage(t *testing.T) {
 	}
 	j := strings.Replace(orgJSON, `{"id": "p1", "name": "Pat Doe", "email": "p1@example.com"}`, `{"id": "p1", "name": "Pat Doe", "email": "p1@example.com", "language": "ja"}`, 1)
 	j = strings.Replace(j, `"email": "p2@example.com"}`, `"email": "p2@example.com", "language": null}`, 1)
-	if d, err := ReadOrgFiles(jsonFiles(j), s.layout); err != nil || strings.Join(langs(d), ",") != "ja,," {
+	if d, err := ReadOrgFiles(jsonFiles(j), s.cat().layout); err != nil || strings.Join(langs(d), ",") != "ja,," {
 		t.Errorf("the languages of organization.json: %v %v", d, err)
 	}
 
 	// none: the same JSON with the column and without it, with no key "language"
-	before, err := ReadOrgFiles(orgFiles(), s.layout)
+	before, err := ReadOrgFiles(orgFiles(), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f = orgFiles()
 	f[peopleFile] = orgFile(peopleLanguages("", "", ""))
-	after, err := ReadOrgFiles(f, s.layout)
+	after, err := ReadOrgFiles(f, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestOrgLanguage(t *testing.T) {
 	for _, l := range []string{"fr", "EN", "ja-JP", "japanese"} {
 		f := orgFiles()
 		f[peopleFile] = orgFile(peopleLanguages("", l, ""))
-		d, err := ReadOrgFiles(f, s.layout)
+		d, err := ReadOrgFiles(f, s.cat().layout)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,7 +90,7 @@ func TestOrgLanguage(t *testing.T) {
 		}
 	}
 	j = strings.Replace(orgJSON, `{"id": "p3", "name": "Kim Poe"}`, `{"id": "p3", "name": "Kim Poe", "language": "fr"}`, 1)
-	d, err = ReadOrgFiles(jsonFiles(j), s.layout)
+	d, err = ReadOrgFiles(jsonFiles(j), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestOrgLanguage(t *testing.T) {
 	// the part of a kind
 	f = orgFiles()
 	f[peopleFile] = orgFile(peopleLanguages("ja", "en", ""))
-	d, err = ReadOrgFiles(f, s.layout)
+	d, err = ReadOrgFiles(f, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}

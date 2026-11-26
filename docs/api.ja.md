@@ -158,6 +158,12 @@ curl -s localhost:8080/openapi.json -H 'X-Person: s1201' | jq -r '.paths | keys[
 ```
 
 ```
+/admin/bundles
+/admin/bundles/uploads
+/admin/bundles/{digest}
+/admin/bundles/{digest}/approve
+/admin/bundles/{digest}/decline
+/admin/bundles/{digest}/hide
 /admin/kinds
 /admin/kinds/{kind}/versions/{version}
 /admin/organization
@@ -290,6 +296,7 @@ curl -s -X POST localhost:8080/requests/purchase/tickets -H 'X-Person: s1202' \
 | 組織のデータを送って確かめる、確かめた結果を読む | `POST /admin/organization/drafts`、`GET /admin/organization/drafts/{id}` |
 | 確かめたデータを取り込む | `POST /admin/organization/imports` |
 | 記録を読む | `GET /admin/records`、`GET /admin/records.csv` |
+| バンドルをアップロードする、読む、承認する、却下する、隠す（[動いているサーバーに版を足す](bundles.ja.md#3-api-からアップロードする)） | `POST /admin/bundles/uploads`、`GET /admin/bundles`、`GET /admin/bundles/{digest}`、`POST /admin/bundles/{digest}/approve`、`…/decline`、`…/hide` |
 
 購買の申請を止めてみます。`number` には、一覧にある版の `start.number` を書きます。だれかが先に切り替えていたら番号が合わないので、受け付けません。
 

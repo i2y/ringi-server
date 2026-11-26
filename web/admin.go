@@ -39,6 +39,10 @@ func (h *Handler) routeAdmin() {
 	h.mux.Handle("GET "+adminPath+"organization/drafts/{id}", h.page(h.adminDraft))
 	h.mux.Handle("POST "+adminPath+"organization/drafts/{id}", h.page(h.adminImport))
 	h.mux.Handle("GET "+adminPath+"records", h.page(h.adminRecords))
+	h.mux.Handle("GET "+adminPath+"bundles", h.page(h.adminBundles))
+	h.mux.Handle("POST "+adminPath+"bundles", h.page(h.adminUploadBundle))
+	h.mux.Handle("GET "+adminPath+"bundles/{digest}", h.page(h.adminBundle))
+	h.mux.Handle("POST "+adminPath+"bundles/{digest}", h.page(h.adminDecideBundle))
 }
 
 // adminShow shows one of the administration's pages.
@@ -67,7 +71,7 @@ func (h *Handler) adminDo(r *http.Request, p server.Person, c server.Call) (serv
 
 // adminZone is the zone the administration's pages show times in: the first kind's.
 func (h *Handler) adminZone() *time.Location {
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		for _, k := range s.Kinds() {
 			if z := h.srv.Zone(k.Name, k.Version); z != nil {
 				return z
@@ -82,7 +86,7 @@ func (h *Handler) adminZone() *time.Location {
 // have.
 func (h *Handler) kindZone(kind string) *time.Location {
 	newest := 0
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		for _, k := range s.Kinds() {
 			if k.Name == kind && k.Version > newest {
 				newest = k.Version
@@ -107,6 +111,11 @@ func adminDone(lang, done string) string {
 		"same":     {"The version starts so already: nothing changed.", "版はもうその始まりです。何も変えていません。"},
 		"imported": {"The data was imported.", "データを取り込みました。"},
 		"nothing":  {"The data is the latest already: nothing was imported.", "データは今のデータと同じです。何も取り込んでいません。"},
+		"uploaded": {"The bundle was uploaded and checked: another administrator decides it.", "バンドルをアップロードし、確かめました。決めるのは、ほかの管理者です。"},
+		"kept":     {"This bundle was uploaded before: nothing was added.", "このバンドルは前にアップロードされています。何も足していません。"},
+		"approved": {"The bundle was approved: new requests take its versions as they start.", "バンドルを承認しました。新しい申請は、その版を始まりから使います。"},
+		"declined": {"The bundle was declined.", "バンドルを却下しました。"},
+		"hidden":   {"The bundle was hidden.", "バンドルを隠しました。"},
 	}
 	wd, ok := words[done]
 	if !ok {
@@ -150,6 +159,9 @@ func (h *Handler) adminHome(w http.ResponseWriter, r *http.Request, p server.Per
 	}
 	if parts.Records {
 		in.Home.Records = keepLang(r, adminPath+"records")
+	}
+	if parts.Bundles {
+		in.Home.Bundles = keepLang(r, adminPath+"bundles")
 	}
 	h.adminShow(w, r, p, h.pageLanguage(w, r, nil), http.StatusOK, in)
 }

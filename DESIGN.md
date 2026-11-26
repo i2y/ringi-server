@@ -35,6 +35,8 @@ The framework holds the code that does not depend on any kind of request:
 - the books: in the transaction of the save when they share its database, under the ticket's lock
   when they do not,
 - the versions of the organization, and the part of one an event is given with,
+- the versions of the kinds added while it runs: bundles uploaded, checked, decided by a second
+  administrator and served by every process (15),
 - the lists: the kinds a person may submit, the tickets that wait for a person, a person's own
   requests,
 - a trial of an operation, which answers what the operation would do and keeps nothing,
@@ -824,6 +826,161 @@ generated, vetted and tested, and each module's zip holds both licenses. With th
 version that is not published, the modules that require `mcp` or `temporal` alone cannot be tidied,
 and with it raised every check passes.
 
+### 2.9 Kinds in Wasm
+
+`ritsu gen --target requests --extra wasm` also builds the kinds into one module of WebAssembly,
+`kinds.wasm`, from the project's Rust package, and writes beside it how to call it, `wasm.json`: the
+module's SHA-256, the names of its exports, and the entries of each kind. The package `wasmkind`
+loads such a directory as a package, with no Go code of the kinds:
+
+```go
+// Load reads a requests directory with wasm.json and kinds.wasm and answers its package.
+func Load(ctx context.Context, requests fs.FS) (*server.Package, error)
+
+// LoadWith is Load with limits of its own.
+func LoadWith(ctx context.Context, requests fs.FS, o Options) (*server.Package, error)
+```
+
+What it answers is a `*server.Package`, as `Load` answers for a Go package (2.1): the server, the
+screens and the conformance tests do not tell the two apart. `wasmkind` imports the root package,
+which does not import it. It runs the module with wazero, a runtime of WebAssembly written in Go, so
+a server still builds with no cgo.
+
+**Loading.** `Load` reads `wasm.json` and its version (`wasm`; `wasmkind.Versions` lists the ones it
+reads: 1), checks the module's SHA-256 against it, compiles the module, makes one instance of it, and
+hands the kinds to `server.LoadKinds` with the contract and the language `wasm.json` says. A package
+of Wasm is therefore refused for whatever a Go package is refused for (2.1). Before that, `Load`
+refuses:
+
+- a directory with no `wasm.json`, a `wasm.json` with no version or of a version it does not read,
+  and one that names a file the directory does not have;
+- a module whose SHA-256 is not the one `wasm.json` says: it is not the module `wasm.json` was
+  written with;
+- a module that imports anything. The kinds are pure functions, and the framework gives the module
+  nothing to call, not even a clock: the time is an argument;
+- a module that does not export what `wasm.json` names, or exports it with other types (`call` takes
+  two `i32` and answers one, `cabi_realloc` takes four and answers one, `cabi_post_call` takes one),
+  and one whose memory starts larger than the limit of a call (below);
+- a kind with no `start` or no `next`, an entry whose arguments are not the ones the framework gives
+  (`start`: `submit`, `organization` and the time; `next`: `ticket`, `event`, `organization` and the
+  time; `worked`: `input`), and a name of a module or a function that a line of JSON cannot hold as it
+  is.
+
+Each is said with the file and what to do, as the framework's other refusals are, and the package's
+`TestLoadRefuses` holds each to its sentence. A Go package of the examples loads in 6 ms; their module
+(5.1 MB) is compiled in 0.8 s, once for each `Load`.
+
+**A call.** An entry gives the module's door one line of JSON, the line the entries of the Rust
+package write (its `ticket_kinds.rs`): `{"module":…,"function":…,"in":{"<argument>":…,"now":…}}`,
+each argument written as it was given. Before the line is written, the arguments are checked in their
+order, as the Rust entries check them: one nested deeper than 512 arrays and objects, and then one
+that is not one value of JSON (text that is not UTF-8 among them), is the failure `input` at its
+name, with the sentence of the Rust entries in the language of `wasm.json`. What the door answers is
+read as they read it: the value of `out`, as the module wrote it; the entry's failure (`fails`); or
+the door's refusal (`refused`). A failure and a refusal are a `*wasmkind.KanameError`, with the fields
+of the generated Go package's error (`Kind`, `Module`, `Line`, `Message`, `Path`), so the framework
+reads whose fault it is (the person's or the server's, by the argument it names) as it reads a Go
+package's (7.2).
+
+The examples' `TestWasmAnswersAsGo` gives both of their packages (the 10 kinds of the first and the
+2 of the second) every call of their vectors, and wrong calls made from them (an argument cut short,
+of two values, not UTF-8, 512 and 513 deep, of the wrong type, with a key missing…), through the Go
+package and through the module: 7,130 calls, 3,456 of them wrong, each answered alike, with the same
+value of JSON or an error of the same kind, place and sentence. The conformance tests of the examples
+run on the module too, on memory and on PostgreSQL: the vectors, what the forms work out, and the
+other checks of the package `conformance` (`TestWasmVectors…`, `TestWasmWorked…`,
+`TestWasmConformance`).
+
+**Limits.** Each call runs within a time, `Options.Time` (2 s when 0), and a number of pages of 64 KiB
+its instance's memory may grow to, `Options.Pages` (1,024, that is 64 MiB, when 0). A call past its
+time is stopped by wazero, which checks the call's context at the back of each loop. A call that
+grows the memory past its pages sees `memory.grow` answer -1, which the generated code takes as no
+memory left, and traps. Either stop, and any other trap of the module, is answered with a
+`*wasmkind.StopError`, which names the module, the function and the limit, and whose `Err` is
+`ErrTime`, `ErrMemory` or `ErrTrap` (`errors.Is`). It is no `KanameError`, so the framework answers it
+as the server's failure (500, logged), as it does any other error of a Go entry. The instance it ran
+in is closed and not used again. The defaults are far above what the examples use: a call of their
+vectors takes 0.46 ms on average, and an instance's memory, 18 pages when it starts, is 23 after
+every call of them.
+
+The limit of time costs the most. wazero compiles its check into the back of each loop, and the
+generated code loops over each byte of the JSON it reads and writes. Every call of the examples'
+vectors takes 0.49 ms on average with the checks, and 0.18 ms with the module compiled without them
+(the best of five rounds, in instances kept). Without them a server could not stop a call that does
+not end, so they are always on.
+
+**Instances.** Making an instance copies the module's data into a new memory of 18 pages (1.1 MiB):
+a `worked` of the expense claim takes 35 µs in an instance a call left, and 144 µs in a new one. So
+the instances are kept between calls. A call takes one a call left, or makes one. At most
+`Options.Instances` run at once (twice `runtime.GOMAXPROCS` when 0), and a call past them waits for
+one to be free; its time starts when it has one. After the call the instance is kept for the next,
+unless the call was stopped or answered outside the module's memory, or its memory grew past what an
+instance is kept with: twice the pages it starts with, or 64 more if that is more, within
+`Options.Pages` (82 for the examples' module). The generated code frees what a call allocated
+(`cabi_post_call` frees the answer once it is read) and keeps nothing from one call to the next, so
+a kept instance answers as a new one. `TestKeptAnswersAsNew` runs every call of the examples' vectors
+(3,386) in one instance, in three rounds (in order, backwards, in order again): each answer is the
+one an instance of its own gives, to the byte, and the memory is 23 pages after each round. The
+package's own tests hold the rest with modules made for them: an instance that trapped, ran past its
+time or grew past its pages is not given the next call (`TestInstances`), and 200 calls at once,
+with 1, 3 and the default number of instances, are each answered their own answer (`TestAtOnce`).
+`Options.Fresh` makes a new instance for each call and keeps none, to compare with.
+
+**What it costs.** The examples' `TestWasmTimes` measures it, with `RINGI_WASM_TIMES` set (on a
+laptop: darwin/arm64, `GOMAXPROCS` 14). The pages are those of `web`, opened from a server in memory.
+
+| One call (the expense claim) | Go | Wasm, kept | Wasm, a new instance each |
+|---|---|---|---|
+| `start` | 118.4 µs | 557.5 µs | 671.6 µs |
+| `next` | 131.8 µs | 703.0 µs | 836.4 µs |
+| `worked` | 6.3 µs | 35.1 µs | 143.5 µs |
+| every call of the vectors (3,386), each | 110.5 µs | 458.8 µs | 591.4 µs |
+| 13 calls of `next` at once, all of them | 458.8 µs | 1,280.6 µs | 1,971.9 µs |
+| 56 calls of `next` at once, all of them | 1,598.8 µs | 4,454.9 µs | 6,577.6 µs |
+
+| People | Page | Go | Wasm, kept | Wasm, a new instance each |
+|---|---|---|---|---|
+| 24 (the examples') | an approver's card | 0.750 ms | 1.203 ms | 1.655 ms |
+| 24 | the start page | 0.991 ms | 2.458 ms | 3.425 ms |
+| 1,200 | an approver's card | 0.728 ms | 1.139 ms | 1.744 ms |
+| 1,200 | the start page | 1.024 ms | 2.537 ms | 3.479 ms |
+| 5,000 | an approver's card | 0.768 ms | 1.258 ms | 1.863 ms |
+| 5,000 | the start page | 1.000 ms | 2.465 ms | 3.371 ms |
+| 20,000 | an approver's card | 0.797 ms | 1.258 ms | 1.945 ms |
+| 20,000 | the start page | 1.027 ms | 2.464 ms | 3.374 ms |
+
+The people more than the examples' 24 are in a team no kind reads (human resources). A call costs
+about four times what it costs in Go. A card asks `next` of each event the gate allows, at once
+(8.1), so it costs about 0.5 ms more, however many people the organization has. With fewer
+processors the calls wait for one another: with `GOMAXPROCS` 1, a card takes 4.0 ms (1.8 ms in Go),
+with 2, 2.5 ms (1.2 ms), with 4, 1.6 ms (0.9 ms). The start page asks `start` of every kind (10.1),
+and costs about 1.5 ms more.
+
+What does grow with the organization is a team a kind reads: its people are in the part of the
+organization each call of the kind is given (9.2), written into the line and read whole. With the
+people added to general affairs, whose members a purchase request reads, the cards above (of a leave
+request) stay the same, and the start page takes, in Go and as Wasm, 10.8 ms and 27.8 ms with 1,200
+people, 42.2 ms and 108.8 ms with 5,000, and 172.0 ms and 440.0 ms with 20,000. It is the cost of the
+part, in either.
+
+**Considered and not made.**
+
+- One entry that answers every event of a card in one call, which would write the ticket and the
+  part into one line in place of one for each event. A card costs 0.5 ms more as Wasm, which no one
+  sees, and the entry would be a new one in the contract of every language.
+- A new instance for each call, so that nothing could stay between calls. Each call would pay for an
+  instance (the tables), and the tests above show a kept instance answers as a new one. It stays as
+  `Options.Fresh`.
+- wazero's own limit of pages (`WithMemoryLimitPages`). A growth past it fails as well, but the call
+  then ends in a trap like any other, and the error could not say that the memory stopped it. The
+  package gives wazero a memory of its own instead (`experimental.WithMemoryAllocator`), which
+  refuses the growth and notes that it did.
+- Limits written into the generated code. They would be the module's word about itself, and a module
+  that does not end is what a limit is for.
+- A call with no limit of time, which is 2.7 times as fast (above): a server could not stop a call
+  that does not end.
+- A runtime of WebAssembly that needs cgo: a server of the framework builds with none.
+
 ## 3. One event, in order
 
 An operation of a person (`Do`):
@@ -1385,7 +1542,10 @@ A screen costs a `next` for each event the gate allows, each with the part of th
 event needs (9.2). The server asks them at once, each on a goroutine of its own, so that an approver's
 card takes about as long as an operation: about a millisecond on a laptop (0.6 to 1.6 ms), for the 24
 people of the examples as for 1,200, 5,000 and 20,000 people. The start page, which asks `start` of
-every kind (10.1), takes about as long (0.7 to 0.8 ms).
+every kind (10.1), takes about as long (1.0 ms). What grows with the organization is a team a kind
+reads, whose people are in the part each call of the kind is given: with the people added to a team
+whose members a kind reads, the start page takes 10.8 ms with 1,200 people and 172 ms with 20,000
+(2.9, "What it costs").
 
 A screen that does not run an operation, as its button is not offered now, can still be sent one
 that was taken: a button pressed twice, the page before gone back to.
@@ -1766,8 +1926,9 @@ version, the reading on, and a gate that fails, and `TestStartPageWhenSeeFails` 
   a server of an earlier contract kept the ticket; the failure says it in the log.
 - **A kind.** A ticket keeps the version it was submitted with to its end, and is shown, as well as
   moved, by the code of that version. Hand in the old package with the new one for as long as the
-  store keeps tickets of the old version, ended ones too. `Server.Unpackaged` answers the tickets the
-  store keeps of a version no package has, counted by kind, version and status
+  store keeps tickets of the old version, ended ones too (a bundle's versions stay, as the store
+  keeps the bundle: 15). `Server.Unpackaged` answers the tickets the store keeps of a version no
+  package or bundle has, counted by kind, version and status
   (`Store.KeptVersions`), and `serve` refuses to start while there is any (`UnpackagedError`, 2.5),
   rather than fail each page of such a ticket after (500). A program that starts the server itself
   asks it the same before it serves.
@@ -2008,8 +2169,8 @@ store, and your generated package (see the README).
 ## 13. Administration
 
 An administrator applies what was changed and checked elsewhere: a new version of a kind, which ritsu
-generated into a package that the server serves beside the old one (2.1), and a new version of the
-organization's data. Before it is applied, ritsu's tools say what it changes (`ritsu ringi diff` for
+generated into a package that the server serves beside the old one (2.1), or into a bundle uploaded
+while it runs (15), and a new version of the organization's data. Before it is applied, ritsu's tools say what it changes (`ritsu ringi diff` for
 two versions of a kind, `ritsu ringi diff --versions` for two versions of the organization), and the
 one who asked for it reads that and records that they checked it. The framework does the last step:
 it applies the change, keeps a record of it, and lets the record be read with the moves of the
@@ -2667,3 +2828,188 @@ The framework is built so that these can be added without changing what is here:
   tests.
 - **More first files.** `ritsu ringi init` (2.7) writes a project in Go, with the agents' tools and
   flows on Temporal as options; the projects of the other languages come later.
+
+## 15. Adding versions while the server runs
+
+A new version of a kind, or a new kind, can reach a running server without a new build of it: as a
+**bundle**, a zip of the requests directory whose kinds' code is WebAssembly (2.9). An administrator
+uploads it on the pages or through the API; the server checks it, shows what it changes, and serves
+it once another administrator approves it. A server also reads the bundles of a directory as it
+starts, for those who deploy by files. Every bundle the server takes is kept in the store, so that
+every process serves the same kinds, and a ticket of a bundle's version is opened and moved as one
+of a package's (2.1, 11).
+
+### 15.1 What a bundle holds
+
+`ritsu gen --target requests --extra wasm --extra bundle` writes `requests.zip`, the same bytes from
+the same input: `wasm.json` and `kinds.wasm` (2.9), `openapi.json`, `types/`, `vectors/`, `a2ui/`,
+`mcp/` and `organization/`, the files the kinds are made from (`source/`), and `bundle.json`, which
+lists them with their SHA-256. Given `--diff-from` an earlier bundle, it holds too what `ritsu ringi
+diff` says of each kind of the same name, in English and in Japanese (`diff/`, listed in
+`bundle.json`). The bundle's name is the SHA-256 of the zip, its **digest**.
+
+A bundle holds every kind of its project, one version of each. Of those, the versions the server has
+are **held**, and the others it **adds**. A held version must be what the server has: its description
+(`types/<kind>.json`, but for its head `//`) the same JSON. A version the server has does not change,
+whatever made the bundle: the server shows and checks a version by its description, and its own
+package goes on serving the held version, so a bundle that says another thing of it is refused, and
+the uploader is told to raise the version in its `.ringi` file. The description is the measure, not
+the digest of the zip or of the source files: the same `.ringi` file made by another ritsu may say
+more (ritsu adds keys to the descriptions as it grows), and then the server would show one thing and
+the bundle mean another. When the heads of the two descriptions name two versions of ritsu, the
+refusal says so, and that making the bundle with the ritsu that made the server's is the other way.
+
+### 15.2 The kinds while the server runs
+
+The kinds a server serves are one value, which a bundle approved replaces as a whole: the packages,
+each kind's versions in order, the operations of each version, the API's description (15.8) and what
+a page and the agents' tools read of each package. A request reads the value once, with no lock, and
+keeps it to its end, so that a request in progress while a bundle is approved answers as it began; a
+ticket keeps its version to its end, as before (11). `Server.PackagesChanged` answers a channel that
+is closed once the value is replaced, for a part that keeps what it made of the packages (the pages'
+catalogs, the agents' tools) to make it again. A part checks a bundle before the server serves it
+(`AddPackageCheck`): the pages refuse a catalog ID another package uses with other functions (the
+pages' design, 2.3), and the agents' tools one whose tools do not read.
+
+With more than one process, each reads the store's approved bundles: as it starts (15.3), every 30
+seconds in `Run`, before an operation of the administration, and at once (once a second at most) for
+a ticket of a version it does not serve, which another process approved within the last 30 seconds.
+A process serves no bundle the store does not keep approved.
+
+### 15.3 Reading bundles as the server starts
+
+`Config.Bundles` (`-bundles <dir>` of `serve`: each `<name>.zip` of the directory, with its signature
+`<name>.zip.sig` when there is one) are read as the server starts (`ReadBundles`): each is checked as
+an upload is (15.5), kept approved, as read at start (`source` "start"), with a record of each
+version it adds, and served from what was checked, with no second load; one the store keeps approved
+already is read with the others, and one whose every version the server's packages have alike is left,
+and said in the log. Then every approved bundle the store keeps, and the process does not serve yet,
+is read. Each bundle served is said in the log, with the versions it adds. A bundle that does not pass, and an approved one that does not load, stop the
+server, with what is wrong. There is no second person to decide such a bundle: whoever writes the
+directory decides it, as they decide the packages built into the server.
+
+`Server.Unpackaged` (11) reads the bundles first, and counts a version as served when a package of
+`Config.Packages`, a bundle of `Config.Bundles` or an approved bundle of the store has it.
+
+Without `Config.LoadBundle`, the server takes no bundle: it stops when it is given some, or when the
+store keeps an approved one, and the administration has no part of the bundles. `serve` gives
+`wasmkind.Load`.
+
+### 15.4 Who may
+
+Three actions of the gate (13.4), each asked of a version (`Question.Kind`, `Version` and `Owner`):
+
+| Action | What it lets |
+|---|---|
+| `upload_bundle` | upload a bundle of the version, and hide it |
+| `approve_bundle` | approve or decline a bundle of the version |
+| `add_request_type` | approve a bundle that adds a kind the server does not have |
+
+A bundle is asked of each version it adds, with the version's owner, and with the kind's owner now
+too when the bundle gives it to another team: a department's administrator adds versions of what
+their department owns, and moving a kind to another team needs one who administers both. The one who
+uploaded a bundle does not decide it, whatever the gate says: an approval is a second person's. The
+examples' gate gives `upload_bundle` and `approve_bundle` to a department's `workflow_admin` for the
+kinds their department owns, and all three to `system_admin`.
+
+### 15.5 What the server checks
+
+As it takes a bundle, in this order, before anything is kept:
+
+- **Its size.** At most `Config.MaxBundle` bytes as uploaded (64 MiB by default), 10,000 files, and
+  as many bytes uncompressed, in one file or in all; no file outside the archive's root, twice, or
+  not a plain file (as the organization's zip is checked, 13.3). Past them, 413.
+- **Its form.** `wasm.json` of the form the server reads (1) and of a contract it reads (11), and
+  each kind's description named and numbered as `wasm.json` says.
+- **Its signature.** With `Config.BundleKeys` (`-bundle-keys`), the signature must be one of those
+  keys' (`bundlesign`: ed25519 over `"ringi bundle v1\n" + digest + "\n"`), sent with the upload
+  (`Bundle-Signature`, a field of the page) or beside the bundle in the directory. Without keys, none
+  is asked.
+- **Its versions.** Each held version the same as the server's (15.1); at least one added; none that
+  another bundle waiting to be decided adds.
+- **Its code.** `Config.LoadBundle` loads it; the parts check it (15.2).
+- **Its vectors.** Every event of `vectors/<kind>.jsonl` and every form of `vectors/worked/` run on
+  its code, and each answer the same as the vector's: the ticket and the things to do, or the
+  refusal and where. A bundle with one that does not agree is refused, naming the first 20.
+
+A process checks one bundle at a time (another upload meanwhile is answered 429); a check loads the
+code and runs every vector, in parallel over the processors. The same digest again is not checked:
+it answers the bundle there is, and adds nothing. What does not pass is answered 400 with each problem
+and where (`framework.problems`, as the organization's data are), in English and in Japanese.
+
+### 15.6 What the administrators read
+
+The server writes the difference of each version a bundle adds itself, from the descriptions
+(`kinddiff`): against the highest version the server has below it, the form's fields, the stages,
+how the approvers are chosen, the days it may be used on and the API's shape, each a line in the
+reader's language ([kinddiff/DESIGN.md](kinddiff/DESIGN.md) says what it reads, and how it words
+each line). A line that changes what a program sends or reads is marked as changing the API, and so
+is a new kind. Beside it, the text the bundle holds from `ritsu ringi diff`, as "the text the
+bundle held", which the server does not read: the server's own lines are the ones to trust, as the
+bundle's text is what its maker wrote. The text is Markdown; the page shows its headings, paragraphs,
+lists and tables as HTML the page writes itself (`screens/page`, `SaidBlocks`), leaving out its
+comments, so that nothing in the bundle's text is read as HTML, and the API answers it as it is. The
+difference has a digest of its own, of the bundle and the
+lines, which an approval sends back (15.7).
+
+The list of bundles is the newest first, with the versions each adds and its state; the hidden ones
+are listed apart. A bundle's page and answer say who uploaded it and when, its size, whether a key the
+server takes signed it, how many vectors ran, when each version starts once approved, and who decided
+or hid it.
+
+### 15.7 Deciding, and hiding
+
+A bundle is **pending** once checked, and an administrator other than the one who uploaded it
+approves or declines it, with a reason if they give one. An approval sends the difference's digest it
+read: when the server would show another (the server's versions changed since), it is refused as
+stale, and the page shows the difference again. When the bundle changes the API (15.6), the approval
+says that they checked it (`api_changes`), or it is refused. The approval checks the bundle again, as
+the server is then, but for the signature, which was checked as it was uploaded; when the server takes
+only signed bundles now, one uploaded with no signature is refused. Once approved, the bundle is kept
+**approved**, the server serves its versions, and they are listed among the versions to switch (13.2),
+each starting as its description says. A declined bundle is kept **declined**.
+
+A bundle is **hidden** to take it out of the list. An approved bundle is never deleted, as a ticket of
+its versions may need it, and is hidden only once no new request takes its versions (each switched to
+never, 13.2); it is still served. A bundle never approved, hidden, is forgotten: the store keeps what
+it was, not its archive.
+
+Each change writes a record of each version the bundle adds (What `bundle`), its state before and
+after, with the person, the time and the reason: uploaded, read at start, approved, declined, hidden.
+The record is read as the switches are (13.5), by those who may read the version.
+
+### 15.8 The API and the pages
+
+| Operation | Path | |
+|---|---|---|
+| `admin_list_bundles` | `GET /admin/bundles` (`?hidden=true`) | the bundles, whether the person may upload one, whether the server takes only signed ones, the largest size |
+| `admin_upload_bundle` | `POST /admin/bundles/uploads` | the zip, as `application/zip`, its signature in `Bundle-Signature`; an idempotency key |
+| `admin_get_bundle` | `GET /admin/bundles/{digest}` | a bundle and its difference |
+| `admin_approve_bundle` | `POST /admin/bundles/{digest}/approve` | `{"digest": <the difference's>, "api_changes": true, "reason": …}` |
+| `admin_decline_bundle` | `POST /admin/bundles/{digest}/decline` | `{"reason": …}` |
+| `admin_hide_bundle` | `POST /admin/bundles/{digest}/hide` | `{"reason": …}` |
+
+A bundle the person may not read is not found (404), as a version they may not read is. The
+refusals (409) are `uploader` (one's own bundle), `api_changes` (not said), `stale` (the difference,
+or the bundle's state, changed since it was read) and `taken` (an approved bundle a new request may
+take). `GET /openapi.json` answers the operations of every version the server serves, those of the
+bundles approved among them.
+
+The pages are `/pages/admin/bundles` (the list, with the form of the upload: the file, and the
+signature's when the server takes only signed bundles) and `/pages/admin/bundles/{digest}` (the bundle:
+its difference, the text it held under a summary, and the forms to decide and to hide it). They work
+with no script, as the administration's others (13.7). The agents' tools of a session follow: once the
+server serves other packages, and every minute (`mcp.Config.ChooseEvery`), the tools of the session
+are chosen again, and the session is told when they change (`notifications/tools/list_changed`).
+
+### 15.9 The store
+
+`Store.SaveChange` keeps a change of a bundle (`Change.Bundle`) with its records and the operation's
+key, in one transaction: a new bundle with its archive, and a change of one only from the state and
+the hiding it was read with (`ErrConflict` otherwise, and nothing written). One version is added by
+one approved bundle at most: a second approval of it is `ErrConflict`. `Bundles` lists them, oldest
+first, without their archives; `BundleArchive` answers one's archive. PostgreSQL keeps them in three
+tables (step 14 of the schema, 4.3): `bundles` (the digest, the state, the hiding, the time of the
+upload, and the rest as JSON), `bundle_archives` (the archives not forgotten), and `bundle_versions`
+(the approved bundle of each version, the key that holds it to one). `conformance.Bundles` checks a
+store's part.

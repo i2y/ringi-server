@@ -295,7 +295,31 @@
           "text": "上長"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "manager",
+            "ja": "上長"
+          },
+          "ways": [
+            "manager"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty escalate, then skip",
+          "en": "When nobody can answer it, it goes up to the head above; at the top of the organization, the stage is skipped.",
+          "ja": "答える人がいなければ、上の長へ回ります。組織のいちばん上では、ステップは飛ばされます。"
+        }
+      ]
     },
     {
       "name": "owner",
@@ -307,7 +331,55 @@
           "text": "持ち主"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "system_owner",
+            "ja": "システムの持ち主"
+          },
+          "ways": [
+            "system_owner"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 2 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 2 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 1,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 1 business day after it starts, at 09:00.",
+          "ja": "始まった日から 1 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty escalate",
+          "en": "When nobody can answer it, it goes up to the head above; at the top of the organization, it waits for an administrator.",
+          "ja": "答える人がいなければ、上の長へ回ります。組織のいちばん上では、管理する人を待ちます。"
+        }
+      ]
     },
     {
       "name": "security",
@@ -319,7 +391,58 @@
           "text": "セキュリティ"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": {
+            "en": "when “Access level” is “Administrator”",
+            "ja": "「権限」が「管理者」のとき"
+          },
+          "who": {
+            "en": "security",
+            "ja": "情報セキュリティ"
+          },
+          "ways": [
+            "security"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 2 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 2 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 1,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 1 business day after it starts, at 09:00.",
+          "ja": "始まった日から 1 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty escalate",
+          "en": "When nobody can answer it, it goes up to the head above; at the top of the organization, it waits for an administrator.",
+          "ja": "答える人がいなければ、上の長へ回ります。組織のいちばん上では、管理する人を待ちます。"
+        }
+      ]
     },
     {
       "name": "operations",
@@ -331,7 +454,55 @@
           "text": "運用"
         }
       ],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "circulated to operations",
+            "ja": "運用担当に回覧"
+          },
+          "ways": [
+            "operations"
+          ],
+          "kind": "circulate",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 2,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 2 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 2 営業日の日の終わりです。"
+        },
+        {
+          "kind": "remind",
+          "days": 1,
+          "calendar": null,
+          "written": null,
+          "en": "Its approvers are reminded 1 business day after it starts, at 09:00.",
+          "ja": "始まった日から 1 営業日の日の 09:00 に、承認者へ催促が届きます。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty escalate",
+          "en": "When nobody can answer it, it goes up to the head above; at the top of the organization, it waits for an administrator.",
+          "ja": "答える人がいなければ、上の長へ回ります。組織のいちばん上では、管理する人を待ちます。"
+        }
+      ]
     }
   ],
   "ways": [
@@ -344,7 +515,11 @@
           "lang": "ja",
           "text": "上長"
         }
-      ]
+      ],
+      "how": {
+        "en": "the requester's manager: the head of the team the requester is mainly in, or of the team above where that head is the requester or there is none",
+        "ja": "申請者の上長。申請者が主に属するチームの長で、その長が申請者自身か空なら、上のチームの長です"
+      }
     },
     {
       "name": "system_owner",
@@ -355,7 +530,11 @@
           "lang": "ja",
           "text": "システムの持ち主"
         }
-      ]
+      ],
+      "how": {
+        "en": "the person in “Owner” of the row chosen in “System”",
+        "ja": "「システム」で選んだ行の`owner`の人"
+      }
     },
     {
       "name": "security",
@@ -366,7 +545,11 @@
           "lang": "ja",
           "text": "情報セキュリティ"
         }
-      ]
+      ],
+      "how": {
+        "en": "the members of the team IT Security (`it_security`): one of them answers",
+        "ja": "情報セキュリティ課（`it_security`）の人。だれか一人が答えます"
+      }
     },
     {
       "name": "operations",
@@ -377,9 +560,14 @@
           "lang": "ja",
           "text": "運用担当"
         }
-      ]
+      ],
+      "how": {
+        "en": "the members of the team IT Operations (`it_operations`): one of them answers",
+        "ja": "運用課（`it_operations`）の人。だれか一人が答えます"
+      }
     }
   ],
+  "late_tables": [],
   "endings": [
     "approved",
     "rejected",

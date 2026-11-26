@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,8 +26,8 @@ var (
 // dayZone answers the zone of the server's day: the UTC offset of its first kind, the day the people,
 // the teams and the masters of today are read in.
 func (s *Server) dayZone() *time.Location {
-	if len(s.order) > 0 {
-		ks := s.kinds[s.order[0]]
+	if len(s.cat().order) > 0 {
+		ks := s.cat().kinds[s.cat().order[0]]
 		return ks[len(ks)-1].zone
 	}
 	return time.UTC
@@ -58,14 +59,20 @@ func (s *Server) recordQuery(ctx context.Context, p Person, v url.Values, now ti
 			q.To = at.AddDate(0, 0, 1)
 		}
 	}
+	// the versions of the bundles the server does not serve (waiting to be decided, or declined): their
+	// records are lines of their kinds too
+	pending, err := s.unservedVersions(ctx)
+	if err != nil {
+		return q, "", err
+	}
 	q.Kind = v.Get("kind")
-	if _, ok := s.kinds[q.Kind]; q.Kind != "" && !ok {
+	if _, ok := s.cat().kinds[q.Kind]; q.Kind != "" && !ok && !slices.ContainsFunc(pending, func(b BundleVersion) bool { return b.Kind == q.Kind }) {
 		return q, fmt.Sprintf("kind: no kind of request %q", q.Kind), nil
 	}
 	switch q.What = v.Get("what"); q.What {
-	case "", "move", "kind", "organization":
+	case "", "move", "kind", "organization", "bundle":
 	default:
-		return q, fmt.Sprintf("what: move, kind or organization is expected, not %q", q.What), nil
+		return q, fmt.Sprintf("what: move, kind, bundle or organization is expected, not %q", q.What), nil
 	}
 	q.Person, q.Ticket = v.Get("person"), v.Get("ticket")
 	for name, x := range map[string]string{"person": q.Person, "ticket": q.Ticket, "before": q.Before} {
@@ -73,8 +80,8 @@ func (s *Server) recordQuery(ctx context.Context, p Person, v url.Values, now ti
 			return q, fmt.Sprintf("%s: 1 to %d bytes of text with no control character are expected", name, maxKey), nil
 		}
 	}
-	for _, name := range s.order {
-		for _, k := range s.kinds[name] {
+	for _, name := range s.cat().order {
+		for _, k := range s.cat().kinds[name] {
 			ok, err := s.allowAdmin(ctx, p, actionReadAudit, k, k.desc.Owner, now)
 			if err != nil {
 				return q, "", err
@@ -82,6 +89,15 @@ func (s *Server) recordQuery(ctx context.Context, p Person, v url.Values, now ti
 			if ok {
 				q.Versions = append(q.Versions, KindVersion{Kind: k.Name, Version: k.Version})
 			}
+		}
+	}
+	for _, b := range pending {
+		ok, err := s.allowVersion(ctx, p, actionReadAudit, b.Kind, b.Version, b.Owner, now)
+		if err != nil {
+			return q, "", err
+		}
+		if ok {
+			q.Versions = append(q.Versions, KindVersion{Kind: b.Kind, Version: b.Version})
 		}
 	}
 	q.Organization, err = s.allowAdmin(ctx, p, actionReadOrgAudit, nil, "", now)
@@ -158,7 +174,7 @@ func (s *Server) lineJSON(l Line) (json.RawMessage, error) {
 	}
 	r := l.Record
 	var kind, version any
-	if r.What == "kind" {
+	if r.What == "kind" || r.What == "bundle" {
 		kind, version = r.Kind, r.Version
 	}
 	return object("id", r.ID, "at", r.At.Unix(), "what", r.What, "kind", kind, "version", version, "person", none(r.Person), "via", r.Via,
@@ -269,7 +285,7 @@ func csvRowsOf(l Line, zone *time.Location) ([][]string, error) {
 	rec := l.Record
 	r := row(rec.At)
 	r[2], r[7], r[8], r[19] = rec.What, rec.Person, rec.Via, rec.Reason
-	if rec.What == "kind" {
+	if rec.What == "kind" || rec.What == "bundle" {
 		r[4], r[5] = rec.Kind, strconv.Itoa(rec.Version)
 	}
 	r[17], r[18] = compact(rec.Before), compact(rec.After)

@@ -146,7 +146,7 @@ func (s *Server) CheckOrganization(d *OrgData) error {
 	if d == nil {
 		return errors.New("no organization's data to check")
 	}
-	c := &orgCheck{s: s, d: d, kinds: declared(s.layout.TeamKinds, s.layout.Written.TeamKinds), positions: declared(s.layout.Positions, s.layout.Written.Positions)}
+	c := &orgCheck{s: s, d: d, kinds: declared(s.cat().layout.TeamKinds, s.cat().layout.Written.TeamKinds), positions: declared(s.cat().layout.Positions, s.cat().layout.Written.Positions)}
 	for _, part := range []func(){c.versions, c.proxies, c.masters, c.usable} {
 		if c.full() {
 			break
@@ -375,7 +375,7 @@ func (c *orgCheck) version(v *OrgVersion) {
 		c.name(r.at(), "team", "チーム", t.ID, "name", t.Name)
 		c.name(r.at(), "team", "チーム", t.ID, "name_ja", t.NameJa)
 		if _, ok := c.kinds[t.Kind]; !ok {
-			en, ja := declaredList(c.s.layout.TeamKinds, c.s.layout.Written.TeamKinds)
+			en, ja := declaredList(c.s.cat().layout.TeamKinds, c.s.cat().layout.Written.TeamKinds)
 			c.add(r.at(), fmt.Sprintf("The kind %s of the team %s is not a kind of team the organization declares (%s)", shown(t.Kind), shown(t.ID), en),
 				jatext.Join("チーム", shown(t.ID), "の種類", shown(t.Kind), "は、組織が宣言するチームの種類ではありません（", ja, "）"))
 		}
@@ -403,7 +403,7 @@ func (c *orgCheck) version(v *OrgVersion) {
 			c.add(r.at(), fmt.Sprintf("%s is not a team of this version", shown(m.Team)), jatext.Join(shown(m.Team), "は、この版のチームにありません"))
 		}
 		if _, ok := c.positions[m.Position]; !ok {
-			en, ja := declaredList(c.s.layout.Positions, c.s.layout.Written.Positions)
+			en, ja := declaredList(c.s.cat().layout.Positions, c.s.cat().layout.Written.Positions)
 			c.add(r.at(), fmt.Sprintf("The position %s is not a position the organization declares (%s, the lowest first)", shown(m.Position), en),
 				jatext.Join("役職", shown(m.Position), "は、組織が宣言する役職ではありません（低い順に", ja, "）"))
 		}
@@ -784,7 +784,7 @@ func spans(rows []map[string]string) []span {
 
 // masters checks the rows of each master the kinds read: the key, the days, the other values.
 func (c *orgCheck) masters() {
-	for _, m := range c.s.layout.Masters {
+	for _, m := range c.s.cat().layout.Masters {
 		rows := c.d.Masters[m.Name]
 		groups := map[string][]span{} // the rows of each key whose days read
 		var keys []string
@@ -896,8 +896,8 @@ func (c *orgCheck) usable() {
 		}
 		kinds[h] = append(kinds[h], [2]string{en, ja})
 	}
-	for _, name := range c.s.order {
-		for _, k := range c.s.kinds[name] {
+	for _, name := range c.s.cat().order {
+		for _, k := range c.s.cat().kinds[name] {
 			from, to := today, int64(math.MaxInt64)
 			if u := k.desc.Usable.From; u != nil {
 				if n, ok := orgDay(*u); ok {
@@ -919,8 +919,8 @@ func (c *orgCheck) usable() {
 			}
 			for _, m := range k.desc.Masters {
 				ml := MasterLayout{Name: m.Masters + "." + m.Master}
-				if i := slices.IndexFunc(c.s.layout.Masters, func(x MasterLayout) bool { return x.Name == ml.Name }); i >= 0 {
-					ml = c.s.layout.Masters[i]
+				if i := slices.IndexFunc(c.s.cat().layout.Masters, func(x MasterLayout) bool { return x.Name == ml.Name }); i >= 0 {
+					ml = c.s.cat().layout.Masters[i]
 				}
 				if day, ok := firstHole(spans(c.d.Masters[ml.Name]), from, to); ok {
 					masters[ml.Name] = ml

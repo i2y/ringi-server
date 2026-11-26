@@ -49,15 +49,19 @@
 package serve
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -66,10 +70,12 @@ import (
 
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/apikeys"
+	"github.com/i2y/ringi-server/bundlesign"
 	"github.com/i2y/ringi-server/devlogin"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/oidc"
 	"github.com/i2y/ringi-server/postgres"
+	"github.com/i2y/ringi-server/wasmkind"
 	"github.com/i2y/ringi-server/web"
 )
 
@@ -90,6 +96,8 @@ type Flags struct {
 	TLSCert      string // -tls-cert
 	TLSKey       string // -tls-key
 	APIKeys      string // -api-keys
+	Bundles      string // -bundles
+	BundleKeys   string // -bundle-keys
 	// Getenv reads the environment; os.Getenv when nil.
 	Getenv func(string) string
 	// ProviderClient makes the server's calls to the provider of the -oidc-… flags: its discovery
@@ -116,6 +124,8 @@ func (f *Flags) Register(fs *flag.FlagSet) {
 	fs.StringVar(&f.SessionKeys, "session-keys", "", "the keys of the session cookies, base64 of 32 bytes each, the newest first (or the environment variable RINGI_SESSION_KEYS)")
 	fs.StringVar(&f.TLSCert, "tls-cert", "", "a certificate to serve https with (with -tls-key)")
 	fs.StringVar(&f.TLSKey, "tls-key", "", "the certificate's private key")
+	fs.StringVar(&f.Bundles, "bundles", "", "a directory of bundles to serve, each a zip file `ritsu gen --target requests --extra wasm --extra bundle` writes, with its signature beside it (<name>.zip.sig) when -bundle-keys is given: the server checks each as it starts, as an upload is checked, and serves it approved")
+	fs.StringVar(&f.BundleKeys, "bundle-keys", "", "a PEM file of the ed25519 public keys bundles are signed with: the server then takes only bundles one of them signed, uploaded or in -bundles (`ringi-bundle keygen` writes a pair, `ringi-bundle sign` a signature)")
 	fs.StringVar(&f.APIKeys, "api-keys", "", "a file of the keys programs call the API with (Authorization: Bearer <key>): a line for each, with the ID of the person it stands for, the SHA-256 of the key in hexadecimal, and their roles if they have any, separated by commas")
 }
 
@@ -148,6 +158,9 @@ func (f Flags) secretAndKeys() (secret, keys string) {
 // Check checks the flags and the environment before anything is read or reached, and says what is
 // wrong: -tls-cert without -tls-key; -db with -files, as -db keeps the attachments in the database;
 // a file of -api-keys that cannot be read, has a line apikeys.Parse does not take, or lists no key;
+// a file of -bundle-keys that is no PEM of ed25519 public keys; a directory of -bundles that cannot
+// be read, or holds a file that is no bundle (.zip) or a bundle's signature (.zip.sig), or a
+// signature of no bundle;
 // two ways of signing in; a way that checks no one where it may be reached from another computer or
 // with the settings of a server that serves people (the provider's, a certificate); the provider's
 // settings given in part, or wrong in a way that can be told without reaching the provider
@@ -158,6 +171,16 @@ func (f Flags) Check() error {
 	}
 	if f.APIKeys != "" {
 		if _, err := f.keys(); err != nil {
+			return err
+		}
+	}
+	if f.BundleKeys != "" {
+		if _, err := f.bundleKeys(); err != nil {
+			return err
+		}
+	}
+	if f.Bundles != "" {
+		if _, err := f.bundles(); err != nil {
 			return err
 		}
 	}
@@ -575,8 +598,17 @@ func (s *Stores) Serve(ctx context.Context, cfg server.Config, made func(*server
 	if cfg.Authenticator != nil {
 		set = append(set, "Authenticator (-dev-login, the -oidc-… flags, -api-keys)")
 	}
+	if cfg.Bundles != nil && s.flags.Bundles != "" {
+		set = append(set, "Bundles (-bundles)")
+	}
+	if cfg.BundleKeys != nil && s.flags.BundleKeys != "" {
+		set = append(set, "BundleKeys (-bundle-keys)")
+	}
 	if len(set) > 0 {
 		return fmt.Errorf("serve: the flags say the server's %s: leave them out of the Config", strings.Join(set, ", "))
+	}
+	if err := s.flags.bundleConfig(&cfg, s.log); err != nil {
+		return err
 	}
 	if err := s.checkRoutes(); err != nil {
 		return err
@@ -740,4 +772,86 @@ func signInOf(ctx context.Context, f Flags, pg *postgres.Store, log *slog.Logger
 		log.Info("programs may call the API with the keys of -api-keys", "keys", len(keys))
 	}
 	return s, nil
+}
+
+// bundleKeys reads the file of -bundle-keys: an error with no key in it.
+func (f Flags) bundleKeys() ([]ed25519.PublicKey, error) {
+	b, err := os.ReadFile(f.BundleKeys)
+	if err != nil {
+		return nil, fmt.Errorf("-bundle-keys: %w", err)
+	}
+	keys, err := bundlesign.ReadPublicKeys(b)
+	if err != nil {
+		return nil, fmt.Errorf("-bundle-keys: %s: %w", f.BundleKeys, err)
+	}
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("-bundle-keys: %s holds no public key (`ringi-bundle keygen` writes one)", f.BundleKeys)
+	}
+	return keys, nil
+}
+
+// bundles reads the directory of -bundles: each bundle (<name>.zip, in the order of the names) with
+// its signature (<name>.zip.sig) when there is one. A file that is neither, but a hidden one (whose
+// name starts with a dot), is an error, and so is a signature of no bundle.
+func (f Flags) bundles() ([]server.BundleFile, error) {
+	entries, err := os.ReadDir(f.Bundles)
+	if err != nil {
+		return nil, fmt.Errorf("-bundles: %w", err)
+	}
+	var out []server.BundleFile
+	sigs := map[string]bool{}
+	for _, e := range entries {
+		name := e.Name()
+		switch {
+		case strings.HasPrefix(name, "."):
+		case strings.HasSuffix(name, ".zip.sig") && e.Type().IsRegular():
+			sigs[strings.TrimSuffix(name, ".sig")] = true
+		case strings.HasSuffix(name, ".zip") && e.Type().IsRegular():
+			archive, err := os.ReadFile(filepath.Join(f.Bundles, name))
+			if err != nil {
+				return nil, fmt.Errorf("-bundles: %w", err)
+			}
+			b := server.BundleFile{Name: name, Archive: archive}
+			if sig, err := os.ReadFile(filepath.Join(f.Bundles, name+".sig")); err == nil {
+				b.Signature = bytes.TrimSpace(sig)
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return nil, fmt.Errorf("-bundles: %w", err)
+			}
+			out = append(out, b)
+		default:
+			return nil, fmt.Errorf("-bundles: %s holds %s: the directory holds bundles (<name>.zip) and their signatures (<name>.zip.sig)", f.Bundles, name)
+		}
+	}
+	for name := range sigs {
+		if !slices.ContainsFunc(out, func(b server.BundleFile) bool { return b.Name == name }) {
+			return nil, fmt.Errorf("-bundles: %s holds the signature %s.sig, of no bundle %s", f.Bundles, name, name)
+		}
+	}
+	return out, nil
+}
+
+// bundleConfig puts the bundles' settings of the flags in a server's Config: the bundles of
+// -bundles, the keys of -bundle-keys, and wasmkind.Load to read them with, when the Config has no
+// LoadBundle of its own (DESIGN 15).
+func (f Flags) bundleConfig(cfg *server.Config, log *slog.Logger) error {
+	if cfg.LoadBundle == nil {
+		cfg.LoadBundle = wasmkind.Load
+	}
+	if f.BundleKeys != "" {
+		keys, err := f.bundleKeys()
+		if err != nil {
+			return err
+		}
+		cfg.BundleKeys = keys
+		log.Info("the server takes only bundles signed with a key of -bundle-keys", "keys", len(keys))
+	}
+	if f.Bundles != "" {
+		bs, err := f.bundles()
+		if err != nil {
+			return err
+		}
+		cfg.Bundles = bs
+		log.Info("the server reads the bundles of -bundles as it starts", "dir", f.Bundles, "bundles", len(bs))
+	}
+	return nil
 }

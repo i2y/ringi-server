@@ -26,7 +26,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var op *operation
 	var ticket string
 	methods := false
-	for _, o := range s.routes {
+	for _, o := range s.cat().routes {
 		id, match := o.match(segs)
 		if !match {
 			continue

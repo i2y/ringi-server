@@ -20,8 +20,14 @@ func (s *Server) Authenticate(r *http.Request) (Person, error) {
 	return s.cfg.Authenticator.Authenticate(r)
 }
 
-// Packages answers the packages the server serves, in the order of Config.Packages.
-func (s *Server) Packages() []*Package { return slices.Clone(s.cfg.Packages) }
+// Packages answers the packages the server serves now: those of Config.Packages in their order, then
+// the bundles it read, in the order it read them (DESIGN 15). PackagesChanged tells when they change.
+func (s *Server) Packages() []*Package { return slices.Clone(s.cat().packages) }
+
+// PackagesChanged answers a channel that is closed once the server serves other packages than
+// Packages answers now: a bundle read (DESIGN 15). What is made of the packages (the pages, the
+// agents' tools) makes itself again then, and asks the channel of the new ones.
+func (s *Server) PackagesChanged() <-chan struct{} { return s.cat().changed }
 
 // Files answers Config.Files (nil when not given).
 func (s *Server) Files() Files { return s.cfg.Files }
@@ -143,7 +149,7 @@ func (s *Server) PersonLanguage(ctx context.Context, person string) (string, err
 // reads.
 func (s *Server) MasterRows(ctx context.Context, master string) (MasterLayout, []map[string]string, error) {
 	var layout MasterLayout
-	for _, m := range s.layout.Masters {
+	for _, m := range s.cat().layout.Masters {
 		if m.Name == master {
 			layout = m
 		}

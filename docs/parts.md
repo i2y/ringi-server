@@ -27,6 +27,10 @@ The package `serve` prepares the next three from the flags, so they do not go in
 | Where the requests are kept | `Store` | The PostgreSQL of `-db`, or memory |
 | Where the attachments are kept | `Files` | The PostgreSQL of `-db`, the directory of `-files`, or memory |
 
+It also reads `-bundles` and `-bundle-keys` into `Bundles` and `BundleKeys`, and gives `LoadBundle` the function
+that reads a bundle's WebAssembly (`wasmkind.Load`). Without `LoadBundle`, a server takes no bundle
+([Add a version to a running server](bundles.md)).
+
 ## The same thing given twice
 
 A notice, the start of some work, a question to an agent and a call of a book each have a key (`EffectKey`). It is
@@ -89,6 +93,9 @@ modules of their own.
 | `apikeys` | The keys of programs (`-api-keys`), in front of another sign-in |
 | `postgres`, `memstore` | Keep the requests and the attachments in PostgreSQL, and in memory |
 | `orgfiles` | Reads the CSV files of the organization's data |
+| `wasmkind` | Runs the request types ritsu built into one module of WebAssembly ([Run the request types as Wasm](embedding.md#4-run-the-request-types-as-wasm)) |
+| `kinddiff` | Says what changes between two versions of a request type, for the page of a bundle |
+| `bundlesign`, `cmd/ringi-bundle` | Sign bundles, and check their signatures ([Sign bundles](signing.md)) |
 | `servertest`, `conformance` | Parts for tests, and tests that see whether a server does what it promises |
 | [`mcp`](../mcp/README.md) (module) | The tools of agents |
 | [`temporal`](../temporal/README.md) (module) | Runs work on Temporal |

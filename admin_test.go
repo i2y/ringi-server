@@ -1048,7 +1048,7 @@ func TestAdminImportGuards(t *testing.T) {
 				t.Errorf("%s: GET the draft %q: %d %s", st.name, id, code, b)
 			}
 		}
-		if code, b, _ := a.do("GET", "/admin/records.csv?what=else", "ann", "system_admin", "", nil); code != 400 || !strings.Contains(string(b), "what: move, kind or organization") {
+		if code, b, _ := a.do("GET", "/admin/records.csv?what=else", "ann", "system_admin", "", nil); code != 400 || !strings.Contains(string(b), "what: move, kind, bundle or organization") {
 			t.Errorf("%s: the CSV of a query refused: %d %s", st.name, code, b)
 		}
 		if l, _ := a.store.LatestOrganization(ctx); l.ID != latest.ID {

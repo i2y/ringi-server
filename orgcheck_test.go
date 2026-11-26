@@ -198,7 +198,7 @@ func teamsUp(f fstest.MapFS, n int) {
 
 func TestCheckOrganization(t *testing.T) {
 	s := testOrgServer(t)
-	d, err := ReadOrgFiles(orgFiles(), s.layout)
+	d, err := ReadOrgFiles(orgFiles(), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func TestCheckOrganizationProblems(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			f := orgFiles()
 			c.change(t, f)
-			d, err := ReadOrgFiles(f, s.layout)
+			d, err := ReadOrgFiles(f, s.cat().layout)
 			if err != nil {
 				t.Fatalf("the files do not read: %v", err)
 			}
@@ -497,7 +497,7 @@ func TestCheckOrganizationJapanese(t *testing.T) {
 	} {
 		f := orgFiles()
 		c.change(t, f)
-		d, err := ReadOrgFiles(f, s.layout)
+		d, err := ReadOrgFiles(f, s.cat().layout)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -542,7 +542,7 @@ func TestCheckOrganizationData(t *testing.T) {
 		orgWant{"versions", "No version of the organization is in effect on 2026-11-18, a day the kind `trip` version 1 can be used on"},
 		orgWant{"master co_masters.accounts", "No row of the master `co_masters.accounts` may be chosen on 2026-11-18"})
 	// a row the data no longer holds where it was read is said by its place
-	r, err := ReadOrgFiles(orgFiles(), s.layout)
+	r, err := ReadOrgFiles(orgFiles(), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +561,7 @@ func TestCheckOrganizationWrittenNames(t *testing.T) {
 	appendRow(f, teamsFile, "east,East,,section,sales,")
 	edit(t, f, membersFile, "p1,co,dept_head,", "p1,co,部長,")
 	edit(t, f, membersFile, "p3,sales,staff,yes", "p3,east,staff,yes")
-	d, err := ReadOrgFiles(f, s.layout)
+	d, err := ReadOrgFiles(f, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +582,7 @@ func TestCheckOrganizationWrittenNames(t *testing.T) {
 	g := orgFiles()
 	appendRow(g, teamsFile, "east,East,,section,sales,")
 	edit(t, g, membersFile, "p3,sales,staff,yes", "p3,east,staff,yes")
-	e, err := ReadOrgFiles(g, s.layout)
+	e, err := ReadOrgFiles(g, s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +599,7 @@ func TestCheckOrganizationWrittenNames(t *testing.T) {
 // The examples' organization passes, and the check does not change it.
 func TestCheckOrganizationExamples(t *testing.T) {
 	s := examplesServer(t)
-	d, err := ReadOrgFiles(os.DirFS("examples/project"), s.layout)
+	d, err := ReadOrgFiles(os.DirFS("examples/project"), s.cat().layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -610,15 +610,15 @@ func TestCheckOrganizationExamples(t *testing.T) {
 	if after, _ := json.Marshal(d); string(after) != string(before) {
 		t.Errorf("the check changed the examples' data")
 	}
-	if len(d.Versions) != 2 || len(d.Masters) != 3 || len(s.layout.Masters) != 3 {
+	if len(d.Versions) != 2 || len(d.Masters) != 3 || len(s.cat().layout.Masters) != 3 {
 		t.Errorf("the examples read as %d versions and %d masters", len(d.Versions), len(d.Masters))
 	}
 
 	// a master with no row: one problem, naming every kind that reads it, in the server's order
 	const vendors = "company_masters.vendors"
 	var en, ja []string
-	for _, name := range s.order {
-		for _, k := range s.kinds[name] {
+	for _, name := range s.cat().order {
+		for _, k := range s.cat().kinds[name] {
 			for _, m := range k.desc.Masters {
 				if m.Masters+"."+m.Master == vendors {
 					en = append(en, fmt.Sprintf("`%s` version %d", k.Name, k.Version))
@@ -632,7 +632,7 @@ func TestCheckOrganizationExamples(t *testing.T) {
 		t.Fatalf("%d of the examples' kinds read %s", len(en), vendors)
 	}
 	d.Masters[vendors] = []map[string]string{}
-	at := s.layout.Masters[slices.IndexFunc(s.layout.Masters, func(m MasterLayout) bool { return m.Name == vendors })].Data
+	at := s.cat().layout.Masters[slices.IndexFunc(s.cat().layout.Masters, func(m MasterLayout) bool { return m.Name == vendors })].Data
 	ps := orgProblems(t, s.CheckOrganization(d))
 	wantEn := "No row of the master `" + vendors + "` may be chosen on 2026-11-18, a day the kinds " + strings.Join(en[:len(en)-1], ", ") + " and " + en[len(en)-1] + " can be used on"
 	wantJa := "申請の種類 " + strings.Join(ja, "、") + "を使える 2026-11-18 に、マスタ `" + vendors + "` の選べる行がありません"

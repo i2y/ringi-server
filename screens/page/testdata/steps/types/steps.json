@@ -364,7 +364,47 @@
       "written": "first",
       "label": "first",
       "labels": [],
-      "comment_required": []
+      "comment_required": [],
+      "approvers": [
+        {
+          "when": null,
+          "who": {
+            "en": "manager",
+            "ja": "manager"
+          },
+          "ways": [
+            "manager"
+          ],
+          "kind": "who",
+          "route": null
+        }
+      ],
+      "deadlines": [
+        {
+          "kind": "due",
+          "days": 3,
+          "calendar": null,
+          "written": null,
+          "en": "It is due 3 business days after it starts, at the end of the day.",
+          "ja": "期限は、始まった日から 3 営業日の日の終わりです。"
+        },
+        {
+          "kind": "late",
+          "days": null,
+          "calendar": null,
+          "written": "when late escalate, then expire",
+          "en": "When it is late, it goes up to the head above, and its deadline is counted again from then; when it is late again, the ticket expires.",
+          "ja": "期限を過ぎると上の長へ回ります。期限は、そこから数え直されます。また過ぎるとチケットは期限切れで終わります。"
+        },
+        {
+          "kind": "empty",
+          "days": null,
+          "calendar": null,
+          "written": "when empty escalate, then skip",
+          "en": "When nobody can answer it, it goes up to the head above; at the top of the organization, the stage is skipped.",
+          "ja": "答える人がいなければ、上の長へ回ります。組織のいちばん上では、ステップは飛ばされます。"
+        }
+      ]
     }
   ],
   "ways": [
@@ -372,9 +412,14 @@
       "name": "manager",
       "written": "manager",
       "label": "manager",
-      "labels": []
+      "labels": [],
+      "how": {
+        "en": "the requester's manager: the head of the team the requester is mainly in, or of the team above where that head is the requester or there is none",
+        "ja": "申請者の上長。申請者が主に属するチームの長で、その長が申請者自身か空なら、上のチームの長です"
+      }
     }
   ],
+  "late_tables": [],
   "endings": [
     "approved",
     "rejected",

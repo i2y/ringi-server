@@ -36,13 +36,14 @@ package server
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,6 +56,21 @@ type Config struct {
 	// Packages are the generated packages (Load). A kind may be in several, each at its own
 	// version: a ticket keeps the version it was submitted with to its end.
 	Packages []*Package
+
+	// LoadBundle reads a bundle's requests directory into a package, its kinds' code as WebAssembly
+	// (package wasmkind's Load, which package serve gives): with it, the server takes bundles, a
+	// version of a kind or a new kind added while it runs (DESIGN 15). None takes no bundle.
+	LoadBundle func(ctx context.Context, requests fs.FS) (*Package, error)
+	// Bundles are the bundles the server reads as it starts (serve's -bundles): each checked and
+	// served as an approved one is, with no one to approve it (ReadBundles).
+	Bundles []BundleFile
+	// BundleKeys are the ed25519 public keys bundles are signed with (serve's -bundle-keys): with
+	// any, a bundle is taken, uploaded or read at start, only with a signature one of them makes
+	// (package bundlesign). None takes a bundle with no signature, approved by two people.
+	BundleKeys []ed25519.PublicKey
+	// MaxBundle is the largest bundle, in bytes, and the most its files may come to once
+	// uncompressed (default 64 MiB): a larger one is answered 413.
+	MaxBundle int64
 
 	// Store keeps the tickets (required).
 	Store Store
@@ -140,13 +156,17 @@ type Checker interface {
 // Server is a server of the kinds of request of its packages. It is an http.Handler, and the
 // operation layer under it (Do) is there for any other way in.
 type Server struct {
-	cfg    Config
-	kinds  map[string][]*kind
-	order  []string
-	ops    map[string]*operation
-	routes []*operation
-	layout OrgLayout
-	log    *slog.Logger
+	cfg Config
+	log *slog.Logger
+
+	// cur is the kinds, the operations and the organization's layout the server serves now: its
+	// packages and the bundles it read (DESIGN 15). Each reader loads it once and reads it with no
+	// lock; a bundle added makes a new one, under catMu, which only writers take.
+	cur   atomic.Pointer[catalog]
+	catMu sync.Mutex
+	// bundles is what the server knows of the bundles: the ones it read, and when it read the store's
+	// last (bundles.go).
+	bundles bundleState
 
 	org     atomic.Pointer[orgSnapshot]
 	orgSeen atomic.Int64
@@ -200,8 +220,8 @@ const (
 // part that is a Checker and answers an error, and the kinds' settings that disagree (DESIGN 2.2).
 func New(cfg Config) (*Server, error) {
 	switch {
-	case len(cfg.Packages) == 0:
-		return nil, errors.New("no Config.Packages")
+	case len(cfg.Packages) == 0 && cfg.LoadBundle == nil:
+		return nil, errors.New("no Config.Packages (or Config.LoadBundle, for a server of bundles alone)")
 	case cfg.Store == nil:
 		return nil, errors.New("no Config.Store")
 	case cfg.Authenticator == nil:
@@ -271,75 +291,14 @@ func New(cfg Config) (*Server, error) {
 	if cfg.SweepEvery <= 0 {
 		cfg.SweepEvery = DefaultSweepEvery
 	}
-	s := &Server{cfg: cfg, kinds: map[string][]*kind{}, ops: map[string]*operation{}, log: cfg.Logger, snaps: map[string]*orgSnapshot{},
+	s := &Server{cfg: cfg, log: cfg.Logger, snaps: map[string]*orgSnapshot{},
 		checks: make(chan struct{}, checksAtOnce), wake: make(chan struct{}, 1)}
-	masters := map[string]MasterLayout{}
-	for _, p := range cfg.Packages {
-		for _, k := range p.kinds {
-			for _, have := range s.kinds[k.Name] {
-				if have.Version == k.Version {
-					return nil, fmt.Errorf("the kind %s version %d is in two packages", k.Name, k.Version)
-				}
-			}
-			if len(s.kinds[k.Name]) == 0 {
-				s.order = append(s.order, k.Name)
-			}
-			s.kinds[k.Name] = append(s.kinds[k.Name], k)
-			o := k.desc.Organization
-			switch {
-			case s.layout.Data == "":
-				s.layout.Name, s.layout.Data = o.Name, o.Data
-				s.layout.Written = OrgWritten{Positions: map[string]string{}, TeamKinds: map[string]string{}}
-				for _, x := range o.Positions {
-					s.layout.Positions = append(s.layout.Positions, x.Name)
-					if x.Written != "" && x.Written != x.Name {
-						s.layout.Written.Positions[x.Written] = x.Name
-					}
-				}
-				for _, x := range o.TeamKinds {
-					s.layout.TeamKinds = append(s.layout.TeamKinds, x.Name)
-					if x.Written != "" && x.Written != x.Name {
-						s.layout.Written.TeamKinds[x.Written] = x.Name
-					}
-				}
-			case s.layout.Data != o.Data:
-				return nil, fmt.Errorf("the kinds read two organizations (%s and %s); a server serves one", s.layout.Data, o.Data)
-			}
-			for _, m := range k.desc.Masters {
-				ml := MasterLayout{Name: m.Masters + "." + m.Master, Data: m.Data, Key: m.Key, NameField: m.NameField}
-				for _, f := range m.Fields {
-					ml.Fields = append(ml.Fields, f.Name)
-					if f.Optional && f.Name != m.Key {
-						if ml.Optional == nil {
-							ml.Optional = map[string]bool{}
-						}
-						ml.Optional[f.Name] = true
-					}
-					if f.Written != "" && f.Written != f.Name {
-						if ml.Written == nil {
-							ml.Written = map[string]string{}
-						}
-						ml.Written[f.Name] = f.Written
-					}
-				}
-				masters[ml.Name] = ml
-			}
-		}
-		for id, op := range p.api.ops {
-			s.ops[id] = op
-		}
+	s.bundles.checks = make(chan struct{}, bundleChecksAtOnce)
+	c, err := newCatalog(cfg.Packages)
+	if err != nil {
+		return nil, err
 	}
-	for _, ks := range s.kinds {
-		sort.Slice(ks, func(i, j int) bool { return ks[i].Version < ks[j].Version })
-	}
-	for _, ml := range masters {
-		s.layout.Masters = append(s.layout.Masters, ml)
-	}
-	sort.Slice(s.layout.Masters, func(i, j int) bool { return s.layout.Masters[i].Name < s.layout.Masters[j].Name })
-	for _, op := range s.ops {
-		s.routes = append(s.routes, op)
-	}
-	sort.Slice(s.routes, func(i, j int) bool { return s.routes[i].id < s.routes[j].id })
+	s.cur.Store(c)
 	return s, nil
 }
 
@@ -350,8 +309,12 @@ func (s *Server) Now() time.Time { return s.now() }
 
 // kindOf answers a kind at a version: the version a ticket keeps.
 func (s *Server) kindOf(name string, version int) (*kind, error) {
-	for _, k := range s.kinds[name] {
-		if k.Version == version {
+	if k := s.cat().version(name, version); k != nil {
+		return k, nil
+	}
+	// a bundle another process approved in the last 30 seconds (DESIGN 15.2)
+	if s.missed() {
+		if k := s.cat().version(name, version); k != nil {
 			return k, nil
 		}
 	}
@@ -359,10 +322,15 @@ func (s *Server) kindOf(name string, version int) (*kind, error) {
 }
 
 // Unpackaged answers the tickets the store keeps of a version no package of the server has, counted
-// by kind, version and status (DESIGN 11): a ticket is shown and moved by the code of its own
-// version, so none of them could be opened or answered. serve refuses to start while there is any
-// (UnpackagedError); a program that starts the server itself asks it the same before it serves.
+// by kind, version and status (DESIGN 11): no package of Config.Packages, no bundle of
+// Config.Bundles and no approved bundle the store keeps (it reads the bundles first: ReadBundles).
+// A ticket is shown and moved by the code of its own version, so none of them could be opened or
+// answered. serve refuses to start while there is any (UnpackagedError); a program that starts the
+// server itself asks it the same before it serves.
 func (s *Server) Unpackaged(ctx context.Context) ([]TicketCount, error) {
+	if err := s.ReadBundles(ctx); err != nil {
+		return nil, err
+	}
 	kept, err := s.cfg.Store.KeptVersions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading the versions the store keeps tickets of: %w", err)
@@ -414,7 +382,7 @@ func (s *Server) Current(kind string, at time.Time) (version int, ok bool) {
 
 // current answers the version of a kind a new request takes at t: the highest in effect then.
 func (s *Server) current(name string, t time.Time) *kind {
-	ks := s.kinds[name]
+	ks := s.cat().kinds[name]
 	for i := len(ks) - 1; i >= 0; i-- {
 		if s.takes(ks[i], t) {
 			return ks[i]
@@ -460,11 +428,15 @@ type Call struct {
 	// Kind and Version name the version of a kind admin_switch_kind switches, and Draft the draft
 	// admin_get_draft reads (DESIGN 13.6). Upload is the organization's data admin_check_organization
 	// checks, as a zip archive of its files, read only once the gate allows the person to import
-	// (DESIGN 13.3): nil when the body names the source.
-	Kind    string
-	Version int
-	Draft   string
-	Upload  io.Reader
+	// (DESIGN 13.3): nil when the body names the source. For admin_upload_bundle, Upload is the
+	// bundle's archive and Signature its signature (nil for none); Bundle names the bundle (its
+	// digest) of the other operations of the bundles (DESIGN 15.8).
+	Kind      string
+	Version   int
+	Draft     string
+	Upload    io.Reader
+	Signature []byte
+	Bundle    string
 }
 
 // Outcome is how an operation ended.
@@ -516,8 +488,8 @@ func notFound(what string) Reply { return Reply{Outcome: NotFound, Problem: what
 
 // Operations answers the operationIds the server serves.
 func (s *Server) Operations() []string {
-	out := make([]string, 0, len(s.ops))
-	for id := range s.ops {
+	out := make([]string, 0, len(s.cat().ops))
+	for id := range s.cat().ops {
 		out = append(out, id)
 	}
 	slices.Sort(out)

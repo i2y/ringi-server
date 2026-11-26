@@ -94,12 +94,13 @@ func (h *Handler) page(f func(http.ResponseWriter, *http.Request, server.Person)
 // newestPages answers the pages of the newest package: the start page, the bar and the notices are
 // made with them, and their files are served.
 func (h *Handler) newestPages() *page.Pages {
-	for _, s := range h.sets {
-		if s.Set == h.assets {
+	ps := h.packs()
+	for _, s := range ps.sets {
+		if s.Set == ps.assets {
 			return s.pages
 		}
 	}
-	return h.sets[0].pages
+	return ps.sets[0].pages
 }
 
 // pageAsset serves a file of the pages: page.css, page.js, and the newest package's functions.js.
@@ -119,7 +120,7 @@ func (h *Handler) pageAsset(w http.ResponseWriter, r *http.Request) {
 // packageAsset serves a file of the pages of a package other than the newest (screenSet.files):
 // page.css, page.js, and the package's functions.js.
 func (h *Handler) packageAsset(w http.ResponseWriter, r *http.Request) {
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		if s.files == "" || s.files != r.PathValue("files") {
 			continue
 		}
@@ -432,7 +433,7 @@ func (h *Handler) homeTickets(r *http.Request, p server.Person, set *screenSet, 
 // kindNames answers the names of the kinds the server serves, in the packages' order.
 func (h *Handler) kindNames() []string {
 	var out []string
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		for _, k := range s.Kinds() {
 			if !slices.Contains(out, k.Name) {
 				out = append(out, k.Name)

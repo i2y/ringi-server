@@ -36,7 +36,7 @@ func (s *Server) operate(ctx context.Context, c Call, tr *trial) (Reply, error) 
 		}
 		return s.admin(ctx, c)
 	}
-	op, ok := s.ops[c.Operation]
+	op, ok := s.cat().ops[c.Operation]
 	if !ok {
 		return invalid("no such operation: %q", c.Operation), nil
 	}
@@ -258,7 +258,7 @@ func (s *Server) listRequests(ctx context.Context, p Person) (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
-	for _, name := range s.order {
+	for _, name := range s.cat().order {
 		k := s.current(name, now)
 		if k == nil || snap == nil {
 			continue
@@ -351,7 +351,7 @@ func (s *Server) listTickets(ctx context.Context, p Person, q url.Values) (Reply
 	if kind == "" {
 		return invalid("kind: the kind of request whose tickets are listed is needed"), nil
 	}
-	if _, ok := s.kinds[kind]; !ok {
+	if _, ok := s.cat().kinds[kind]; !ok {
 		return invalid("kind: no kind of request %q", kind), nil
 	}
 	status := q.Get("status")
@@ -373,7 +373,7 @@ func (s *Server) listMine(ctx context.Context, p Person, q url.Values) (Reply, e
 		return invalid("%s", problem), nil
 	}
 	kind := q.Get("kind")
-	if _, ok := s.kinds[kind]; kind != "" && !ok {
+	if _, ok := s.cat().kinds[kind]; kind != "" && !ok {
 		return invalid("kind: no kind of request %q", kind), nil
 	}
 	tickets, err := s.Mine(ctx, p, MineQuery{Kind: kind, Before: before, Limit: limit + 1})
@@ -618,7 +618,7 @@ func (s *Server) Tickets(ctx context.Context, p Person, q TicketsQuery) ([]json.
 	if p.ID == "" {
 		return nil, errors.New("a list with no person")
 	}
-	if _, ok := s.kinds[q.Kind]; !ok {
+	if _, ok := s.cat().kinds[q.Kind]; !ok {
 		return nil, fmt.Errorf("no kind of request %q", q.Kind)
 	}
 	now := s.now()
@@ -677,7 +677,7 @@ func (s *Server) KindsSeen(ctx context.Context, p Person) ([]string, error) {
 		return nil, err
 	}
 	var out []string
-	for _, name := range s.order {
+	for _, name := range s.cat().order {
 		vs, err := s.seenVersions(ctx, p, name, snap, now)
 		if err != nil {
 			return nil, err
@@ -698,7 +698,7 @@ func (s *Server) seenVersions(ctx context.Context, p Person, name string, snap *
 		return nil, nil
 	}
 	var out []int
-	for _, k := range s.kinds[name] {
+	for _, k := range s.cat().kinds[name] {
 		ov := snap.at(k.day(now))
 		if ov == nil {
 			continue
@@ -950,8 +950,8 @@ func (s *Server) Zone(kind string, version int) *time.Location {
 
 // today answers the day in the first kind's offset: the day of the lists no kind decides.
 func (s *Server) today() string {
-	if len(s.order) > 0 {
-		ks := s.kinds[s.order[0]]
+	if len(s.cat().order) > 0 {
+		ks := s.cat().kinds[s.cat().order[0]]
 		return ks[len(ks)-1].day(s.now())
 	}
 	return utcDay(s.now())

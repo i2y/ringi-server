@@ -22,7 +22,7 @@ import (
 // asset serves a file of the newest package's screens.
 func (h *Handler) asset(name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		a, err := h.assets.Asset(name)
+		a, err := h.packs().assets.Asset(name)
 		if err != nil {
 			h.fail(w, "the asset "+name, err)
 			return
@@ -34,7 +34,7 @@ func (h *Handler) asset(name string) http.HandlerFunc {
 // packageScreenAsset serves the catalog or the functions of the screens of a package other than the
 // newest (screenSet.files).
 func (h *Handler) packageScreenAsset(w http.ResponseWriter, r *http.Request) {
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		if s.files == "" || s.files != r.PathValue("files") {
 			continue
 		}

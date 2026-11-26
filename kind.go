@@ -66,6 +66,9 @@ type Package struct {
 	// (ticketkinds.Lang): "en" or "ja". The framework says a value of a body it does not take in
 	// their sentence (said.go).
 	lang string
+	// bundle is the digest of the bundle the package was read from; "" for a package of
+	// Config.Packages.
+	bundle string
 }
 
 // Contract answers the version of the contract the package keeps.

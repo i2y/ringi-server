@@ -1,0 +1,70 @@
+request leave v3 "Leave request"
+description "Paid leave, sick leave or special leave, approved by the requester's manager, and by the head of the department too for more than five business days (fictional rules). Paid leave takes the days from the balance the leave book keeps"
+owner hr
+effective from 2028-04-01
+
+use organization org from "shared/company.ringi"
+use calendar office from "shared/office.cal"
+use book leave from "shared/leave.book"
+use gate "shared/company.gate"
+use route standard from "shared/manager_approval.ringi"
+
+form
+  kind : choice "Kind of leave"
+    paid    "Paid leave"
+    sick    "Sick leave"
+    special "Special leave"
+  first_day : date "First day"  range >=2026-01-01 <=2028-12-31  open in office
+  days      : number "Business days"  range >=1 <=25
+  back_on   : date "Back at work on" = first_day + days business days in office
+  reason    : long text "Reason"  count <=200  required when kind is special
+  cover     : person "Who covers for you"  optional
+  contact   : text "How to reach you while away"  count <=100  optional
+
+route standard(long: days > 5)
+
+ticket
+  # The leave rules are for the staff (fictional): the members of the board do not submit them.
+  submitted by   everyone except team board
+  self approval  not allowed
+  # A manager who is also the head of the department approves once for both: the two stages follow each other.
+  same approver  approves once
+  send back      to the requester, at most 2 times
+  # A reject and a send back say why, in the comment the requester reads.
+  comment required  for reject, send back
+  resubmit       within 5 business days
+  withdraw       until it is decided
+  on submitted   hold leave.take(request: ticket.id, attempt: ticket.attempt, person: requester.id, days: days)  when kind is paid
+  on approved    post leave.take(request: ticket.id, attempt: ticket.attempt)  when kind is paid
+  on sent back, rejected, withdrawn, expired  void leave.take(request: ticket.id, attempt: ticket.attempt)  when kind is paid
+
+claims
+  ends_in_time : every ticket ends within 40 business days
+
+# The third version asks how to reach the requester while they are away, and takes a first day up to
+# the end of 2028. The manager of the requester's department is its head, who answers both stages
+# at once.
+scenario a_leave_with_a_contact
+  requester e1203
+  given leave.grant(person: "e1203", year: "2028", days: 25)
+  form kind = paid, first_day = 2028-12-04, days = 22, reason = "A long family visit", contact = "e1203@example.com"
+| at               | event   | by    | -> stage | status      |
+| 2028-11-13 09:00 | submit  | e1203 | manager  | in progress |
+| 2028-11-13 17:00 | approve | e3101 |          | approved    |
+
+labels ja
+  request        "休暇の申請"
+  kind           "休暇の種類"
+  kind.paid      "有給休暇"
+  kind.sick      "病気休暇"
+  kind.special   "特別休暇"
+  first_day      "初日"
+  days           "営業日の日数"
+  back_on        "出社する日"
+  reason         "理由"
+  cover          "代わりに対応する人"
+  contact        "休みのあいだの連絡先"
+  stage manager  "上長"
+  stage head     "部長"
+  who manager    "上長"
+  who dept_head  "部長"

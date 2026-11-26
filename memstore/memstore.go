@@ -35,6 +35,12 @@ type Store struct {
 	records []server.Record // in the order they were kept
 	starts  map[server.KindVersion]server.Start
 	drafts  map[[2]string]server.Draft // person, ID → draft
+	// bundles are the bundles by digest, bundleOrder their digests in the order they were kept,
+	// archives their archives, and approved the digest of the approved bundle that adds each version.
+	bundles     map[string]server.Bundle
+	bundleOrder []string
+	archives    map[string][]byte
+	approved    map[server.KindVersion]string
 }
 
 // upload is a file a person uploaded: held by a ticket, let go, and deleted once let go.
@@ -63,6 +69,7 @@ type item struct {
 // New makes an empty store.
 func New() *Store {
 	return &Store{
+		bundles: map[string]server.Bundle{}, archives: map[string][]byte{}, approved: map[server.KindVersion]string{},
 		tickets: map[string]*server.TicketRecord{},
 		moves:   map[string][]server.MoveRecord{},
 		waiting: map[string][]string{},

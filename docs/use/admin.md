@@ -1,7 +1,8 @@
 # Administering
 
-A guide for the people who administer the requests: how to switch the rules of a request, import new data of
-the organization, set proxies, replace an approver who cannot answer, and read the record. Japanese:
+A guide for the people who administer the requests: how to switch the rules of a request, add a new version
+from a file, import new data of the organization, set proxies, replace an approver who cannot answer, and read
+the record. Japanese:
 [admin.ja.md](admin.ja.md).
 
 ## Opening the pages for administrators
@@ -10,8 +11,8 @@ A person with a role that administers has the link "Administration" at the botto
 
 | Role | What it lets a person do |
 |---|---|
-| `workflow_admin` | Switch the rules of the requests their department keeps (on the page, the types whose "Owner" is their department), read the record of those, add approvers to them, and hand a place over |
-| `system_admin` | Switch the rules of every request, import the organization's data, and read the whole record |
+| `workflow_admin` | Switch the rules of the requests their department keeps (on the page, the types whose "Owner" is their department), upload and approve new versions of those, read the record of those, add approvers to them, and hand a place over |
+| `system_admin` | Switch the rules of every request, upload and approve new versions of every request and new request types, import the organization's data, and read the whole record |
 | `auditor` | Read the whole record. May change nothing |
 
 Roles are given to people at your company's sign-in. A role that is given or taken away counts from the next
@@ -45,6 +46,26 @@ version before, set the newer one to "Never". If none has started, the request c
 
 A request in progress goes on to its end in the version it was made in. "Tickets (open / all)" in the table
 says how many requests of that version there are.
+
+## Adding a new version from a file
+
+Those who make the request types may give you a new version as one file, a bundle (`.zip`), to put on the
+server while it runs. Two administrators put it in: one uploads it, and another approves it.
+
+<img src="../images/bundle.en.webp" width="600" alt="The page of a bundle: version 3 of the leave request, what changes from version 2, and the form to approve or decline it">
+
+1. Open "Add a version or a request type with a bundle", choose the file, and press "Upload and check". When the server takes only signed bundles,
+   choose the signature file (`.sig`) they gave you with it too. The server checks it, and shows what changes.
+   If something is wrong with it, the page says what, and nothing is added.
+2. Ask another administrator to approve it. You cannot approve a bundle you uploaded.
+3. The other administrator opens it from the same list and reads what changes. A line marked "changes the API"
+   changes what programs and agents send or read: ask those who run them before you approve. Then tick "I
+   checked that the API changes".
+4. Write the reason, and press "Approve" (or "Decline"). The new version is then on the page of the versions,
+   and starts on the day its file says. Switch it as above.
+
+To take a bundle out of the list, use "Hide the bundle". A bundle that was approved can be hidden once its
+versions are set to "Never"; the requests made in them go on.
 
 ## Importing new data of the organization
 

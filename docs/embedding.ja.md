@@ -10,7 +10,7 @@
 | 自分で組み立てたサーバーの API を、社内のほかのプログラムに鍵で使わせる | 1 と [2. プログラムの鍵を受け付ける](#2-プログラムの鍵を受け付ける) |
 | 手前のプロキシがログインさせた人を、そのまま使う | 1 と [3. プロキシがログインさせる](#3-プロキシがログインさせる) |
 
-ページや API のルートを足すだけなら、`serve` のままでできます（[ルートを足す](screens.ja.md#ルートを足す)）。プログラムに鍵で API を使わせるのも、`serve` のままで、`-api-keys` でできます（[プログラムから呼ぶ](api.ja.md#プログラムから呼ぶ)）。
+ページや API のルートを足すだけなら、`serve` のままでできます（[ルートを足す](screens.ja.md#ルートを足す)）。プログラムに鍵で API を使わせるのも、`serve` のままで、`-api-keys` でできます（[プログラムから呼ぶ](api.ja.md#プログラムから呼ぶ)）。申請の種類を WebAssembly で動かすのも、`serve` のままでできます（[4. 申請の種類を Wasm で動かす](#4-申請の種類を-wasm-で動かす)）。
 
 ## 1. サーバーを組み立てる
 
@@ -232,3 +232,51 @@ func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server
 | `X-Ringi-Roles` | 役割をコンマで区切ったもの。なければ空 |
 
 秘密がないリクエストと、同じヘッダーが二つあるリクエストは、だれのものでもないとして 401 を返します。
+
+## 4. 申請の種類を Wasm で動かす
+
+ritsu は、申請の種類をまとめて一つの WebAssembly のモジュール（`requests/kinds.wasm`）に組み、その呼び方を横に書くこともできます（`requests/wasm.json`）。パッケージ `wasmkind` は、申請の種類の Go のコードの代わりに、このモジュールを動かします。サーバーは申請の種類をファイルとして読み込むので、申請の種類の Go のコードはプログラムに組み込まれなくなります。変わるのは、プロジェクトの `Package` が ritsu の作ったコードを読み込むところだけなので、`serve` のままでも使えます。
+
+モジュールを組むには、Rust の `cargo` と、ターゲット `wasm32-unknown-unknown` の標準ライブラリが要ります（`rustup target add wasm32-unknown-unknown` で入ります）。`generate.go` の行に `--extra wasm` を足します。
+
+```go title="generate.go" hl_lines="1"
+//go:generate ritsu gen project --root project --target go --target requests --extra wasm --catalog https://example.com/acme/shinsei/a2ui/catalog.json --module example.com/acme/shinsei/go --out . --lang ja
+```
+
+`shinsei.go` では、二つのファイルもほかのファイルと一緒にプログラムに組み込み、パッケージを `wasmkind` で読み込みます。申請の種類の Go のコード（`go/ticketkinds`）は、もう import しません。
+
+```go title="shinsei.go" hl_lines="2 9"
+import (
+	"context"
+	"embed"
+	"io/fs"
+	"log/slog"
+
+	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/orgfiles"
+	"github.com/i2y/ringi-server/wasmkind"
+)
+```
+
+```go title="shinsei.go" hl_lines="1"
+//go:embed requests/openapi.json requests/types requests/a2ui requests/mcp requests/wasm.json requests/kinds.wasm
+```
+
+```go title="shinsei.go" hl_lines="2"
+func PackageFrom(dir fs.FS) (*server.Package, error) {
+	return wasmkind.Load(context.Background(), dir)
+}
+```
+
+コードを作り直して、試験します。プロジェクトの試験は、ベクタをモジュールで流します。
+
+```sh
+go generate ./...
+go mod tidy
+go vet ./...
+go test ./...
+```
+
+`wasmkind.Load` は、`wasm.json` を書いたときのものではないモジュール（SHA-256 で見ます）と、何かを import するモジュールを受け付けません。モジュールの呼び出しは一回ごとに、時間（2 秒）とメモリー（64 MiB）の中で動きます。どちらかで止まった呼び出しはサーバーの失敗として、操作には 500 を返し、どの上限で止まったかをログに書きます。上限を自分で決めるときは、`wasmkind.LoadWith` に `wasmkind.Options` を渡します。
+
+モジュールの呼び出し一回には、Go のコードのおよそ 4 倍の時間がかかります（0.1 ミリ秒のところが 0.5 ミリ秒ほど）。承認者のページは、ボタンごとにコードへ同時に尋ねるので、0.5 ミリ秒ほど遅くなります。サーバーを起動するときのモジュールの読み込みは、例の五つの申請の種類（それぞれ二つの言語）で 0.8 秒です。

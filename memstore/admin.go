@@ -56,19 +56,62 @@ func (s *Store) SaveChange(_ context.Context, c *server.Change) error {
 			return server.ErrTooManyImports
 		}
 	}
+	if b := c.Bundle; b != nil {
+		have, kept := s.bundles[b.Bundle.Digest]
+		switch {
+		case b.Was == "" && kept, b.Was != "" && (!kept || have.State != b.Was || have.Hidden != b.WasHidden):
+			return server.ErrConflict
+		}
+		if b.Bundle.State == "approved" {
+			for _, v := range b.Bundle.Adds {
+				if d, ok := s.approved[server.KindVersion{Kind: v.Kind, Version: v.Version}]; ok && d != b.Bundle.Digest {
+					return server.ErrConflict
+				}
+			}
+		}
+	}
 	// A record's ID names one record (a line's before names it): one of an ID kept is refused, as
 	// the key of PostgreSQL's table refuses it.
-	if c.Record != nil && slices.ContainsFunc(s.records, func(r server.Record) bool { return r.ID == c.Record.ID }) {
-		return fmt.Errorf("memstore: a record of the ID %q is kept already", c.Record.ID)
+	recs := c.Records
+	if c.Record != nil {
+		recs = append([]*server.Record{c.Record}, recs...)
+	}
+	for i, rec := range recs {
+		if slices.ContainsFunc(s.records, func(r server.Record) bool { return r.ID == rec.ID }) ||
+			slices.ContainsFunc(recs[:i], func(r *server.Record) bool { return r.ID == rec.ID }) {
+			return fmt.Errorf("memstore: a record of the ID %q is kept already", rec.ID)
+		}
 	}
 	// Nothing below fails: the change is written whole.
 	var rec *server.Record
-	if c.Record != nil {
-		r := *c.Record
+	for i, x := range recs {
+		r := *x
 		r.At = us(r.At)
 		r.Before, r.After = or(r.Before, "null"), or(r.After, "null")
 		s.records = append(s.records, r)
-		rec = &r
+		if i == 0 && c.Record != nil {
+			rec = &r
+		}
+	}
+	if b := c.Bundle; b != nil {
+		kept := b.Bundle
+		kept.Adds, kept.Holds = slices.Clone(kept.Adds), slices.Clone(kept.Holds)
+		cutActs(&kept)
+		if b.Archive != nil {
+			s.archives[kept.Digest] = clone(b.Archive)
+		}
+		if b.Forget {
+			delete(s.archives, kept.Digest)
+		}
+		if _, had := s.bundles[kept.Digest]; !had {
+			s.bundleOrder = append(s.bundleOrder, kept.Digest)
+		}
+		s.bundles[kept.Digest] = kept
+		if kept.State == "approved" {
+			for _, v := range kept.Adds {
+				s.approved[server.KindVersion{Kind: v.Kind, Version: v.Version}] = kept.Digest
+			}
+		}
 	}
 	if st := c.Start; st != nil {
 		kept := *st
@@ -165,10 +208,10 @@ func (s *Store) Records(_ context.Context, q server.RecordQuery) ([]server.Line,
 		for i := range s.records {
 			r := s.records[i]
 			switch {
-			case r.What == "kind" && !allowed[server.KindVersion{Kind: r.Kind, Version: r.Version}],
+			case (r.What == "kind" || r.What == "bundle") && !allowed[server.KindVersion{Kind: r.Kind, Version: r.Version}],
 				r.What == "organization" && !q.Organization,
 				q.What != "" && q.What != r.What,
-				q.Kind != "" && (r.What != "kind" || r.Kind != q.Kind),
+				q.Kind != "" && (r.What != "kind" && r.What != "bundle" || r.Kind != q.Kind),
 				q.Person != "" && r.Person != q.Person,
 				!inTime(r.At):
 				continue
@@ -369,4 +412,46 @@ func (s *Store) ForgetDrafts(_ context.Context, before time.Time, limit int) (in
 		delete(s.drafts, [2]string{d.Person, d.ID})
 	}
 	return len(old), nil
+}
+
+// cutActs cuts the times of a bundle to the microsecond, in UTC, as the store keeps them.
+func cutActs(b *server.Bundle) {
+	b.Uploaded.At = us(b.Uploaded.At)
+	for _, a := range []**server.BundleAct{&b.Decided, &b.Hid} {
+		if *a != nil {
+			x := **a
+			x.At = us(x.At)
+			*a = &x
+		}
+	}
+}
+
+// Bundles reads every bundle the store keeps, without their archives, in the order they were kept.
+func (s *Store) Bundles(_ context.Context) ([]server.Bundle, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]server.Bundle, 0, len(s.bundleOrder))
+	for _, d := range s.bundleOrder {
+		b := s.bundles[d]
+		b.Adds, b.Holds = slices.Clone(b.Adds), slices.Clone(b.Holds)
+		out = append(out, b)
+	}
+	slices.SortStableFunc(out, func(a, b server.Bundle) int {
+		if c := a.Uploaded.At.Compare(b.Uploaded.At); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Digest, b.Digest)
+	})
+	return out, nil
+}
+
+// BundleArchive reads a bundle's archive, or ErrNotFound.
+func (s *Store) BundleArchive(_ context.Context, digest string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.archives[digest]
+	if !ok {
+		return nil, server.ErrNotFound
+	}
+	return clone(a), nil
 }

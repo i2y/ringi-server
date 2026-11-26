@@ -25,7 +25,7 @@ func (s *Server) ImportOrganization(ctx context.Context) error {
 	if s.cfg.Organization == nil {
 		return fmt.Errorf("no Config.Organization to read the organization's data from")
 	}
-	d, err := s.cfg.Organization.Read(ctx, s.layout)
+	d, err := s.cfg.Organization.Read(ctx, s.cat().layout)
 	if err != nil {
 		return fmt.Errorf("reading the organization's data: %w", err)
 	}
@@ -282,12 +282,12 @@ func (s *Server) checkOrganization(ctx context.Context, c Call) (Reply, error) {
 	var d *OrgData
 	if archive != nil {
 		source = "upload"
-		d, err = readUpload(archive, s.layout, s.cfg.MaxOrganization)
+		d, err = readUpload(archive, s.cat().layout, s.cfg.MaxOrganization)
 		if errors.Is(err, ErrOrganizationTooLarge) {
 			return Reply{Outcome: TooLarge, Problem: err.Error()}, nil
 		}
 	} else {
-		d, err = s.cfg.Organization.Read(ctx, s.layout)
+		d, err = s.cfg.Organization.Read(ctx, s.cat().layout)
 	}
 	var problems *OrgProblems
 	switch {
@@ -295,7 +295,7 @@ func (s *Server) checkOrganization(ctx context.Context, c Call) (Reply, error) {
 		return refusedData(problems), nil
 	case err != nil:
 		// The source's own error is said as a problem of the data, as at start.
-		return refusedData(&OrgProblems{Problems: []OrgProblem{{At: s.layout.Data, Text: err.Error(), TextJa: "組織のデータを読めませんでした：" + err.Error()}}}), nil
+		return refusedData(&OrgProblems{Problems: []OrgProblem{{At: s.cat().layout.Data, Text: err.Error(), TextJa: "組織のデータを読めませんでした：" + err.Error()}}}), nil
 	}
 	snap, err := s.checked(d)
 	if errors.As(err, &problems) {
@@ -658,7 +658,7 @@ func (s *Server) diffWith(ctx context.Context, latest string, data json.RawMessa
 		return orgDiff{}, err
 	}
 	keys := map[string]string{}
-	for _, m := range s.layout.Masters {
+	for _, m := range s.cat().layout.Masters {
 		keys[m.Name] = m.Key
 	}
 	return diffOrg(&was, &is, s.today(), keys), nil

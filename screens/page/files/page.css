@@ -254,6 +254,14 @@ body:has(> .ringi), body:has(> main > .ringi) { margin: 0; background: #f1f4f9; 
 .ringi .records p { margin: 0.25rem 0 0; }
 .ringi .records td, .ringi .records code { overflow-wrap: anywhere; }
 .ringi .records code { background: var(--tint); padding: 0.05rem 0.3rem; border-radius: 4px; }
+/* A bundle's page: the text the bundle held, under its summary, and the code in the difference's lines and the labels. */
+.ringi details.said { margin: 0.75rem 0; }
+.ringi details.said summary { cursor: pointer; }
+.ringi div.said h3 { font-size: 1.05rem; margin: 0.75rem 0 0.25rem; }
+.ringi div.said h4 { font-size: 0.95rem; margin: 0.75rem 0 0.25rem; }
+.ringi div.said td { overflow-wrap: anywhere; }
+.ringi div.said pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ringi div.said code, .ringi ul.difference code, .ringi label code, .ringi p code { background: var(--tint); padding: 0.05rem 0.3rem; border-radius: 4px; }
 
 @media (max-width: 36rem) {
   .ringi { margin: 0.5rem; padding: 1.1rem 1rem; border-radius: 12px; }

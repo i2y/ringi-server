@@ -14,7 +14,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -39,14 +41,24 @@ type Config struct {
 	Name, Version string
 	// Logger logs what fails (default slog.Default()).
 	Logger *slog.Logger
+	// ChooseEvery is how often the tools of a session Connect started are chosen again, besides when
+	// the server serves other packages: a version that takes effect on a day, or that an
+	// administrator switched, changes them then (default a minute).
+	ChooseEvery time.Duration
 }
 
 // Tools serves the agents' tools of a server's packages.
 type Tools struct {
-	srv  *server.Server
-	cfg  Config
-	log  *slog.Logger
-	pkgs []*pkgDefs
+	srv *server.Server
+	cfg Config
+	log *slog.Logger
+	// cur is the tools of the packages the server serves, read again once it serves others (a bundle
+	// approved: the framework's DESIGN 15); read keeps what was read of each package, under remake.
+	// pkgs are the tools of a Tools made with no server (a test of choose).
+	cur    atomic.Pointer[served]
+	remake sync.Mutex
+	read   map[*server.Package]*pkgDefs
+	pkgs   []*pkgDefs
 	// current answers the version of a kind a new request takes at a time (Server.Current).
 	current func(kind string, at time.Time) (int, bool)
 
@@ -68,28 +80,124 @@ func New(srv *server.Server, cfg Config) (*Tools, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	t := &Tools{srv: srv, cfg: cfg, log: cfg.Logger, current: srv.Current, shared: map[string]*sdkmcp.Server{}}
-	for _, p := range srv.Packages() {
-		d, err := defsOf(p)
-		if err != nil {
-			return nil, err
-		}
-		t.pkgs = append(t.pkgs, d)
+	t := &Tools{srv: srv, cfg: cfg, log: cfg.Logger, current: srv.Current, shared: map[string]*sdkmcp.Server{}, read: map[*server.Package]*pkgDefs{}}
+	changed := srv.PackagesChanged()
+	pkgs, err := t.defsOf(srv.Packages())
+	if err != nil {
+		return nil, err
 	}
+	t.cur.Store(&served{pkgs: pkgs, changed: changed})
+	// A bundle whose tools do not read is refused before the server serves it (the framework's
+	// DESIGN 15.5).
+	srv.AddPackageCheck(func(packages []*server.Package) error {
+		_, err := t.defsOf(packages)
+		return err
+	})
 	return t, nil
+}
+
+// served is the tools of the packages the server serves; changed is closed once it serves others.
+type served struct {
+	pkgs    []*pkgDefs
+	changed <-chan struct{}
+}
+
+// defsOf reads the tools of packages, each once.
+func (t *Tools) defsOf(packages []*server.Package) ([]*pkgDefs, error) {
+	t.remake.Lock()
+	defer t.remake.Unlock()
+	out := make([]*pkgDefs, 0, len(packages))
+	for _, p := range packages {
+		d, ok := t.read[p]
+		if !ok {
+			var err error
+			if d, err = defsOf(p); err != nil {
+				return nil, err
+			}
+			t.read[p] = d
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// packages answers the tools of the packages the server serves now, read again once it serves
+// others. When they do not read (they passed the same check before the server took them), it logs
+// why, and answers the tools it read before.
+func (t *Tools) packages() []*pkgDefs {
+	if t.srv == nil {
+		return t.pkgs
+	}
+	s := t.cur.Load()
+	select {
+	case <-s.changed:
+	default:
+		return s.pkgs
+	}
+	changed := t.srv.PackagesChanged()
+	pkgs, err := t.defsOf(t.srv.Packages())
+	if err != nil {
+		t.log.Error("the tools of the packages the server serves now", "err", err)
+		return s.pkgs
+	}
+	t.cur.Store(&served{pkgs: pkgs, changed: changed})
+	return pkgs
 }
 
 // now answers the time of the server's clock.
 func (t *Tools) now() time.Time { return t.srv.Now() }
 
 // Connect starts a session of one person on a transport of the SDK: every call of the session is
-// done as p. The tools are the ones of the day it starts.
+// done as p. The tools are the ones of now, and they follow the versions in effect as the session
+// goes on: once the server serves other packages (a bundle approved), and every Config.ChooseEvery,
+// the tools are chosen again, and when they change, the session is told
+// (notifications/tools/list_changed).
 func (t *Tools) Connect(ctx context.Context, tr sdkmcp.Transport, p server.Person) (*sdkmcp.ServerSession, error) {
 	if p.ID == "" {
 		return nil, server.ErrNoPerson
 	}
 	who := func(context.Context, *sdkmcp.CallToolRequest) (server.Person, http.Header, error) { return p, nil, nil }
-	return t.newServer(t.choose(t.now()), who).Connect(ctx, tr, nil)
+	c := t.choose(t.now())
+	s := t.newServer(c, who)
+	ss, err := s.Connect(ctx, tr, nil)
+	if err != nil {
+		return nil, err
+	}
+	go t.follow(s, ss, c, who)
+	return ss, nil
+}
+
+// follow keeps a session's tools those of now (Connect), until the session ends.
+func (t *Tools) follow(s *sdkmcp.Server, ss *sdkmcp.ServerSession, c choice, who whoFunc) {
+	done := make(chan struct{})
+	go func() {
+		ss.Wait()
+		close(done)
+	}()
+	every := t.cfg.ChooseEvery
+	if every <= 0 {
+		every = time.Minute
+	}
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		var changed <-chan struct{}
+		if t.srv != nil {
+			changed = t.srv.PackagesChanged()
+		}
+		select {
+		case <-done:
+			return
+		case <-changed:
+		case <-tick.C:
+		}
+		next := t.choose(t.now())
+		if next.key == c.key {
+			continue
+		}
+		t.fill(s, &c, next, who)
+		c = next
+	}
 }
 
 // Serve runs a session of one person on a transport of the SDK (stdio, for trying on one's own
@@ -265,23 +373,56 @@ type whoFunc func(context.Context, *sdkmcp.CallToolRequest) (server.Person, http
 func (t *Tools) newServer(c choice, who whoFunc) *sdkmcp.Server {
 	s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: t.cfg.Name, Version: t.cfg.Version},
 		&sdkmcp.ServerOptions{Instructions: instructions, Logger: t.sdkLog()})
+	t.fill(s, nil, c, who)
+	return s
+}
+
+// fill puts a choice of tools and of the kinds' descriptions on a server of the SDK: all of them,
+// or, given the choice it has (was), the ones that differ, removing those the new one does not have.
+// The SDK tells the sessions of a server whose list changed (notifications/tools/list_changed,
+// notifications/resources/list_changed).
+func (t *Tools) fill(s *sdkmcp.Server, was *choice, c choice, who whoFunc) {
+	var gone, goneKinds []string
+	if was != nil {
+		for name := range was.byName {
+			if c.byName[name] == nil {
+				gone = append(gone, name)
+			}
+		}
+		for _, k := range was.kinds {
+			if !slices.ContainsFunc(c.kinds, func(x *kindDesc) bool { return x.uri() == k.uri() }) {
+				goneKinds = append(goneKinds, k.uri())
+			}
+		}
+		if len(gone) > 0 {
+			s.RemoveTools(gone...)
+		}
+		if len(goneKinds) > 0 {
+			s.RemoveResources(goneKinds...)
+		}
+	}
 	changing := []string{}
 	for _, d := range c.tools {
-		tool := *d.tool
-		s.AddTool(&tool, t.handler(d, who))
 		if d.changes {
 			changing = append(changing, d.name)
 		}
+		if was != nil && was.byName[d.name] == d {
+			continue
+		}
+		tool := *d.tool
+		s.AddTool(&tool, t.handler(d, who))
 	}
 	s.AddTool(checkTool(changing), t.checkHandler(c, who))
 	for _, k := range c.kinds {
+		if was != nil && slices.Contains(was.kinds, k) {
+			continue
+		}
 		r := &sdkmcp.Resource{URI: k.uri(), Name: "types/" + k.name + ".json", Title: k.title, Description: k.description, MIMEType: "application/json"}
 		body := string(k.file)
 		s.AddResource(r, func(context.Context, *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
 			return &sdkmcp.ReadResourceResult{Contents: []*sdkmcp.ResourceContents{{URI: r.URI, MIMEType: "application/json", Text: body}}}, nil
 		})
 	}
-	return s
 }
 
 // sdkLog is the SDK's logger: the warnings and the errors of Config.Logger. The SDK logs each

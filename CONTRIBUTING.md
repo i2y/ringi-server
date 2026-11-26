@@ -22,8 +22,9 @@ function is one check:
 | `Reminded` | that a stage keeps whether its reminder has rung, through a pause and a resume |
 | `Administration` | switches, drafts and imports of the organization's data, the record, and nothing changed or read for one the gate does not allow |
 | `Keeping` | that times are in UTC, that old operations are forgotten in their order, a limit at a time, and that one upload of a key is recorded once |
+| `Bundles` | the bundles of new versions: kept with their archives, records and keys; changed only from the state read; one approved bundle for each version; listed in their order |
 
-The last two need no vectors. The three orders are read a page at a time too.
+The last three need no vectors. The three orders are read a page at a time too.
 
 ```go
 func TestConformance(t *testing.T) {
@@ -47,6 +48,7 @@ func TestConformance(t *testing.T) {
 	conformance.Reminded(t, s)
 	conformance.Administration(t, s)
 	conformance.Keeping(t, s)
+	conformance.Bundles(t, s)
 }
 ```
 

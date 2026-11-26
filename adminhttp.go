@@ -43,6 +43,15 @@ func (s *Server) serveAdmin(w http.ResponseWriter, r *http.Request, segs []strin
 		switch {
 		case mt == "application/zip" && c.Operation == "admin_check_organization":
 			c.Upload = http.MaxBytesReader(w, r.Body, s.cfg.MaxOrganization)
+		case c.Operation == "admin_upload_bundle":
+			if mt != "application/zip" {
+				writeError(w, http.StatusUnsupportedMediaType, "a bundle is sent as application/zip")
+				return
+			}
+			c.Upload = http.MaxBytesReader(w, r.Body, s.maxBundle())
+			if sig := r.Header.Get(BundleSignatureHeader); sig != "" {
+				c.Signature = []byte(sig)
+			}
 		case mt != "application/json":
 			text := "a body is sent as application/json"
 			if c.Operation == "admin_check_organization" {
@@ -101,8 +110,37 @@ func adminRoute(segs []string) (c Call, method string, ok bool) {
 		return Call{Operation: "admin_list_records"}, http.MethodGet, true
 	case path == "records.csv":
 		return Call{Operation: "admin_records_csv"}, http.MethodGet, true
+	case path == "bundles":
+		return Call{Operation: "admin_list_bundles"}, http.MethodGet, true
+	case path == "bundles/uploads":
+		return Call{Operation: "admin_upload_bundle"}, http.MethodPost, true
+	case len(segs) == 3 && segs[1] == "bundles" && digestFits(segs[2]):
+		return Call{Operation: "admin_get_bundle", Bundle: segs[2]}, http.MethodGet, true
+	case len(segs) == 4 && segs[1] == "bundles" && digestFits(segs[2]):
+		switch segs[3] {
+		case "approve", "decline", "hide":
+			return Call{Operation: "admin_" + segs[3] + "_bundle", Bundle: segs[2]}, http.MethodPost, true
+		}
 	}
 	return c, "", false
+}
+
+// BundleSignatureHeader is the header an upload of a bundle sends its signature in: the content of
+// the file `ringi-bundle sign` writes (DESIGN 15.5).
+const BundleSignatureHeader = "Bundle-Signature"
+
+// digestFits reports whether a segment of a path is written as a bundle's digest is: 64 digits of
+// lowercase hexadecimal.
+func digestFits(v string) bool {
+	if len(v) != 64 {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if !('0' <= v[i] && v[i] <= '9' || 'a' <= v[i] && v[i] <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // writeAdmin writes the reply of an administration's operation.

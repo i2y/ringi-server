@@ -131,10 +131,15 @@ func answerProblem(err error) error {
 // the contract) is the first package's. A package's path or component that is the framework's own,
 // and a place two packages write differently where no kind owns it, is an error (joinJSON).
 func (s *Server) OpenAPI() ([]byte, error) {
+	return openAPIOf(s.cat().packages)
+}
+
+// openAPIOf answers the description of the whole API of the packages, as OpenAPI answers it.
+func openAPIOf(packages []*Package) ([]byte, error) {
 	// the package of each kind's newest version
 	newest := map[string]int{}
 	version := map[string]int{}
-	for i, p := range s.cfg.Packages {
+	for i, p := range packages {
 		for _, k := range p.kinds {
 			if v, ok := version[k.Name]; !ok || k.Version > v {
 				newest[k.Name], version[k.Name] = i, k.Version
@@ -161,7 +166,7 @@ func (s *Server) OpenAPI() ([]byte, error) {
 	var head map[string]any
 	paths := map[string]any{}
 	parts := map[string]map[string]any{}
-	for i, p := range s.cfg.Packages {
+	for i, p := range packages {
 		doc, err := readJSON(p.files, "openapi.json")
 		if err != nil {
 			return nil, err

@@ -148,7 +148,13 @@ request) may be requested from 2026-12-01.", 「leave（休暇の申請）は202
 and nothing of a kind none of whose versions is to start. The other tools come from the last package
 that has them, as the framework's operations do. A call on a ticket of an older version still goes:
 the framework reads its body against the version the ticket keeps. Over HTTP the list is chosen for
-each request; a session of one person keeps the list it started with (11).
+each request. A session of one person (`Connect`) follows it: its list is chosen again once the
+server serves other packages (a bundle approved, the framework's DESIGN 15) and every
+`Config.ChooseEvery` (a minute by default), for a version that takes effect on a day or an
+administrator's switch, and when it differs, the tools that changed are removed or added, and the SDK
+tells the session (`notifications/tools/list_changed`). A package's tools are read once, and those of
+a bundle before the server serves it: a bundle whose tools do not read is refused
+(`Server.AddPackageCheck`).
 
 ## 4. Answers
 
@@ -467,10 +473,4 @@ The example command and the tests, in the examples' module, use besides:
 
 ## 11. Later
 
-- A session of one person kept open across the day a new version takes effect, or across a switch
-  that leaves a kind with no version in effect, keeps the earlier list (a tool no longer offered
-  answers not found, with the day when one is to start); `notifications/tools/list_changed` would
-  tell it. Over HTTP the list is chosen for each request, so only such a session keeps an earlier
-  one: to tell it, a middleware that receives each request would choose the list again, and add or
-  remove the session's tools when it changed (the SDK then sends `list_changed`).
 - Prompts (the client's commands) are not served.

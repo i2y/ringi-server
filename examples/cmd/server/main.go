@@ -12,7 +12,9 @@
 // What is the examples' own is here: their packages (the five examples, and the second version of
 // the leave requests, which takes effect on 2027-04-01 or when an administrator switches it), gate,
 // organization, notices, flows, agents and books. With -db, the books are in the same PostgreSQL as
-// the tickets (the schemas budget and leave); without it, they answer done to every call.
+// the tickets (the schemas budget and leave); without it, they answer done to every call. The third
+// version of the leave requests is not built in: it is the bundle bundles/leave-v3.zip, which an
+// administrator uploads on the pages, or which -bundles bundles reads as the server starts.
 //
 // It is for trying the framework, not for production: the organization, the masters and the
 // people are the examples' own, and fictional.
@@ -20,6 +22,7 @@
 //	go run ./cmd/server                      # the store and the files in memory; the books answer done
 //	go run ./cmd/server -dev-login           # then open http://localhost:8080/ in a browser
 //	go run ./cmd/server -files ./files       # the files in a directory
+//	go run ./cmd/server -bundles bundles     # with the leave requests' third version, from its bundle
 //	go run ./cmd/server -db postgres://...   # the store, the files and the books in PostgreSQL
 package main
 

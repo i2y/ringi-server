@@ -77,6 +77,10 @@ err = st.Serve(ctx, cfg, nil)
 err = tools.Serve(ctx, &sdkmcp.StdioTransport{}, server.Person{ID: "e1201"})
 ```
 
+The session's tools follow the versions in effect: once the server serves a bundle approved while it
+runs, and every minute (`Config.ChooseEvery`), they are chosen again, and the client is told when
+they change (`notifications/tools/list_changed`).
+
 ### What a tool answers
 
 - A tool answers a sentence, and what the sentence is about, such as a ticket or a list, as JSON

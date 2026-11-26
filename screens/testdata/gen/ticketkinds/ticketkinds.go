@@ -94,7 +94,8 @@ type keyAbsent struct{}
 // wrongJSON is JSON that is no value of the type of its place (kaname's DESIGN 16.4): the place,
 // what is there and what it must be; kind 1 where the text is no value of JSON, 2 where a whole
 // number is outside int64, 3 where the date of a field of a rule's element is no day of the
-// calendar (outside its range, which needed is), 4 where the key is missing.
+// calendar (outside its range, which needed is), 4 where the key is missing, 5 where an entry's
+// argument nests deeper than it reads.
 type wrongJSON struct {
 	path   string
 	given  string
@@ -107,6 +108,9 @@ type wrongJSON struct {
 // string written with a lone surrogate (`"\ud800"`), which Go's reader reads as U+FFFD, holds the
 // surrogate, as a string of TypeScript or Python does, for the function's check to refuse.
 func jsonValue(raw json.RawMessage, at string) any {
+	if deepJSON(raw) {
+		panic(wrongJSON{path: at, kind: 5})
+	}
 	if !utf8.Valid(raw) {
 		panic(wrongJSON{path: at, kind: 1})
 	}
@@ -333,6 +337,8 @@ func wrongSaid(fun string, w wrongJSON) string {
 		return "The argument `" + w.path + "` of `" + fun + "` is " + w.given + ", outside its range " + w.needed
 	case 4:
 		return "The argument `" + w.path + "` of `" + fun + "` is missing, and must " + w.needed
+	case 5:
+		return "The argument `" + w.path + "` of `" + fun + "` nests deeper than 512"
 	}
 	return "The argument `" + w.path + "` of `" + fun + "` is " + w.given + ", and must " + w.needed
 }
@@ -481,6 +487,31 @@ func allDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+// deepJSON is whether a JSON text nests deeper than an entry reads (512): its arrays and
+// objects, counted outside its strings.
+func deepJSON(raw []byte) bool {
+	depth, inString := 0, false
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case inString && c == '\\':
+			i++
+		case inString:
+			inString = c != '"'
+		case c == '"':
+			inString = true
+		case c == '[' || c == '{':
+			depth++
+			if depth > 512 {
+				return true
+			}
+		case (c == ']' || c == '}') && depth > 0:
+			depth--
+		}
+	}
+	return false
 }
 
 func c2(x any, at string) string {

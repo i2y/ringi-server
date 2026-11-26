@@ -23,6 +23,8 @@ The flags of a server that uses the package `serve`, as the one `ritsu ringi ini
 | `-session-keys` | The keys of the cookies of the sign-in: the base64 of 32 random bytes each, the newest first, with commas between them. The environment variable `RINGI_SESSION_KEYS` is better |
 | `-tls-cert`, `-tls-key` | The certificate for https, and its key |
 | `-api-keys` | A file of the keys programs call the API with: a line for each key, with the ID of the person it stands for, the SHA-256 of the key, and their roles if they have any, separated by commas ([Call it from a program](api.md#call-it-from-a-program)). It is read when the server starts |
+| `-bundles` | A directory of bundles to read as the server starts: each `<name>.zip`, with its signature `<name>.zip.sig` when the server takes only signed ones. Each is checked as an upload is, and served ([Add a version to a running server](bundles.md#4-read-bundles-as-the-server-starts)) |
+| `-bundle-keys` | A file of the public keys (PEM) bundles are signed with. The server then takes only the bundles one of them signed ([Sign bundles](signing.md)) |
 
 A server made with `--temporal` has `-temporal` too, the address of Temporal (`localhost:7233` when it is not given).
 
@@ -43,6 +45,7 @@ values below can be changed too. Left `0` or empty, they are as in the table.
 | `UploadsKept` | How long an attachment no request holds is kept | 7 days |
 | `OperationsKept` | How long the number of an operation and its answer are kept | 30 days |
 | `MaxOrganization` | The largest upload of the organization's data | 64 MiB |
+| `MaxBundle` | The largest bundle, as uploaded, and its files once uncompressed | 64 MiB |
 | `DraftsKept` | How long the organization's data that was only checked is kept | a day |
 | `ImportsPerDay` | How often new data of the organization is imported in 24 hours | 20 |
 | `SweepEvery` | How often what is past its time is deleted | an hour |

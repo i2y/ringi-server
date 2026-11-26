@@ -309,7 +309,7 @@ const OpenAPIPath = "/openapi.json"
 // openAPI serves the description of the whole API.
 func (h *Handler) openAPI(w http.ResponseWriter, r *http.Request, _ server.Person) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(h.api)
+	w.Write(h.packs().api)
 }
 
 // ownFile serves a file to the person who uploaded it.

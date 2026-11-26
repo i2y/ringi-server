@@ -269,7 +269,8 @@ type choice struct {
 func (t *Tools) choose(now time.Time) choice {
 	versions := map[string][]*kindDesc{}
 	of := map[*kindDesc]int{}
-	for i, p := range t.pkgs {
+	pkgs := t.packages()
+	for i, p := range pkgs {
 		for _, k := range p.kinds {
 			versions[k.name] = append(versions[k.name], k)
 			of[k] = i
@@ -308,7 +309,7 @@ func (t *Tools) choose(now time.Time) choice {
 	}
 	c.key = strings.Join(parts, ",")
 	sort.Slice(c.kinds, func(i, j int) bool { return c.kinds[i].name < c.kinds[j].name })
-	for i, p := range t.pkgs {
+	for i, p := range pkgs {
 		for _, d := range p.tools {
 			if d.kind != "" && (pick[d.kind] != i || !offered[d.kind] && d.newRequest()) {
 				continue

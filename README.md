@@ -98,7 +98,11 @@ Some things it cannot do:
 2. ritsu checks that they fit together and leave nothing out, and makes Go code that decides how each
    request goes on.
 3. ringi-server runs that code as a server. The server does not decide whom a request goes to next, or
-   when it ends: it asks the code that was made.
+   when it ends: it asks the code that was made. ritsu can also build that code into one module of
+   WebAssembly, which the server runs in its place ([Run the request types as Wasm](docs/embedding.md#4-run-the-request-types-as-wasm)).
+   In that form a new version reaches a running server as one file, a bundle: an administrator uploads
+   it, the server checks it, and another administrator approves it
+   ([Add a version to a running server](docs/bundles.md)).
 
 For real use it needs PostgreSQL and your organization's sign-in (a service of OpenID Connect). The server
 is one executable file, and you can run as many of it as you like. Temporal is needed only when it runs
@@ -125,7 +129,7 @@ it. The requests are in memory, and are gone when the server stops.
 | Start on your own organization's requests | [1. Run it, and approve a request](docs/start.md), [2. Change the request type](docs/change.md), [3. Send the notices by mail](docs/mail.md) |
 | Know how it works, and what its words mean | [How it works, and its words](docs/concepts.md) |
 | Tell your staff how to use it | [Making a request](docs/use/requester.md), [Approving a request](docs/use/approver.md), [Administering](docs/use/admin.md) |
-| Add request types, or change them | [Add and change request types](docs/types.md), [Choose from a list in a form](docs/lists.md) |
+| Add request types, or change them | [Add and change request types](docs/types.md), [Add a version to a running server](docs/bundles.md), [Choose from a list in a form](docs/lists.md) |
 | Put in your own people, business days and permissions | [Prepare the organization's data](docs/organization.md), [Set the business days](docs/calendar.md), [Decide who may do what](docs/permissions.md) |
 | Connect your sign-in, notices, budgets and the work after an approval | [Connect the sign-in](docs/sign-in.md), [Change how notices are sent](docs/notices.md), [Check budgets and days of leave](docs/books.md), [Start work after an approval](docs/flows.md) |
 | Use it from screens, programs and agents of your own | [Call the API from a program](docs/api.md), [Let agents make and approve requests](docs/agents.md), [Have an agent check requests](docs/agent-steps.md), [Make screens of your own](docs/screens.md), [Embed it in a program of your own](docs/embedding.md) |

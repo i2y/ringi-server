@@ -145,7 +145,7 @@ type ticketCounts struct {
 func (s *Server) adminKinds(ctx context.Context, p Person) (Reply, error) {
 	now := s.now()
 	out := []kindAdmin{}
-	for _, name := range s.order {
+	for _, name := range s.cat().order {
 		ka, any, err := s.kindAdmin(ctx, p, name, now)
 		if err != nil {
 			return Reply{}, err
@@ -167,7 +167,7 @@ func (s *Server) adminKinds(ctx context.Context, p Person) (Reply, error) {
 // kindAdmin answers a kind as the list of kinds has it, but for what mayRead asks and readKinds
 // reads, and whether the person may switch one of its versions.
 func (s *Server) kindAdmin(ctx context.Context, p Person, name string, now time.Time) (kindAdmin, bool, error) {
-	ks := s.kinds[name]
+	ks := s.cat().kinds[name]
 	ka := kindAdmin{Name: name, Title: ks[len(ks)-1].desc.Title, Versions: []versionAdmin{}}
 	if owner, ok := s.kindOwner(name, now); ok {
 		ka.Owner = none(owner)
@@ -361,7 +361,7 @@ func (s *Server) switchKind(ctx context.Context, c Call) (Reply, error) {
 	// switch only if none of the starts it was decided by changed since (Change.Kept).
 	starts := map[int]Start{}
 	var read []Start
-	for _, v := range s.kinds[k.Name] {
+	for _, v := range s.cat().kinds[k.Name] {
 		st := s.startOf(v)
 		starts[v.Version] = st
 		if v.Version != k.Version {

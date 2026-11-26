@@ -175,6 +175,12 @@ curl -s localhost:8080/openapi.json -H 'X-Person: s1201' | jq -r '.paths | keys[
 ```
 
 ```
+/admin/bundles
+/admin/bundles/uploads
+/admin/bundles/{digest}
+/admin/bundles/{digest}/approve
+/admin/bundles/{digest}/decline
+/admin/bundles/{digest}/hide
 /admin/kinds
 /admin/kinds/{kind}/versions/{version}
 /admin/organization
@@ -320,6 +326,7 @@ What the pages for administrators do, the API does too. Act as someone with a ro
 | Send the organization's data to be checked, and read what came of it | `POST /admin/organization/drafts`, `GET /admin/organization/drafts/{id}` |
 | Import the data that was checked | `POST /admin/organization/imports` |
 | Read the record | `GET /admin/records`, `GET /admin/records.csv` |
+| Upload a bundle, read it, and approve, decline or hide it ([Add a version to a running server](bundles.md#3-upload-it-through-the-api)) | `POST /admin/bundles/uploads`, `GET /admin/bundles`, `GET /admin/bundles/{digest}`, `POST /admin/bundles/{digest}/approve`, `…/decline`, `…/hide` |
 
 Stop the purchase request. `number` is `start.number` of the version in the list. If someone switched it before
 you, the numbers differ, and it is not taken.

@@ -119,6 +119,21 @@ action read_audit
   principal Staff
   resource RequestType
 
+action upload_bundle
+  description "Upload a bundle that adds a version of a request type, or a new request type, to the running server: another administrator decides it"
+  principal Staff
+  resource RequestType
+
+action approve_bundle
+  description "Approve or decline a bundle another administrator uploaded: once approved, the server serves the versions it adds"
+  principal Staff
+  resource RequestType
+
+action add_request_type
+  description "Approve a bundle that adds a request type the server does not have"
+  principal Staff
+  resource RequestType
+
 action import_organization
   description "Check a new version of the organization's data, and import it"
   principal Staff
@@ -189,10 +204,16 @@ permit admins_read_their_own_departments
   action read_audit
   when resource.owner is principal.department
 
+permit admins_bundle_their_own_departments
+  description "An administrator uploads and decides the bundles of the request types their department owns"
+  principal in workflow_admin
+  action upload_bundle, approve_bundle
+  when resource.owner is principal.department
+
 permit system_admins_administer_everything
-  description "A system administrator switches every request type, imports the organization's data, and reads every record"
+  description "A system administrator switches every request type, uploads and decides every bundle, adds request types, imports the organization's data, and reads every record"
   principal in system_admin
-  action change_request_type, read_audit, import_organization, read_organization_audit
+  action change_request_type, upload_bundle, approve_bundle, add_request_type, read_audit, import_organization, read_organization_audit
 
 permit auditors_read_every_record
   description "An auditor reads the record of every request type and of the organization"
@@ -227,6 +248,19 @@ expect deny admins_never_read_other_departments
   unless principal in auditor
   unless resource.owner is principal.department
 
+expect deny admins_never_bundle_other_departments
+  description "An administrator of a department who is no system administrator never uploads or decides a bundle of a request type another department owns"
+  principal in workflow_admin
+  action upload_bundle, approve_bundle
+  unless principal in system_admin
+  unless resource.owner is principal.department
+
+expect deny only_system_admins_add_request_types
+  description "No one but a system administrator approves a bundle that adds a request type"
+  principal in staff
+  action add_request_type
+  unless principal in system_admin
+
 expect deny only_system_admins_import_the_organization
   description "No one but a system administrator imports the organization's data"
   principal in staff
@@ -234,9 +268,9 @@ expect deny only_system_admins_import_the_organization
   unless principal in system_admin
 
 expect deny auditors_change_nothing
-  description "An auditor with no role of an administrator switches no request type, imports nothing, adds no approver and hands no one's part over"
+  description "An auditor with no role of an administrator switches no request type, uploads or decides no bundle, imports nothing, adds no approver and hands no one's part over"
   principal in auditor
-  action change_request_type, import_organization, add_approver, hand_over
+  action change_request_type, upload_bundle, approve_bundle, add_request_type, import_organization, add_approver, hand_over
   unless principal in system_admin
   unless principal in workflow_admin
 

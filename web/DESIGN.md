@@ -234,6 +234,15 @@ in the order of `Config.Packages`) with their kinds, the ID, and what to do: to 
 again with a catalog ID of its own (`ritsu gen --catalog`), in English and in Japanese
 (`CatalogConflict.In`). Packages whose screens give one ID to the same files are taken.
 
+A bundle approved while the server runs (the core's DESIGN 15) is a package too, and its catalog,
+functions and pages' files are served at their `{files}` address, from the bundle's archive. The
+handler keeps what it made of the packages as one value, made again once the server serves others
+(`Server.PackagesChanged`); a request reads it once and keeps it to its end. A bundle's package is
+checked before the server serves it (`Server.AddPackageCheck`): one whose screens give another
+package's catalog ID to other files is refused, with the same `*CatalogConflict`, among the bundle's
+problems. So each bundle is made with a catalog ID of its own, as the examples' `regen.sh` makes
+their bundle with `--catalog …/a2ui/v3/catalog.json`.
+
 ## 3. Guards
 
 Every route, the API's too:
@@ -581,7 +590,7 @@ their posts as the person.
 | form of a ticket | as the screen's, with the pickers and a link back to the card |
 | history | as the screen's, with a link back to the card and the zone of its times (`Server.Zone`), the card's: the examples' `TestCardAndHistorySayOneTime` finds an approval at one time on both, in both languages |
 | lists | `page.List` of the tickets that wait for the person (`Server.Waiting`), of their own requests (`Server.Mine`), or of all the requests of a kind they see for the kind (`Server.Tickets`; its heading says so, `page.ListAll`), the newest first, 50 a page, with a link to the next page only when more follow (the handler reads one ticket more than the page to know; `?before=` the page's last ticket, section 2.1); each line a link to the ticket's card, with the columns of the A2UI list (one's own requests name who made a request for its requester, `made_by`, where the others name the requester) and those of the values the form works out; and a link back to the start page |
-| the administration's | `Pages.AdminPage` of one of five (`page.Admin.What`: the parts, the kinds, the organization, a draft, the record), filled with the answers of the administration's operations (`Server.Do`, `Via: "pages"`): the core's DESIGN 13.7 says what each shows and what its post does. A problem a person can make with a form is said in the page's language (`page.AdminSays`) before the operation is sent. The start page links to them when `Server.Administers` says so, and each but the first links back to the first |
+| the administration's | `Pages.AdminPage` of one of seven (`page.Admin.What`: the parts, the kinds, the bundles, a bundle, the organization, a draft, the record), filled with the answers of the administration's operations (`Server.Do`, `Via: "pages"`): the core's DESIGN 13.7 says what each shows and what its post does. A problem a person can make with a form is said in the page's language (`page.AdminSays`) before the operation is sent. The start page links to them when `Server.Administers` says so, and each but the first links back to the first |
 
 A page of a ticket the person may not see is the notice "Not found" (404), as in the API. A new
 request's form is that notice when no version of the kind is in effect, or the person may make it

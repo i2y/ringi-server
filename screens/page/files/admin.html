@@ -14,19 +14,108 @@
 <p>{{.W.AdminProblems}}</p>
 <ul>{{range .Problems}}<li><bdi>{{.At}}</bdi>: <bdi>{{.Text}}</bdi></li>{{end}}</ul>
 {{- with .MoreProblems}}<p>{{$.W.AdminMoreProblems .}}</p>{{end}}
-{{- if .Stopped}}<p>{{$.W.AdminStopped}}</p>{{end}}
+{{- if .Stopped}}<p>{{spans $.W.AdminStopped}}</p>{{end}}
 {{- end}}
 </div>
 {{- end}}
 {{- with .Home}}
-{{- if or .Kinds .Organization .Records}}
+{{- if or .Kinds .Organization .Records .Bundles}}
 <nav class="entries admin-parts" aria-labelledby="ringi-title"><ul>
 {{- with .Kinds}}<li><a href="{{.}}">{{$.W.AdminKindsLink}}</a></li>{{end}}
+{{- with .Bundles}}<li><a href="{{.}}">{{$.W.AdminBundlesLink}}</a></li>{{end}}
 {{- with .Organization}}<li><a href="{{.}}">{{$.W.AdminOrgLink}}</a></li>{{end}}
 {{- with .Records}}<li><a href="{{.}}">{{$.W.AdminRecordsLink}}</a></li>{{end}}
 </ul></nav>
 {{- else}}
 <p class="empty">{{$.W.AdminNone}}</p>
+{{- end}}
+{{- end}}
+{{- with .Bundles}}
+{{- if .Upload}}
+<section class="upload" aria-labelledby="upload-title">
+<h2 id="upload-title">{{$.W.AdminUploadBundle}}</h2>
+{{- if .Signed}}<p class="notice">{{$.W.AdminSignedOnly}}</p>{{end}}
+<form class="admin upload" method="post" action="{{.Upload}}" enctype="multipart/form-data">
+<input type="hidden" name="_at" value="{{$.At}}" />
+<div class="field"><label for="bundle-file">{{spans $.W.AdminBundleFile}}</label><p class="hint" id="bundle-file-hint">{{$.W.AdminBundleFileHint (size .MaxUpload)}}</p><input type="file" id="bundle-file" name="bundle" accept=".zip,application/zip" aria-describedby="bundle-file-hint" /></div>
+{{- if .Signed}}
+<div class="field"><label for="bundle-sig">{{spans $.W.AdminSignatureFile}}</label><input type="file" id="bundle-sig" name="signature" accept=".sig" /></div>
+{{- end}}
+<div class="buttons"><button type="submit" class="primary">{{$.W.AdminUploadAndCheck}}</button></div>
+</form>
+</section>
+{{- end}}
+{{- if .List}}
+<div class="scroll"><table class="list bundles">
+<thead><tr><th scope="col">{{$.W.AdminBundle}}</th><th scope="col">{{$.W.AdminAdds}}</th><th scope="col">{{$.W.AdminState}}</th><th scope="col">{{$.W.AdminUploaded}}</th></tr></thead>
+<tbody>
+{{- range .List}}
+<tr><th scope="row"><a href="{{.Link}}"><code>{{.Short}}</code></a></th><td>{{range $i, $v := .Adds}}{{if $i}}{{$.W.AdminSep}}{{end}}<bdi>{{$.W.AdminVersionOf $v.Name $v.Version $v.New}}</bdi>{{end}}</td><td>{{$.W.AdminBundleState .State .Hidden}}</td><td>{{.UploadedAt}}{{if .UploadedBy}} <bdi>{{.UploadedBy}}</bdi>{{end}}</td></tr>
+{{- end}}
+</tbody>
+</table></div>
+{{- else}}
+<p class="empty">{{$.W.AdminNoBundles}}</p>
+{{- end}}
+<p class="more"><a href="{{.Toggle}}">{{if .Hidden}}{{$.W.AdminLeaveHidden}}{{else}}{{$.W.AdminShowHidden}}{{end}}</a></p>
+{{- end}}
+{{- with .Bundle}}
+<dl class="facts"><div><dt>{{$.W.AdminState}}</dt><dd>{{$.W.AdminBundleState .State .Hidden}}</dd></div><div><dt>{{$.W.AdminDigest}}</dt><dd><code class="digest">{{.Digest}}</code></dd></div><div><dt>{{$.W.AdminReceived}}</dt><dd>{{$.W.AdminReceivedWords .Source}}</dd></div><div><dt>{{$.W.AdminUploaded}}</dt><dd>{{.UploadedAt}}{{if .UploadedBy}} <bdi>{{.UploadedBy}}</bdi>{{end}}</dd></div>{{if .DecidedAt}}<div><dt>{{$.W.AdminDecided}}</dt><dd>{{.DecidedAt}}{{if .DecidedBy}} <bdi>{{.DecidedBy}}</bdi>{{end}}{{if .Why}}<br /><bdi>{{.Why}}</bdi>{{end}}</dd></div>{{end}}{{if .HidAt}}<div><dt>{{$.W.AdminHiddenBy}}</dt><dd>{{.HidAt}}{{if .HidBy}} <bdi>{{.HidBy}}</bdi>{{end}}{{if .HidWhy}}<br /><bdi>{{.HidWhy}}</bdi>{{end}}</dd></div>{{end}}<div><dt>{{$.W.AdminSize}}</dt><dd>{{size .Size}}</dd></div><div><dt>{{$.W.AdminSignature}}</dt><dd>{{$.W.AdminSignedWords .Signed}}</dd></div><div><dt>{{$.W.AdminChecks}}</dt><dd>{{$.W.AdminChecksWords .Vectors .Worked}}</dd></div></dl>
+{{- if .Forgotten}}
+<p class="notice">{{$.W.AdminForgotten}}</p>
+{{- end}}
+{{- range $ki, $k := .Kinds}}
+<section class="kind{{if $k.APIChanges}} api-changes{{end}}" aria-labelledby="added-{{$ki}}">
+<h2 id="added-{{$ki}}"><bdi>{{$k.Title}}</bdi> (<bdi>{{$.W.AdminVersionOf $k.Name $k.Version $k.New}}</bdi>)</h2>
+<dl class="facts"><div><dt>{{$.W.AdminOwner}}</dt><dd>{{if $k.Owner}}<bdi>{{$k.Owner}}</bdi>{{else}}{{$.W.AdminNotOwned}}{{end}}</dd></div><div><dt>{{$.W.AdminUsable}}</dt><dd>{{if $k.From}}{{$k.From}}{{else}}{{$.W.AdminNoBound}}{{end}} – {{if $k.Through}}{{$k.Through}}{{else}}{{$.W.AdminNoBound}}{{end}}</dd></div><div><dt>{{$.W.AdminStart}}</dt><dd>{{$.W.AdminStartsWords $k.StartsDay}}</dd></div></dl>
+<p>{{$.W.AdminAgainst $k.Against $k.New}}</p>
+{{- if $k.Lines}}
+<ul class="difference">{{range $k.Lines}}<li{{if .API}} class="api"{{end}}><span class="section">{{$.W.AdminSection .Section}}</span>: <bdi>{{spans .Text}}</bdi>{{if .API}} <strong class="api">{{$.W.AdminAPILine}}</strong>{{end}}</li>{{end}}</ul>
+{{- else if not $k.New}}
+<p class="empty">{{$.W.AdminNoDifference}}</p>
+{{- end}}
+{{- if $k.Said}}
+<details class="said"><summary>{{spans ($.W.AdminSaid $k.SaidFrom)}}</summary><div class="said">
+{{- range $k.SaidBlocks}}
+{{- if eq .Heading 1}}<h3>{{spans .Text}}</h3>
+{{- else if .Heading}}<h4>{{spans .Text}}</h4>
+{{- else if .Head}}<div class="scroll"><table class="list"><thead><tr>{{range .Head}}<th scope="col">{{spans .}}</th>{{end}}</tr></thead><tbody>{{range .Rows}}<tr>{{range .}}<td>{{spans .}}</td>{{end}}</tr>{{end}}</tbody></table></div>
+{{- else if .Items}}<ul>{{range .Items}}<li>{{spans .}}</li>{{end}}</ul>
+{{- else if .Pre}}<pre>{{.Pre}}</pre>
+{{- else}}<p>{{spans .Text}}</p>
+{{- end}}
+{{- end}}
+</div></details>
+{{- end}}
+</section>
+{{- end}}
+{{- if .Holds}}
+<p>{{$.W.AdminHolds}} {{range $i, $v := .Holds}}{{if $i}}{{$.W.AdminSep}}{{end}}<bdi>{{$.W.AdminVersionOf $v.Name $v.Version false}}</bdi>{{end}}</p>
+{{- end}}
+{{- if .Uploader}}
+<p class="notice">{{$.W.AdminUploader}}</p>
+{{- end}}
+{{- if .MayDecide}}
+<form class="admin decide" method="post" action="{{.Action}}" aria-labelledby="decide-title">
+<h2 id="decide-title">{{$.W.AdminDecide}}</h2>
+<input type="hidden" name="_at" value="{{$.At}}" />
+<input type="hidden" name="difference" value="{{.Difference}}" />
+{{- if .APIChanges}}
+<p class="notice" id="api-changes">{{$.W.AdminAPIChanges}}</p>
+<div class="field check"><input type="checkbox" id="api-changes-yes" name="api_changes" value="yes" aria-describedby="api-changes" /> <label for="api-changes-yes">{{$.W.AdminAPIChangesYes}}</label></div>
+{{- end}}
+<div class="field"><label for="decide-reason">{{$.W.AdminReason}}</label><p class="hint" id="decide-reason-hint">{{$.W.AdminReasonHint}}</p><textarea id="decide-reason" name="reason" maxlength="500" rows="2" aria-describedby="decide-reason-hint"></textarea></div>
+<div class="buttons"><button type="submit" name="_do" value="approve" class="primary">{{$.W.AdminApprove}}</button> <button type="submit" name="_do" value="decline">{{$.W.AdminDecline}}</button></div>
+</form>
+{{- end}}
+{{- if .MayHide}}
+<form class="admin hide" method="post" action="{{.Action}}" aria-labelledby="hide-title">
+<h2 id="hide-title">{{$.W.AdminHideBundle}}</h2>
+<input type="hidden" name="_at" value="{{$.At}}" />
+<p class="hint" id="hide-hint">{{$.W.AdminHideHint .State}}</p>
+<div class="field"><label for="hide-reason">{{$.W.AdminReason}}</label><textarea id="hide-reason" name="reason" maxlength="500" rows="2" aria-describedby="hide-hint"></textarea></div>
+<div class="buttons"><button type="submit" name="_do" value="hide">{{$.W.AdminHide}}</button></div>
+</form>
 {{- end}}
 {{- end}}
 {{- if eq .What "admin-kinds"}}
@@ -135,7 +224,7 @@
 <div class="field"><label for="f-from">{{$.W.AdminFromDay}}</label><input type="date" id="f-from" name="from" value="{{.From}}" /></div>
 <div class="field"><label for="f-to">{{$.W.AdminToDay}}</label><input type="date" id="f-to" name="to" value="{{.To}}" /></div>
 <div class="field"><label for="f-kind">{{$.W.AdminKind}}</label><select id="f-kind" name="kind"><option value="">{{$.W.AdminAny}}</option>{{range .Kinds}}<option value="{{.}}"{{if eq . $.Records.Kind}} selected="selected"{{end}}>{{.}}</option>{{end}}</select></div>
-<div class="field"><label for="f-what">{{$.W.AdminWhat}}</label><select id="f-what" name="what"><option value="">{{$.W.AdminAny}}</option>{{range $w := (list "move" "kind" "organization")}}<option value="{{$w}}"{{if eq $w $.Records.What}} selected="selected"{{end}}>{{$.W.AdminWhatWords $w}}</option>{{end}}</select></div>
+<div class="field"><label for="f-what">{{$.W.AdminWhat}}</label><select id="f-what" name="what"><option value="">{{$.W.AdminAny}}</option>{{range $w := (list "move" "kind" "bundle" "organization")}}<option value="{{$w}}"{{if eq $w $.Records.What}} selected="selected"{{end}}>{{$.W.AdminWhatWords $w}}</option>{{end}}</select></div>
 <div class="field"><label for="f-person">{{$.W.AdminPerson}}</label><input type="text" id="f-person" name="person" value="{{.Person}}" autocomplete="off" spellcheck="false" /></div>
 <div class="field"><label for="f-ticket">{{$.W.AdminTicket}}</label><input type="text" id="f-ticket" name="ticket" value="{{.Ticket}}" autocomplete="off" spellcheck="false" /></div>
 <div class="buttons"><button type="submit" class="primary">{{$.W.AdminFilter}}</button></div>

@@ -31,13 +31,13 @@ func TestOptionalMasterColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.layout.Masters) != 1 || !s.layout.Masters[0].Optional["note"] || s.layout.Masters[0].Optional["label"] {
-		t.Fatalf("the layout of the master: %+v", s.layout.Masters)
+	if len(s.cat().layout.Masters) != 1 || !s.cat().layout.Masters[0].Optional["note"] || s.cat().layout.Masters[0].Optional["label"] {
+		t.Fatalf("the layout of the master: %+v", s.cat().layout.Masters)
 	}
 	read := func(accounts string) (*OrgData, error) {
 		files := orgFiles()
 		files["masters/accounts.csv"] = orgFile(accounts)
-		return ReadOrgFiles(files, s.layout)
+		return ReadOrgFiles(files, s.cat().layout)
 	}
 	// From a directory: without the column, each row holds none in it; with it, as it is written.
 	for _, c := range []struct{ what, file, note string }{

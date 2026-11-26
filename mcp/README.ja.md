@@ -69,6 +69,8 @@ err = st.Serve(ctx, cfg, nil)
 err = tools.Serve(ctx, &sdkmcp.StdioTransport{}, server.Person{ID: "e1201"})
 ```
 
+セッションのツールは、効いている版についてきます。動いているあいだに承認されたバンドルをサーバーが受け持ったときと、1 分ごと（`Config.ChooseEvery`）に選び直し、変わったらクライアントに知らせます（`notifications/tools/list_changed`）。
+
 ### ツールが返すもの
 
 - ツールは、文と、その文が述べているもの（チケットや一覧）の JSON（`structuredContent`）を返します。

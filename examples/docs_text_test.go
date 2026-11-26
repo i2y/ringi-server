@@ -29,6 +29,7 @@ import (
 	"github.com/i2y/ringi-server/oidc"
 	"github.com/i2y/ringi-server/postgres"
 	"github.com/i2y/ringi-server/serve"
+	"github.com/i2y/ringi-server/wasmkind"
 	"github.com/i2y/ringi-server/web"
 )
 
@@ -274,6 +275,8 @@ func TestDocumentsFlags(t *testing.T) {
 		"verdict":  true, // the examples' command's own
 		"temporal": true, // of the projects ritsu ringi init --temporal makes
 		"w":        true, // of Temporal's CLI
+		"force":    true, // of the command ringi-bundle (docs/signing.md)
+		"h":        true, // a command's own help (ringi-bundle's in docs/signing.md)
 	}
 	named := regexp.MustCompile("`-([a-z]+(?:-[a-z]+)*)[` ]")
 	for _, path := range append(guidePages(t), "../README.md", "../README.ja.md") {
@@ -356,6 +359,7 @@ func TestDocumentsNumbers(t *testing.T) {
 		{"maintenance", "| Data of the organization that was checked and not imported | a day |", "| 確かめただけで取り込んでいない、組織のデータ | 1 日 |", server.DefaultDraftsKept == day},
 		{"sign-in", "12 hours after signing in, or after 2 hours unused", "ログインから 12 時間か、使わないまま 2 時間", oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
 		{"troubleshooting", "12 hours after signing in, or after 2 hours unused", "ログインから 12 時間か、使わないまま 2 時間", oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
+		{"embedding", "runs within a time (2 seconds) and a memory (64 MiB)", "時間（2 秒）とメモリー（64 MiB）の中で動きます", wasmkind.DefaultTime == 2*time.Second && wasmkind.DefaultPages*65536 == 64<<20},
 	} {
 		if !c.is {
 			t.Errorf("the code's number is another than %q says", c.en)

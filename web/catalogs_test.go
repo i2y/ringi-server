@@ -92,7 +92,7 @@ func TestCatalogsOfPackages(t *testing.T) {
 		return w
 	}
 	var older *screenSet
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		if s.files != "" {
 			if older != nil {
 				t.Fatal("two packages have addresses of their own")

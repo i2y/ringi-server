@@ -31,6 +31,8 @@ nav = [
   ] },
   { "Guides" = [
     { "Add and change request types" = "types.md" },
+    { "Add a version to a running server" = "bundles.md" },
+    { "Sign bundles" = "signing.md" },
     { "Choose from a list in a form" = "lists.md" },
     { "Prepare the organization's data" = "organization.md" },
     { "Set the business days" = "calendar.md" },

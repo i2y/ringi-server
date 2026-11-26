@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"weak"
 
 	server "github.com/i2y/ringi-server"
@@ -93,8 +94,6 @@ type Handler struct {
 	srv    *server.Server
 	cfg    Config
 	files  server.Files
-	sets   []*screenSet
-	assets *screens.Set
 	mux    *http.ServeMux
 	next   http.Handler
 	log    *slog.Logger
@@ -103,8 +102,21 @@ type Handler struct {
 	// logo is the organization's logo (Look.Logo) as the pages load it, at PageAssets+"logo"; its
 	// Body is nil for none.
 	logo screens.Asset
-	// api is the description of the whole API (server.Server.OpenAPI), served at /openapi.json.
-	api []byte
+	// cur is what the handler made of the packages the server serves (packs), made again once the
+	// server serves others (a bundle approved: the framework's DESIGN 15), and remade under remake.
+	cur    atomic.Pointer[packs]
+	remake sync.Mutex
+}
+
+// packs is what the handler makes of the packages the server serves: the screens of each, the
+// newest's files (assets), and the description of the whole API, served at /openapi.json. changed
+// is closed once the server serves other packages.
+type packs struct {
+	packages []*server.Package
+	sets     []*screenSet
+	assets   *screens.Set
+	api      []byte
+	changed  <-chan struct{}
 }
 
 // screenSet is the screens of one package, with the kinds it has, and its plain HTML pages.
@@ -156,69 +168,25 @@ func New(srv *server.Server, cfg Config) (*Handler, error) {
 		}
 		h.inline[t] = true
 	}
-	newest := 0
-	for i, p := range srv.Packages() {
-		l, err := loadScreens(p)
-		if err != nil {
-			return nil, fmt.Errorf("the screens of package %d: %w", i+1, err)
-		}
-		set := l.set
-		ss := &screenSet{Set: set, kinds: map[string]screens.Kind{}, pages: l.pages}
-		top := 0
-		for _, k := range set.Kinds() {
-			ss.kinds[k.Name] = k
-			top = max(top, k.Version)
-		}
-		h.sets = append(h.sets, ss)
-		if h.assets == nil || top > newest {
-			h.assets, newest = set, top
-		}
+	ps, err := h.makePacks(srv.Packages())
+	if err != nil {
+		return nil, err
 	}
-	// The files of a package other than the newest are served at addresses of their own, so that a
-	// kind's pages and screens load the functions of its version's package (DESIGN.md 2.3). A
-	// renderer keeps a catalog by its ID (A2UI 1.0), so two packages whose screens name one catalog
-	// with other files are refused: each needs an ID of its own.
-	digests := make([]string, len(h.sets))
-	for i, ss := range h.sets {
-		sum := sha256.New()
-		for _, name := range []string{"catalog.json", "functions.js"} {
-			a, err := ss.Set.Asset(name)
-			if err != nil {
-				return nil, fmt.Errorf("the screens of package %d: %w", i+1, err)
-			}
-			sum.Write(a.Body)
-			sum.Write([]byte{0})
-		}
-		digests[i] = hex.EncodeToString(sum.Sum(nil)[:8])
-		for j := range i {
-			if h.sets[j].CatalogID() == ss.CatalogID() && digests[j] != digests[i] {
-				return nil, &CatalogConflict{First: j + 1, Second: i + 1, FirstKinds: kindsOf(h.sets[j]), SecondKinds: kindsOf(ss), ID: ss.CatalogID()}
-			}
-		}
-		if style := cfg.Look.style(); style != "" {
-			var err error
-			if ss.pages, err = ss.pages.WithStyle(style); err != nil {
-				return nil, err
-			}
-		}
-		if ss.Set == h.assets {
-			continue
-		}
-		ss.files = digests[i]
-		var err error
-		if ss.pages, err = ss.pages.WithAssets(PageAssets + ss.files + "/"); err != nil {
-			return nil, err
-		}
+	if ps.api, err = srv.OpenAPI(); err != nil {
+		return nil, fmt.Errorf("the description of the API: %w", err)
 	}
+	ps.changed = srv.PackagesChanged()
+	h.cur.Store(ps)
+	// A bundle whose screens do not load, or that names a catalog of another package's with other
+	// files, is refused before the server serves it (the framework's DESIGN 15.5).
+	srv.AddPackageCheck(func(packages []*server.Package) error {
+		_, err := h.makePacks(packages)
+		return err
+	})
 	if logo, ok := cfg.Look.logoAsset(); ok {
 		h.logo = logo
 		h.mux.HandleFunc("GET "+PageAssets+"logo", func(w http.ResponseWriter, r *http.Request) { serveAsset(w, r, h.logo) })
 	}
-	api, err := srv.OpenAPI()
-	if err != nil {
-		return nil, fmt.Errorf("the description of the API: %w", err)
-	}
-	h.api = api
 	cop := http.NewCrossOriginProtection()
 	for _, o := range cfg.TrustedOrigins {
 		if err := cop.AddTrustedOrigin(o); err != nil {
@@ -253,6 +221,106 @@ func New(srv *server.Server, cfg Config) (*Handler, error) {
 	h.routePages()
 	h.mux.Handle("/", srv)
 	return h, nil
+}
+
+// makePacks makes the screens of the packages (packs, without the API): it loads the screens of each,
+// and refuses one whose screens do not load, and two that name one catalog with other files.
+func (h *Handler) makePacks(packages []*server.Package) (*packs, error) {
+	ps := &packs{packages: packages}
+	newest := 0
+	for i, p := range packages {
+		l, err := loadScreens(p)
+		if err != nil {
+			return nil, fmt.Errorf("the screens of package %d: %w", i+1, err)
+		}
+		set := l.set
+		ss := &screenSet{Set: set, kinds: map[string]screens.Kind{}, pages: l.pages}
+		top := 0
+		for _, k := range set.Kinds() {
+			ss.kinds[k.Name] = k
+			top = max(top, k.Version)
+		}
+		ps.sets = append(ps.sets, ss)
+		if ps.assets == nil || top > newest {
+			ps.assets, newest = set, top
+		}
+	}
+	// The files of a package other than the newest are served at addresses of their own, so that a
+	// kind's pages and screens load the functions of its version's package (DESIGN.md 2.3). A
+	// renderer keeps a catalog by its ID (A2UI 1.0), so two packages whose screens name one catalog
+	// with other files are refused: each needs an ID of its own.
+	digests := make([]string, len(ps.sets))
+	for i, ss := range ps.sets {
+		sum := sha256.New()
+		for _, name := range []string{"catalog.json", "functions.js"} {
+			a, err := ss.Set.Asset(name)
+			if err != nil {
+				return nil, fmt.Errorf("the screens of package %d: %w", i+1, err)
+			}
+			sum.Write(a.Body)
+			sum.Write([]byte{0})
+		}
+		digests[i] = hex.EncodeToString(sum.Sum(nil)[:8])
+		for j := range i {
+			if ps.sets[j].CatalogID() == ss.CatalogID() && digests[j] != digests[i] {
+				return nil, &CatalogConflict{First: j + 1, Second: i + 1, FirstKinds: kindsOf(ps.sets[j]), SecondKinds: kindsOf(ss), ID: ss.CatalogID()}
+			}
+		}
+		if style := h.cfg.Look.style(); style != "" {
+			var err error
+			if ss.pages, err = ss.pages.WithStyle(style); err != nil {
+				return nil, err
+			}
+		}
+		if ss.Set == ps.assets {
+			continue
+		}
+		ss.files = digests[i]
+		var err error
+		if ss.pages, err = ss.pages.WithAssets(PageAssets + ss.files + "/"); err != nil {
+			return nil, err
+		}
+	}
+	return ps, nil
+}
+
+// packs answers what the handler made of the packages the server serves now, made again once the
+// server serves others. When they do not make (they passed the same checks before the server took
+// them), it logs why, and answers what it made before.
+func (h *Handler) packs() *packs {
+	ps := h.cur.Load()
+	select {
+	case <-ps.changed:
+	default:
+		return ps
+	}
+	h.remake.Lock()
+	defer h.remake.Unlock()
+	if ps = h.cur.Load(); !closed(ps.changed) {
+		return ps
+	}
+	changed := h.srv.PackagesChanged()
+	next, err := h.makePacks(h.srv.Packages())
+	if err == nil {
+		next.api, err = h.srv.OpenAPI()
+	}
+	if err != nil {
+		h.log.Error("the screens of the packages the server serves now", "err", err)
+		return ps
+	}
+	next.changed = changed
+	h.cur.Store(next)
+	return next
+}
+
+// closed reports whether a channel is closed.
+func closed(c <-chan struct{}) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
 }
 
 // loaded keeps the screens and the pages of each package while the package is in use: a package
@@ -347,7 +415,7 @@ func (h *Handler) personLanguage(r *http.Request) string {
 
 // setOf answers the screens of a kind's version; nil when no package has them.
 func (h *Handler) setOf(kind string, version int) *screenSet {
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		if k, ok := s.kinds[kind]; ok && k.Version == version {
 			return s
 		}
@@ -358,7 +426,7 @@ func (h *Handler) setOf(kind string, version int) *screenSet {
 // newestOf answers the screens of a kind's newest version; nil when no package has the kind.
 func (h *Handler) newestOf(kind string) *screenSet {
 	var out *screenSet
-	for _, s := range h.sets {
+	for _, s := range h.packs().sets {
 		if k, ok := s.kinds[kind]; ok && (out == nil || k.Version > out.kinds[kind].Version) {
 			out = s
 		}

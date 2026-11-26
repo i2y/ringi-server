@@ -130,6 +130,9 @@ go test ./...
 | 申請の記録を読む | `read_audit` |
 | 組織のデータを取り込む | `import_organization` |
 | 組織のデータの記録を読む | `read_organization_audit` |
+| 新しい版のバンドルをアップロードする、隠す | `upload_bundle`。足す版ごとに |
+| バンドルを承認する、却下する | `approve_bundle`。足す版ごとに |
+| 新しい申請の種類を足すバンドルを承認する | `add_request_type` も |
 
 画面のボタンも、これと同じことを尋ねてから出します。押せないボタンは出ません。
 

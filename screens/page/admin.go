@@ -8,8 +8,9 @@ import (
 	"time"
 )
 
-// The administration's pages (the framework's DESIGN 13.7): the versions of the kinds and their
-// switches, the organization's data and its imports, and the record. The server (package web) makes
+// The administration's pages (the framework's DESIGN 13.7, 15.8): the versions of the kinds and
+// their switches, the organization's data and its imports, the record, and the bundles that add a
+// version or a kind to the running server. The server (package web) makes
 // what is on them from what the administration's operations answer; these pages say it in the
 // page's language, each name and value of the data in an element of its own direction (<bdi>).
 
@@ -20,12 +21,14 @@ const (
 	AdminOrgPage     = "admin-organization"
 	AdminDraftPage   = "admin-draft"
 	AdminRecordsPage = "admin-records"
+	AdminBundlesPage = "admin-bundles"
+	AdminBundlePage  = "admin-bundle"
 )
 
 // Admin is what one of the administration's pages is made of.
 type Admin struct {
 	Language string
-	What     string // AdminHomePage, AdminKindsPage, AdminOrgPage, AdminDraftPage or AdminRecordsPage
+	What     string // AdminHomePage, AdminKindsPage, AdminOrgPage, AdminDraftPage, AdminRecordsPage, AdminBundlesPage or AdminBundlePage
 	// Done says what a post did, at the head; Refused why a post was not taken (a change made since
 	// the page was read); Problem what was wrong with a post; Problems the problems of the
 	// organization's data, each at its file and line.
@@ -44,12 +47,14 @@ type Admin struct {
 	Org     *AdminOrg
 	Draft   *AdminDraft
 	Records *AdminRecords
+	Bundles *AdminBundles
+	Bundle  *AdminBundle
 }
 
 // AdminParts are the parts of the administration the person may use, each by its address ("" for
 // one they may not).
 type AdminParts struct {
-	Kinds, Organization, Records string
+	Kinds, Organization, Records, Bundles string
 }
 
 // AdminProblem is a problem of the organization's data: where it is (a file and its line), and what.
@@ -155,6 +160,78 @@ type AdminHistoryLine struct {
 	Did, Stage, By, Comment string
 }
 
+// AdminBundles is the page of the bundles: those the person may read, the newest first, and the form
+// that uploads one.
+type AdminBundles struct {
+	List      []AdminBundleRow
+	Upload    string // the address the upload posts to; "" when the person may not upload
+	Signed    bool   // the server takes only signed bundles: the form asks for the signature too
+	MaxUpload int64
+	Hidden    bool   // the list shows the hidden bundles too
+	Toggle    string // the address of the list with the hidden bundles, or without them
+}
+
+// AdminBundleRow is a bundle in the list.
+type AdminBundleRow struct {
+	Link, Short, State     string
+	Hidden                 bool
+	Adds                   []AdminBundleVersion
+	UploadedBy, UploadedAt string
+}
+
+// AdminBundleVersion is a version a bundle adds or holds.
+type AdminBundleVersion struct {
+	Name, Title string
+	Version     int
+	New         bool // a kind the server did not have
+}
+
+// AdminBundle is the page of a bundle: what it is, what each version it adds changes, and the forms
+// that decide and hide it.
+type AdminBundle struct {
+	Digest, Short, State, Source string
+	Hidden, Signed               bool
+	Size                         int64
+	Vectors, Worked              int
+	UploadedBy, UploadedAt       string
+	DecidedBy, DecidedAt, Why    string // the decision; "" for none
+	HidBy, HidAt, HidWhy         string // the hiding; "" for none
+	Kinds                        []AdminBundleKind
+	Holds                        []AdminBundleVersion
+	// Forgotten says the server forgot the archive (a bundle hidden before it was approved): what
+	// it changed is not shown.
+	Forgotten bool
+	// APIChanges says a version it adds changes the API: the approval asks the person to tick that
+	// they checked it. Difference is the digest of the difference shown, which the approval sends.
+	APIChanges bool
+	Difference string
+	Action     string // the address the decisions and the hiding post to
+	MayDecide  bool
+	Uploader   bool // the person uploaded it: another decides it
+	MayHide    bool
+}
+
+// AdminBundleKind is a version a bundle adds, with its difference from the version below it.
+type AdminBundleKind struct {
+	Name, Title, Owner string
+	Version, Against   int // Against: the version it is compared with; 0 for none
+	New, APIChanges    bool
+	StartsDay          string // the day its description starts it on; "" for as soon as it is approved
+	From, Through      string // the days it may be used on; "" for no bound
+	Lines              []AdminDiffLine
+	// Said is what the bundle itself says the version changes (ritsu's `ringi diff`), against the
+	// version SaidFrom; "" for nothing.
+	Said     string
+	SaidFrom int
+}
+
+// AdminDiffLine is a line of a version's difference: its part (form, stages, approvers, usable, api,
+// other), what changes, and whether it changes the API.
+type AdminDiffLine struct {
+	Section, Text string
+	API           bool
+}
+
 // adminView is what the template writes of an administration's page.
 type adminView struct {
 	Admin
@@ -189,6 +266,10 @@ func (w words) adminTitle(what string) string {
 		return w.t("New data of the organization", "組織の新しいデータ")
 	case AdminRecordsPage:
 		return w.t("The record", "記録")
+	case AdminBundlesPage:
+		return w.t("Bundles of request types", "申請の種類のバンドル")
+	case AdminBundlePage:
+		return w.t("A bundle", "バンドル")
 	}
 	return w.t("Administration", "管理")
 }
@@ -206,6 +287,10 @@ const (
 	AdminNoFile      = "no-file"      // no file was chosen
 	AdminManyImports = "many-imports" // the imports of a day are taken; args: the minutes to wait ("" for none)
 	AdminBusy        = "busy"         // the server is checking as much data as it checks at once
+	AdminNoBundle    = "no-bundle"    // no bundle was chosen
+	AdminBundleBusy  = "bundle-busy"  // the server is checking another bundle
+	AdminNotYours    = "not-yours"    // the bundle holds a version the person may not upload
+	AdminAPIUnticked = "api-unticked" // the bundle changes the API, and its approval does not say it was checked
 )
 
 // AdminSays answers a problem of a post of the administration's pages (AdminBadDay and the rest)
@@ -246,6 +331,14 @@ func AdminSays(lang, problem string, args ...string) string {
 		return w.t("Choose a zip file of the organization's data to check.", "確かめる組織のデータの zip ファイルを選んでください。")
 	case AdminBusy:
 		return w.t("The server is checking other data now: try again in a moment.", "サーバーはいま、ほかのデータを確かめています。少しあとで、もう一度確かめてください。")
+	case AdminNoBundle:
+		return w.t("Choose the zip file of a bundle to upload.", "アップロードするバンドルの zip ファイルを選んでください。")
+	case AdminBundleBusy:
+		return w.t("The server is checking another bundle now: try again in a moment.", "サーバーはいま、ほかのバンドルを確かめています。少しあとで、もう一度アップロードしてください。")
+	case AdminNotYours:
+		return w.t("The bundle holds a version of a request type you may not upload.", "このバンドルには、あなたがアップロードできない申請の種類の版が入っています。")
+	case AdminAPIUnticked:
+		return w.t("This bundle changes the API: tick that you checked it, and approve it again.", "このバンドルは API の形を変えます。確かめたことに印を付けて、もう一度承認してください。")
 	case AdminManyImports:
 		switch arg(0) {
 		case "":
@@ -474,9 +567,162 @@ func (w words) AdminWhatWords(what string) string {
 		return w.t("a switch of a version", "版の切り替え")
 	case "organization":
 		return w.t("an import of the organization's data", "組織のデータの取り込み")
+	case "bundle":
+		return w.t("a bundle", "バンドル")
 	}
 	return w.AdminAny()
 }
 func (w words) AdminValues() string { return w.t("Values sent", "送った値") }
 func (w words) AdminBefore() string { return w.t("Before", "前") }
 func (w words) AdminAfter() string  { return w.t("After", "後") }
+
+func (w words) AdminBundlesLink() string {
+	return w.t("Add a version or a request type with a bundle", "バンドルで版や申請の種類を足す")
+}
+func (w words) AdminNoBundles() string {
+	return w.t("No bundles.", "バンドルはありません。")
+}
+func (w words) AdminBundleState(state string, hidden bool) string {
+	var s string
+	switch state {
+	case "pending":
+		s = w.t("Waiting to be decided", "決めるのを待っている")
+	case "approved":
+		s = w.t("Approved: served", "承認済み（使っている）")
+	case "declined":
+		s = w.t("Declined", "却下")
+	default:
+		s = state
+	}
+	if hidden {
+		s += w.t(" (hidden)", "（隠した）")
+	}
+	return s
+}
+func (w words) AdminBundle() string   { return w.t("Bundle", "バンドル") }
+func (w words) AdminState() string    { return w.t("State", "状態") }
+func (w words) AdminAdds() string     { return w.t("Adds", "足す版") }
+func (w words) AdminUploaded() string { return w.t("Uploaded", "アップロード") }
+func (w words) AdminDigest() string {
+	return w.t("Digest (SHA-256)", "ダイジェスト（SHA-256）")
+}
+func (w words) AdminSize() string      { return w.t("Size", "大きさ") }
+func (w words) AdminSignature() string { return w.t("Signature", "署名") }
+func (w words) AdminReceived() string  { return w.t("Received", "受け取り方") }
+func (w words) AdminChecks() string    { return w.t("Checks", "確かめ") }
+func (w words) AdminHiddenBy() string  { return w.t("Hidden", "隠した人") }
+func (w words) AdminNewKind() string   { return w.t("new", "新しい種類") }
+func (w words) AdminShowHidden() string {
+	return w.t("Show the hidden bundles too", "隠したバンドルも見る")
+}
+func (w words) AdminLeaveHidden() string {
+	return w.t("Show the bundles without the hidden", "隠したバンドルを除いて見る")
+}
+func (w words) AdminVersionOf(name string, version int, isNew bool) string {
+	s := name + " " + w.AdminVersionLabel(version)
+	if isNew {
+		s += w.t(" (new)", "（新しい種類）")
+	}
+	return s
+}
+func (w words) AdminUploadBundle() string {
+	return w.t("Upload a bundle", "バンドルをアップロードする")
+}
+func (w words) AdminBundleFile() string {
+	return w.t("The bundle: the zip file `ritsu gen --target requests --extra wasm --extra bundle` writes", "バンドル（`ritsu gen --target requests --extra wasm --extra bundle` が書く zip）")
+}
+func (w words) AdminBundleFileHint(max string) string {
+	return w.t("At most "+max+". The server checks it, and another administrator decides it.", max+"まで。サーバーが確かめ、ほかの管理者が決めます。")
+}
+func (w words) AdminSignatureFile() string {
+	return w.t("Its signature: the .sig file `ringi-bundle sign` writes", "署名（`ringi-bundle sign` が書く .sig のファイル）")
+}
+func (w words) AdminSignedOnly() string {
+	return w.t("This server takes only signed bundles.", "このサーバーは、署名したバンドルだけを受け取ります。")
+}
+func (w words) AdminUploadAndCheck() string {
+	return w.t("Upload and check", "アップロードして確かめる")
+}
+func (w words) AdminSignedWords(signed bool) string {
+	if signed {
+		return w.t("Signed with a key the server takes", "サーバーが受け取る鍵で署名してある")
+	}
+	return w.t("Not signed", "署名なし")
+}
+func (w words) AdminReceivedWords(source string) string {
+	if source == "start" {
+		return w.t("Read from the server's directory of bundles as it started", "起動のときに、サーバーのバンドルのディレクトリから読んだ")
+	}
+	return w.t("Uploaded", "アップロード")
+}
+func (w words) AdminChecksWords(vectors, worked int) string {
+	return w.t(strconv.Itoa(vectors)+" vectors of the events and "+strconv.Itoa(worked)+" of the forms ran on its code, and every one agreed",
+		"コードでベクタを流しました。出来事の "+strconv.Itoa(vectors)+" 本とフォームの "+strconv.Itoa(worked)+" 本が、すべて合いました")
+}
+func (w words) AdminAgainst(against int, isNew bool) string {
+	switch {
+	case isNew:
+		return w.t("A new request type: the server has no version of it.", "新しい申請の種類です。サーバーには、この種類の版がありません。")
+	case against == 0:
+		return w.t("The server has no version of it below this one.", "サーバーには、これより前の版がありません。")
+	}
+	return w.t("What changes from version "+strconv.Itoa(against)+":", "版 "+strconv.Itoa(against)+" から変わる所：")
+}
+func (w words) AdminNoDifference() string {
+	return w.t("Nothing differs in the form, the stages, the approvers, the days it may be used or the API.", "フォーム、ステップ、承認者、使える日、API に違いはありません。")
+}
+func (w words) AdminSection(section string) string {
+	switch section {
+	case "form":
+		return w.t("Form", "フォーム")
+	case "stages":
+		return w.t("Stages", "ステップ")
+	case "approvers":
+		return w.t("Approvers", "承認者")
+	case "usable":
+		return w.t("Days it may be used", "使える日")
+	case "api":
+		return "API"
+	}
+	return w.t("Other", "そのほか")
+}
+func (w words) AdminAPILine() string { return w.t("changes the API", "API が変わる") }
+func (w words) AdminStartsWords(day string) string {
+	if day == "" {
+		return w.t("Once approved, new requests take it at once (an administrator may switch it after).", "承認すると、新しい申請がすぐに使います（あとから切り替えられます）。")
+	}
+	return w.t("Once approved, new requests take it from "+day+" (an administrator may switch it after).", "承認すると、新しい申請が "+day+" から使います（あとから切り替えられます）。")
+}
+func (w words) AdminSaid(from int) string {
+	return w.t("The text the bundle held (written by `ritsu ringi diff` against version "+strconv.Itoa(from)+")",
+		"バンドルに入っていた文（`ritsu ringi diff` が版 "+strconv.Itoa(from)+" と比べて書いた物）")
+}
+func (w words) AdminHolds() string {
+	return w.t("It holds these besides, as the server has them:", "ほかに次の版を持っています（サーバーにある物と同じ）：")
+}
+func (w words) AdminForgotten() string {
+	return w.t("The server forgot the bundle's contents when it was hidden: what it changed is not shown.", "隠したときに、サーバーはバンドルの中身を忘れました。差は出せません。")
+}
+func (w words) AdminAPIChanges() string {
+	return w.t("This bundle changes the API: programs that call these operations may need changing.", "このバンドルは API の形を変えます。この操作を呼ぶプログラムは、直す必要があるかもしれません。")
+}
+func (w words) AdminAPIChangesYes() string {
+	return w.t("I checked that the API changes", "API が変わることを確かめた")
+}
+func (w words) AdminDecide() string {
+	return w.t("Approve or decline", "承認するか却下するか")
+}
+func (w words) AdminApprove() string { return w.t("Approve", "承認する") }
+func (w words) AdminDecline() string { return w.t("Decline", "却下する") }
+func (w words) AdminUploader() string {
+	return w.t("You uploaded this bundle: another administrator decides it.", "このバンドルはあなたがアップロードしました。決めるのは、ほかの管理者です。")
+}
+func (w words) AdminHideBundle() string { return w.t("Hide the bundle", "バンドルを隠す") }
+func (w words) AdminHide() string       { return w.t("Hide", "隠す") }
+func (w words) AdminHideHint(state string) string {
+	if state == "approved" {
+		return w.t("A hidden bundle is not listed. It is still served for its requests; hide it once no new request takes its versions (each switched to never).",
+			"隠したバンドルは一覧に出ません。その申請のために使い続けます。隠せるのは、足した版をどれも「使わない」に切り替えたあとです。")
+	}
+	return w.t("A hidden bundle is not listed, and the server forgets its contents.", "隠したバンドルは一覧に出ず、サーバーはその中身を忘れます。")
+}

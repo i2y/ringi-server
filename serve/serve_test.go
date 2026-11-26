@@ -3,6 +3,7 @@ package serve
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -478,13 +479,14 @@ func TestRegister(t *testing.T) {
 	}
 	args := []string{"-addr", "localhost:9000", "-db", "postgres://db.example.test/ringi", "-files", "files", "-dev-login",
 		"-oidc-issuer", "https://id.example.test", "-oidc-client-id", "ringi", "-oidc-client-secret", "s", "-oidc-redirect-url", "https://r.example.test/login/callback",
-		"-session-keys", "k", "-tls-cert", "c.pem", "-tls-key", "k.pem", "-oidc-roles-claim", "roles", "-oidc-scopes", "groups", "-api-keys", "keys"}
+		"-session-keys", "k", "-tls-cert", "c.pem", "-tls-key", "k.pem", "-oidc-roles-claim", "roles", "-oidc-scopes", "groups", "-api-keys", "keys",
+		"-bundles", "bundles", "-bundle-keys", "bundle.pub"}
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
 	want := Flags{Addr: "localhost:9000", DB: "postgres://db.example.test/ringi", Files: "files", DevLogin: true, Issuer: "https://id.example.test", ClientID: "ringi",
 		ClientSecret: "s", RedirectURL: "https://r.example.test/login/callback", SessionKeys: "k", TLSCert: "c.pem", TLSKey: "k.pem",
-		RolesClaim: "roles", Scopes: "groups", APIKeys: "keys"}
+		RolesClaim: "roles", Scopes: "groups", APIKeys: "keys", Bundles: "bundles", BundleKeys: "bundle.pub"}
 	if f.Getenv != nil || fmt.Sprintf("%+v", f) != fmt.Sprintf("%+v", want) {
 		t.Errorf("the flags parsed: %+v", f)
 	}
@@ -1426,5 +1428,113 @@ func TestLook(t *testing.T) {
 	err = refused.Serve(t.Context(), server.Config{Packages: []*server.Package{p}, Gate: server.AllowAll, Organization: org{}}, func(*server.Server) { made = true })
 	if want := "web: Look.Accent #f59e0b reads at 1.94:1 on the pages' tint #f1f4f9, and the links and the buttons need 4.5:1 (WCAG 1.4.3): take a darker colour"; err == nil || err.Error() != want || made {
 		t.Errorf("a look that does not read: %v (made %v); want %s", err, made, want)
+	}
+}
+
+// TestBundleFlags: -bundle-keys and -bundles are checked before anything is read or reached: a file
+// of keys that cannot be read or holds none, a directory that cannot be read, a file in it that is
+// neither a bundle nor a bundle's signature, and a signature of no bundle. The directory's bundles
+// are read in the order of their names, each with its signature when it has one, and a hidden file
+// is passed over. Serve stops on a bundle it cannot read, before the server is made known, and on a
+// bundle with no signature when the keys are given; the Config may not give what the flags give.
+func TestBundleFlags(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, b []byte) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	pub, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := write("bundle.pub", pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))
+	write("good/b.zip", []byte("the second"))
+	write("good/a.zip", []byte("the first"))
+	write("good/a.zip.sig", []byte("c2lnbmF0dXJl\n"))
+	write("good/.DS_Store", []byte("hidden"))
+	write("stray/a.zip", []byte("a bundle"))
+	write("stray/notes.txt", []byte("notes"))
+	write("orphan/b.zip.sig", []byte("c2lnbmF0dXJl\n"))
+	none := filepath.Join(dir, "none")
+	for _, c := range []struct {
+		what string
+		f    Flags
+		want string
+	}{
+		{"a file of a key", Flags{BundleKeys: keys}, ""},
+		{"no file of keys", Flags{BundleKeys: none}, "-bundle-keys: open " + none + ": no such file or directory"},
+		{"a file of no key", Flags{BundleKeys: write("empty.pub", []byte("# none yet\n"))}, "-bundle-keys: " + filepath.Join(dir, "empty.pub") + ": "},
+		{"a directory of bundles", Flags{Bundles: filepath.Join(dir, "good")}, ""},
+		{"no directory", Flags{Bundles: none}, "-bundles: open " + none + ": no such file or directory"},
+		{"a file of something else", Flags{Bundles: filepath.Join(dir, "stray")},
+			"-bundles: " + filepath.Join(dir, "stray") + " holds notes.txt: the directory holds bundles (<name>.zip) and their signatures (<name>.zip.sig)"},
+		{"a signature of no bundle", Flags{Bundles: filepath.Join(dir, "orphan")},
+			"-bundles: " + filepath.Join(dir, "orphan") + " holds the signature b.zip.sig, of no bundle b.zip"},
+	} {
+		c.f.Addr, c.f.Getenv = "127.0.0.1:8080", env(nil)
+		err := c.f.Check()
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: %v", c.what, err)
+		case c.want != "" && (err == nil || !strings.HasPrefix(err.Error(), c.want)):
+			t.Errorf("%s: %v; want %s…", c.what, err, c.want)
+		}
+	}
+	bs, err := Flags{Bundles: filepath.Join(dir, "good")}.bundles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bs) != 2 || bs[0].Name != "a.zip" || string(bs[0].Archive) != "the first" || string(bs[0].Signature) != "c2lnbmF0dXJl" ||
+		bs[1].Name != "b.zip" || bs[1].Signature != nil {
+		t.Errorf("the bundles read: %+v", bs)
+	}
+	// Open stops on them before it reaches the database a flag names
+	if _, err := Open(t.Context(), Flags{Addr: "127.0.0.1:8080", DB: "postgres://127.0.0.1:1/ringi", Bundles: none, Getenv: env(nil)}, quiet); err == nil || !strings.HasPrefix(err.Error(), "-bundles: ") {
+		t.Errorf("Open with a directory of bundles it cannot read: %v", err)
+	}
+
+	p, err := server.LoadKinds(3, "en", kinds(), os.DirFS(filepath.Join("..", "screens", "testdata", "requests")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveWith := func(f Flags, cfg server.Config) (error, bool) {
+		t.Helper()
+		f.Addr, f.DevLogin, f.Getenv = freeAddr(t), true, env(nil)
+		st, err := Open(t.Context(), f, quiet)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Packages, cfg.Gate, cfg.Organization = []*server.Package{p}, server.AllowAll, org{}
+		made := false
+		err = st.Serve(t.Context(), cfg, func(*server.Server) { made = true })
+		return err, made
+	}
+	write("unread/a.zip", []byte("no zip"))
+	if err, made := serveWith(Flags{Bundles: filepath.Join(dir, "unread")}, server.Config{}); err == nil || made ||
+		!strings.Contains(err.Error(), "a.zip") {
+		t.Errorf("Serve with a bundle that is no zip: %v (made %v)", err, made)
+	}
+	if err, made := serveWith(Flags{Bundles: filepath.Join(dir, "unread")}, server.Config{Bundles: []server.BundleFile{{Name: "x.zip"}}}); err == nil || made ||
+		err.Error() != "serve: the flags say the server's Bundles (-bundles): leave them out of the Config" {
+		t.Errorf("Serve with Config.Bundles and -bundles: %v (made %v)", err, made)
+	}
+	if err, made := serveWith(Flags{BundleKeys: keys}, server.Config{BundleKeys: []ed25519.PublicKey{pub}}); err == nil || made ||
+		err.Error() != "serve: the flags say the server's BundleKeys (-bundle-keys): leave them out of the Config" {
+		t.Errorf("Serve with Config.BundleKeys and -bundle-keys: %v (made %v)", err, made)
+	}
+	cfg := server.Config{}
+	if err := (Flags{BundleKeys: keys}).bundleConfig(&cfg, quiet); err != nil || cfg.LoadBundle == nil || len(cfg.BundleKeys) != 1 || !cfg.BundleKeys[0].Equal(pub) {
+		t.Errorf("the Config of -bundle-keys: %v %+v", err, cfg)
 	}
 }

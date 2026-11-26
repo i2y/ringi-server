@@ -180,6 +180,18 @@ func TestAdministrationPostgres(t *testing.T) {
 	conformance.Administration(t, s)
 }
 
+func TestBundlesMemory(t *testing.T) {
+	s := setup(t)
+	s.Store = memory
+	conformance.Bundles(t, s)
+}
+
+func TestBundlesPostgres(t *testing.T) {
+	s := setup(t)
+	s.Store = pgStore(t, "conformance_bundles")
+	conformance.Bundles(t, s)
+}
+
 func TestKeepingMemory(t *testing.T) {
 	s := setup(t)
 	s.Store = memory

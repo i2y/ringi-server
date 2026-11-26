@@ -85,7 +85,7 @@ func (t *Tools) handler(d *toolDef, who whoFunc) sdkmcp.ToolHandler {
 // title in the language of the answer, else as written, of its highest version.
 func (t *Tools) later(ctx context.Context, p server.Person, lang string) string {
 	highest := map[string]int{}
-	for _, pk := range t.pkgs {
+	for _, pk := range t.packages() {
 		for _, k := range pk.kinds {
 			highest[k.name] = max(highest[k.name], k.version)
 		}

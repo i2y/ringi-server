@@ -1,0 +1,68 @@
+request 休暇(leave_ja) v3 "休暇の申請"
+description "有給休暇・病気休暇・特別休暇の申請。上長が承認し、5 営業日を超えるときは部長も承認する（架空の決まり）。有給休暇は、休暇の帳簿が持つ残りから日数を引く"
+owner hr
+effective from 2028-04-01
+
+use organization 組織(org) from "shared/company.ringi"
+use calendar 本社(office) from "shared/office.cal"
+use book 休暇(leave) from "shared/leave.book"
+use gate "shared/company.gate"
+use route 標準(standard) from "shared/manager_approval.ringi"
+
+form
+  種類(kind) : choice "休暇の種類"
+    有給(paid)    "有給休暇"
+    病気(sick)    "病気休暇"
+    特別(special) "特別休暇"
+  初日(first_day)  : date "初日"  range >=2026-01-01 <=2028-12-31  open in 本社
+  日数(days)       : number "営業日の日数"  range >=1 <=25
+  復帰日(back_on)  : date "出社する日" = 初日 + 日数 business days in 本社
+  理由(reason)     : long text "理由"  count <=200  required when 種類 is 特別
+  代わり(cover)    : person "代わりに対応する人"  optional
+  連絡先(contact)  : text "休みのあいだの連絡先"  count <=100  optional
+
+route 標準(long: 日数 > 5)
+
+ticket
+  # 休暇の決まりは社員のためのもの（架空）。取締役会の人は出さない。
+  submitted by   everyone except team board
+  self approval  not allowed
+  # 上長が部長でもあるときは、一度承認すれば両方のステップが済む。二つのステップは続いている。
+  same approver  approves once
+  send back      to the requester, at most 2 times
+  # 却下と差し戻しは、申請者が読むコメントに理由を書く。
+  comment required  for reject, send back
+  resubmit       within 5 business days
+  withdraw       until it is decided
+  on submitted   hold 休暇.take(request: ticket.id, attempt: ticket.attempt, person: requester.id, days: 日数)  when 種類 is 有給
+  on approved    post 休暇.take(request: ticket.id, attempt: ticket.attempt)  when 種類 is 有給
+  on sent back, rejected, withdrawn, expired  void 休暇.take(request: ticket.id, attempt: ticket.attempt)  when 種類 is 有給
+
+claims
+  期限内に終わる : every ticket ends within 40 business days
+
+# 版 3 は、休みのあいだの連絡先を尋ね、初日は 2028 年の終わりまで受ける。申請者の部署の上長は部長で、二つのステップを一度に承認する。
+scenario 連絡先を書いた休暇
+  requester e1203
+  given 休暇.grant(person: "e1203", year: "2028", days: 25)
+  form 種類 = 有給, 初日 = 2028-12-04, 日数 = 22, 理由 = "家族に会いに長く帰る", 連絡先 = "e1203@example.com"
+| at               | event   | by    | -> stage | status      |
+| 2028-11-13 09:00 | submit  | e1203 | manager  | in progress |
+| 2028-11-13 17:00 | approve | e3101 |          | approved    |
+
+labels en
+  request        "Leave request"
+  種類           "Kind of leave"
+  種類.有給      "Paid leave"
+  種類.病気      "Sick leave"
+  種類.特別      "Special leave"
+  初日           "First day"
+  日数           "Business days"
+  復帰日         "Back at work on"
+  理由           "Reason"
+  代わり         "Who covers for you"
+  連絡先         "How to reach you while away"
+  stage manager  "Manager"
+  stage head     "Head of the department"
+  who manager    "Manager"
+  who dept_head  "Head of the department"
