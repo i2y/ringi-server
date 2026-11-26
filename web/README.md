@@ -41,12 +41,13 @@ the proxy's headers ([how](../docs/embedding.md#3-a-proxy-signs-people-in)).
 | Route | What it returns |
 |---|---|
 | `GET /` | A redirect to `/pages/` |
-| `GET /pages/` | The start page: what waits for the person, the requests they may make, and their own requests, with counts |
+| `GET /pages/` | The start page: what waits for the person, the requests they may make, and their own requests, with counts; and the request types whose requests they see all of (the department that keeps a type) |
 | `GET`, `POST /pages/requests/{kind}/new` | The form of a new request, and its post |
 | `GET`, `POST /pages/tickets/{id}` | A request, and the buttons of what the person may do to it; its post |
 | `GET`, `POST /pages/tickets/{id}/form` | The form to submit a request again that was sent back, and its post |
 | `GET /pages/tickets/{id}/history` | The history of a request |
 | `GET /pages/waiting/{kind}`, `/pages/mine/{kind}` | The requests of the kind that wait for the person, and the person's own: the newest first, 50 a page |
+| `GET /pages/requests/{kind}` | All the requests of the kind, to a person the gate lets see them all: the newest first, 50 a page |
 | `GET /pages/assets/{name}` | The style sheet and the script of the pages, and ritsu's functions |
 
 ### The A2UI screens
@@ -55,7 +56,7 @@ the proxy's headers ([how](../docs/embedding.md#3-a-proxy-signs-people-in)).
 |---|---|
 | `GET /a2ui/requests/{kind}/form` | The form of a new request |
 | `GET /a2ui/tickets/{id}/card`, `…/form`, `…/history` | A request's screens |
-| `GET /a2ui/waiting/{kind}`, `/a2ui/mine/{kind}` | The same lists as the pages', `?limit=` of them (50 when not given, 100 at most) after `?before=` |
+| `GET /a2ui/waiting/{kind}`, `/a2ui/mine/{kind}`, `/a2ui/requests/{kind}` | The same lists as the pages', `?limit=` of them (50 when not given, 100 at most) after `?before=` |
 | `POST /a2ui/actions` | Does what a button asks, and returns the screen after it |
 | `GET /a2ui/find/people`, `/a2ui/find/teams`, `/a2ui/find/masters/{file}/{master}` | The values that a part of their names or IDs finds, for the fields that choose one ([the design](DESIGN.md), 5.1) |
 | `GET /a2ui/catalog.json`, `/a2ui/functions.js` | ritsu's catalog and functions |

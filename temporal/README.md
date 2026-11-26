@@ -27,14 +27,16 @@ A `Runner` is both the `Flows` and the `Agents` of `server.Config`.
 | `New` | Makes a `Runner` of the flows and a client of Temporal |
 | `Runner.Run` | Runs the workers of this process, until its context ends. It returns at once when a worker does not start, and later when one stops on an error it cannot go on from |
 | `Runner.CheckWorkers` | Waits until a worker polls every task queue the flows run on. When its context ends first, it names the queues with none |
-| `Runner.Launch` | Starts a flow after an approval. The server calls it |
+| `Runner.Launch` | Starts a flow after an approval, and tells the server what became of it once it ends. The server calls it |
 | `Runner.Ask` | Starts the flow of an agent, and gives its answer to the server once it ends. The server calls it |
 
 A flow is started with the key the server gives as its workflow ID, so a key given again starts nothing.
-`Ask` starts a small workflow of this package, which runs the flow as its child. It makes the answer from
-how the flow ended (`ok`, `doubt`, the outputs of a summary, or a failure), and gives it to
-`Server.Answered` from an activity. Temporal tries that activity again until the server has taken the
-answer, so a process that stops in the middle loses no answer.
+`Launch` and `Ask` each start a small workflow of this package, which runs the flow as its child. That of
+`Launch` tells `Server.WorkEnded` what became of the flow (done, with what it ended with, or failed, with
+why), and the page of the request shows it. That of `Ask` makes the answer from how the flow ended (`ok`,
+`doubt`, the outputs of a summary, or a failure), and gives it to `Server.Answered`. Each tells the server
+from an activity, which Temporal tries again until the server has taken it, so a process that stops in the
+middle loses nothing.
 
 ## Use
 
@@ -122,8 +124,8 @@ With no worker on its queue, a flow waits, and so does its request. The code wai
 before it serves (`http.ListenAndServe(":8080", srv)`), and stops on an error of `Run` rather than after
 the 30 seconds. A server watches `stopped` while it serves, too.
 
-- `CheckWorkers` looks at every queue that the runner starts runs on, and that of the workflows that ask
-  for answers (`Config.TaskQueue`). It asks again after a question to Temporal that fails.
+- `CheckWorkers` looks at every queue that the runner starts runs on, and that of the workflows of this
+  package (`Config.TaskQueue`). It asks again after a question to Temporal that fails.
 - Temporal lists a worker for a while after its last poll (about five minutes on the dev server), so a
   worker that has just stopped counts as one.
 
@@ -132,7 +134,9 @@ the 30 seconds. A server watches `stopped` while it serves, too.
 | What | Name |
 |---|---|
 | a flow launched or asked | workflow ID `<ticket>/<round>/<serial>`, the flow's type and task queue |
-| the workflow that asks for an answer | workflow ID `<ticket>/<round>/<serial>/ask`, type `requests.ask`, task queue `requests.ask` (`Config.TaskQueue`) |
+| the workflow that launches a flow | workflow ID `<ticket>/<round>/<serial>/launch`, type `requests.launch`, task queue `requests` (`Config.TaskQueue`) |
+| telling the server what became of it | activity `requests.ended` |
+| the workflow that asks for an answer | workflow ID `<ticket>/<round>/<serial>/ask`, type `requests.ask`, task queue `requests` (`Config.TaskQueue`) |
 | giving the answer to the server | activity `requests.answer` |
 
 ## The tests
@@ -162,7 +166,8 @@ They start Temporal's dev server themselves, and never download it:
   goes from its request through the agent's decision to its payment.
 - An agent passes, doubts, fails, and gives an answer of the wrong shape.
 - A contract's summary is attached, and comes too late.
-- A payment is started twice and runs once.
+- A payment is started twice and runs once, and the page of the request says it was done, with its
+  reference.
 - The worker stops between the server's taking an answer and its reply.
 
 The agents answer through a `Transport` of the test, so nothing goes out to a network. Nothing generated is
@@ -170,15 +175,15 @@ kept. This is `go test -v -run TestExamples .`. `TestAgentFails` takes the longe
 then 20 seconds between its agent's tries.
 
 ```
---- PASS: TestOneProcess (0.32s)
---- PASS: TestSummaryAttached (0.30s)
---- PASS: TestAgentAnswersOutOfShape (0.30s)
---- PASS: TestAgentPasses (0.30s)
---- PASS: TestSummaryLate (0.30s)
---- PASS: TestAgentDoubts (0.30s)
---- PASS: TestPaymentStartsOnce (0.45s)
---- PASS: TestWorkerStopsWhileAnswering (4.26s)
---- PASS: TestAgentFails (30.18s)
-ok  	example.test/requests/driver	31.008s
---- PASS: TestExamples (81.94s)
+--- PASS: TestOneProcess (0.33s)
+--- PASS: TestSummaryAttached (0.32s)
+--- PASS: TestAgentPasses (0.32s)
+--- PASS: TestAgentAnswersOutOfShape (0.32s)
+--- PASS: TestSummaryLate (0.37s)
+--- PASS: TestAgentDoubts (0.37s)
+--- PASS: TestPaymentStartsOnce (0.73s)
+--- PASS: TestWorkerStopsWhileAnswering (4.34s)
+--- PASS: TestAgentFails (30.21s)
+ok  	example.test/requests/driver	31.167s
+--- PASS: TestExamples (52.32s)
 ```

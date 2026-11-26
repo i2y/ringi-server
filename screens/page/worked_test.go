@@ -251,7 +251,7 @@ func TestCardsShowWhatTheyWorkOut(t *testing.T) {
 	zone := time.FixedZone("", 9*3600)
 	card := func(kind, lang string, tk map[string]any, fn WorkedFunc) Card {
 		can, _ := set.Actions(kind, "card")
-		return Card{Card: screens.Card{Language: lang, Ticket: marshal(tk), Can: can, Names: namer{}}, Action: "/post", Now: testNow, History: "/history", Zone: zone, Worked: fn}
+		return Card{Card: screens.Card{Language: lang, Ticket: marshal(tk), Can: can, Names: namer{}, Zone: zone}, Action: "/post", Now: testNow, History: "/history", Worked: fn}
 	}
 	valueOf := func(root *node, label string) *node {
 		for _, d := range root.all(func(n *node) bool { return n.Name == "div" && n.class("value") }) {

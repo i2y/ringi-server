@@ -581,6 +581,43 @@ func (w words) RemoveFile() string { return w.t("Remove the file", "このファ
 func (w words) Approved() string   { return w.t("approved", "承認") }
 func (w words) Rejected() string   { return w.t("rejected", "却下") }
 func (w words) NotYet() string     { return "—" }
+
+// due is the words of a deadline of a card's /due: the stage's, the requester's to submit the
+// request again, the end of its hold (the A2UI card's words).
+// Works is the head of the work a ticket launched once it ended.
+func (w words) Works() string { return w.t("After approval", "承認のあとの処理") }
+
+// work says what became of a work, as the A2UI card says it.
+func (w words) work(state string) string {
+	switch state {
+	case "waiting":
+		return w.t("Not started yet", "まだ始めていません")
+	case "retrying":
+		return w.t("Could not be started, and is tried again", "始められず、やり直しています")
+	case "started":
+		return w.t("Started", "始めました")
+	case "done":
+		return w.t("Done", "済みました")
+	case "failed":
+		return w.t("Failed", "失敗しました")
+	}
+	return state
+}
+
+func (w words) due(key string) string {
+	switch key {
+	case "resubmit":
+		return w.t("Resubmit by", "再申請の期限")
+	case "pause_ends":
+		return w.t("On hold until", "保留の終わり")
+	}
+	return w.t("Due", "期限")
+}
+
+// endOfDay says a deadline at the end of a day, as ringi says it: "2026-11-19 at the end of the day".
+func (w words) endOfDay(day string) string {
+	return day + w.t(" at the end of the day", " の終わり")
+}
 func (w words) Computed() string {
 	return w.t("Worked out from the other fields.", "ほかの項目から自動で計算されます。")
 }
@@ -695,6 +732,7 @@ func (w words) NoKinds() string {
 	return w.t("There is no request you can make.", "あなたが出せる申請はありません。")
 }
 func (w words) YourRequests() string { return w.t("Your requests", "あなたの申請") }
+func (w words) AllRequests() string  { return w.t("All requests", "すべての申請") }
 
 // MayBeMadeFrom is what the start page says after the title of a kind that may be requested from a
 // day (Entry.From), in the words of screens.OfferedWords.
@@ -748,6 +786,8 @@ func (w words) listOf(of string, title text) phrase {
 		return sentence(w.lang, title, w.t(": waiting for you", "：あなたの対応を待っている申請"))
 	case ListMine:
 		return sentence(w.lang, title, w.t(": your requests", "：あなたの申請"))
+	case ListAll:
+		return sentence(w.lang, title, w.t(": all requests", "：すべての申請"))
 	}
 	return phrase{title}
 }

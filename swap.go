@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -34,13 +36,15 @@ type Authenticator interface {
 type Question struct {
 	// Action is the gate's action: submit, withdraw, approve, reject, send_back, pause, retract,
 	// add_approver, hand_over, comment, or see (whether the person may see a ticket they are not on:
-	// DESIGN 10.3).
+	// DESIGN 10.3). see is asked of a version of a kind too, with no ticket: whether the person sees
+	// its tickets for the kind, whoever is on them, and lists them all (DESIGN 10.5).
 	Action string
 	Person Person
 	// Kind and Version are the kind of request's.
 	Kind    string
 	Version int
-	// Ticket is the ticket's ID (for a submit, the ID the new ticket is given).
+	// Ticket is the ticket's ID (for a submit, the ID the new ticket is given). It is "" for see asked
+	// of a version of a kind, and so are Stage and Requester, with no Requesters or Approvers.
 	Ticket string
 	// Stage is the name of the stage the ticket is at; "" while it is at none.
 	Stage string
@@ -88,6 +92,41 @@ type EffectKey struct {
 
 // String writes the key as the store keeps it.
 func (k EffectKey) String() string { return fmt.Sprintf("%s/%d/%d", k.Ticket, k.Round, k.Serial) }
+
+// ParseEffectKey reads a key as String writes it ("T/1/4"): the ticket's ID, then the round and the
+// serial, whole numbers from 0 written in digits. Another system given a launch's key as text (an
+// Idempotency-Key) gives it back so, for Server.WorkEnded.
+func ParseEffectKey(s string) (EffectKey, error) {
+	bad := fmt.Errorf("%q is no key of the form <ticket>/<round>/<serial>", s)
+	i := strings.LastIndex(s, "/")
+	if i < 0 {
+		return EffectKey{}, bad
+	}
+	j := strings.LastIndex(s[:i], "/")
+	round, serial := s[j+1:i], s[i+1:]
+	if j <= 0 || !digits(round) || !digits(serial) {
+		return EffectKey{}, bad
+	}
+	r, err1 := strconv.ParseInt(round, 10, 64)
+	n, err2 := strconv.ParseInt(serial, 10, 64)
+	if err1 != nil || err2 != nil {
+		return EffectKey{}, bad
+	}
+	return EffectKey{Ticket: s[:j], Round: r, Serial: n}, nil
+}
+
+// digits reports whether s is one or more of the digits 0 to 9.
+func digits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
 
 // Recipient is one person a notice is for, with what the organization's data says of them: their
 // name and address, and Language, the language to tell them in: theirs in the organization's data
@@ -139,7 +178,8 @@ type Launch struct {
 	Args json.RawMessage
 }
 
-// Flows starts the flows a ticket launches. A launched flow answers nothing back.
+// Flows starts the flows a ticket launches. What became of a launched flow comes back, when the work
+// says it, by Server.WorkEnded with the same key (Launch.Key).
 type Flows interface {
 	Launch(ctx context.Context, l Launch) error
 }

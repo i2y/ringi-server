@@ -23,7 +23,7 @@ The package `serve` prepares the next three from the flags, so they do not go in
 
 | Part | Field | What `serve` prepares |
 |---|---|---|
-| Whose request it is | `Authenticator` | `-dev-login`, `-oidc-…`, or with neither the header `X-Person` |
+| Whose request it is | `Authenticator` | `-dev-login`, `-oidc-…`, or with neither the header `X-Person`; with `-api-keys`, a program's key before them |
 | Where the requests are kept | `Store` | The PostgreSQL of `-db`, or memory |
 | Where the attachments are kept | `Files` | The PostgreSQL of `-db`, the directory of `-files`, or memory |
 
@@ -86,6 +86,7 @@ modules of their own.
 | [`screens`](../screens/README.md), [`screens/page`](../screens/page/README.md) | Make the A2UI screens, and the HTML pages |
 | [`oidc`](../oidc/README.md) | Your organization's sign-in |
 | `devlogin` | The trial sign-in (`-dev-login` and `X-Person`) |
+| `apikeys` | The keys of programs (`-api-keys`), in front of another sign-in |
 | `postgres`, `memstore` | Keep the requests and the attachments in PostgreSQL, and in memory |
 | `orgfiles` | Reads the CSV files of the organization's data |
 | `servertest`, `conformance` | Parts for tests, and tests that see whether a server does what it promises |

@@ -25,6 +25,7 @@ type screen struct {
 	people     []string             // the places of the IDs the screen names from /people
 	masters    map[string][]string  // a field → the places of the keys the screen names from /masters/<field>
 	files      []string             // the places of the files' IDs the screen looks up in /files
+	fileNames  []string             // the places of the files' IDs the screen names from /file_names
 	routes     []string             // the places of the stages an ApprovalRoute shows
 	rowForm    []string             // a list: the fields of a ticket's form its rows read
 	rowKeys    []string             // a history: the keys of a record its rows read
@@ -42,8 +43,8 @@ type button struct {
 
 // The places of each screen's data a fill fills (ringi's DESIGN 13.8), and the JSON each starts as.
 var places = map[string][]string{
-	"form":    {"requester", "submit_for", "may_submit", "form", "before", "ticket", "comment", "can", "people", "refused", "upload", "find"},
-	"card":    {"ticket", "form", "route", "comment", "edit", "send_back", "add_approver", "hand_over", "can", "people", "masters", "files", "refused", "upload", "find"},
+	"form":    {"requester", "submit_for", "may_submit", "form", "before", "ticket", "comment", "can", "people", "refused", "upload", "file_names", "find"},
+	"card":    {"ticket", "due", "form", "route", "agent", "works", "comment", "edit", "send_back", "add_approver", "hand_over", "can", "people", "masters", "files", "file_names", "refused", "upload", "find"},
 	"list":    {"tickets", "more", "people", "masters"},
 	"mine":    {"tickets", "more", "people", "masters"},
 	"history": {"ticket", "history", "people"},
@@ -52,9 +53,9 @@ var places = map[string][]string{
 
 var shapes = map[string]string{
 	"requester": "null", "submit_for": "array", "may_submit": "bool", "form": "object", "before": "null",
-	"ticket": "object", "comment": "string", "can": "object", "people": "object", "route": "array",
+	"ticket": "object", "due": "object", "agent": "array", "works": "array", "comment": "string", "can": "object", "people": "object", "route": "array",
 	"edit": "object", "send_back": "object", "add_approver": "object", "hand_over": "object",
-	"masters": "object", "files": "object", "tickets": "array", "history": "array",
+	"masters": "object", "files": "object", "file_names": "object", "tickets": "array", "history": "array",
 	"refused": "object", "upload": "null", "find": "null", "more": "bool",
 	"from": "null", "home": "null",
 }
@@ -63,18 +64,28 @@ var shapes = map[string]string{
 // from the ticket's key of the same name.
 var placeKeys = map[string]map[string][]string{
 	"form": {"refused": {"text", "field", "comment"}},
-	"card": {"send_back": {"to"}, "add_approver": {"approver", "parts"}, "hand_over": {"of", "to"}, "refused": {"text", "field", "comment"}},
+	"card": {"due": dueKeys, "send_back": {"to"}, "add_approver": {"approver", "parts"}, "hand_over": {"of", "to"}, "refused": {"text", "field", "comment"}},
 }
 
+// The deadlines a ticket runs to, which a card's /due and a list's row's due hold (ticket.deadlines),
+// and beside each the day it is the end of, when it is at midnight in the zone (EndOfDay). A screen
+// of an older ritsu, without the days, holds only the first three.
+var dueKeys = []string{"stage", "resubmit", "pause_ends", "stage_day", "resubmit_day", "pause_ends_day"}
+
 // What a row of each list holds of a ticket: the requester in the list of the tickets that wait
-// for the viewer, who made the request in the list of the viewer's own; and the keys of the
-// history's records (ringi's DESIGN 12.4) with its time.
+// for the viewer, who made the request in the list of the viewer's own, and the deadlines it runs
+// to (due, worked out of the ticket as a card's /due is); and the keys of the history's records
+// (ringi's DESIGN 12.4) with its time.
 var (
 	rowTicketKeys = map[string][]string{
-		"list": {"id", "status", "stage", "requester", "form"},
-		"mine": {"id", "status", "stage", "made_by", "form"},
+		"list": {"id", "status", "stage", "requester", "due", "form"},
+		"mine": {"id", "status", "stage", "made_by", "due", "form"},
 	}
 	recordKeys = []string{"at", "did", "stage", "by", "proxy_of", "organization", "once_with", "to", "note", "comment", "cleared"}
+	// what a line of what an agent answered holds (a card's /agent): of the line of the history
+	agentKeys = []string{"stage", "did", "comment"}
+	// what a line of the work a ticket launched holds (a card's /works)
+	workKeys = []string{"flow", "state", "at", "outputs", "reason"}
 )
 
 // readScreen reads one language's template of a screen of k.
@@ -182,6 +193,21 @@ func (sc *screen) checkPlaces(s *Set, k *kind, raw json.RawMessage) error {
 				}
 			}
 		}
+		if key == "agent" && len(v.([]any)) > 0 {
+			return fmt.Errorf("its place /agent starts with lines: a fill writes what an agent answered")
+		}
+		if key == "works" && len(v.([]any)) > 0 {
+			return fmt.Errorf("its place /works starts with lines: a fill writes the work the ticket launched")
+		}
+		if key == "due" {
+			// a deadline starts as none: a fill writes the ones the ticket runs to
+			for _, f := range sortedKeys(obj) {
+				if obj[f] != nil {
+					was, _ := json.Marshal(obj[f])
+					return fmt.Errorf("its place /due/%s starts as %s, not null", f, was)
+				}
+			}
+		}
 		if key == "refused" {
 			// a screen starts refused by nothing (its text and field null, and comment false): a fill
 			// says the refusal of what a button sent
@@ -244,12 +270,13 @@ func (sc *screen) readParts(s *Set, k *kind, raw json.RawMessage, basic string) 
 		return errors.New("it has no part `root`")
 	}
 	r := &reader{sc: sc, parts: parts, seen: map[string]bool{}, reads: map[string]bool{},
-		people: map[string]bool{}, masters: map[string]map[string]bool{}, files: map[string]bool{}, routes: map[string]bool{}}
+		people: map[string]bool{}, masters: map[string]map[string]bool{}, files: map[string]bool{}, named: map[string]bool{}, routes: map[string]bool{}}
 	if err := r.visit("root", ""); err != nil {
 		return err
 	}
 	sc.people = sortedKeys(r.people)
 	sc.files = sortedKeys(r.files)
+	sc.fileNames = sortedKeys(r.named)
 	sc.routes = sortedKeys(r.routes)
 	for f, at := range r.masters {
 		sc.masters[f] = sortedKeys(at)
@@ -260,6 +287,9 @@ func (sc *screen) readParts(s *Set, k *kind, raw json.RawMessage, basic string) 
 	}
 	if len(sc.files) > 0 && sc.start["files"] == nil {
 		return errors.New("it opens files, and its data has no /files")
+	}
+	if len(sc.fileNames) > 0 && sc.start["file_names"] == nil {
+		return errors.New("it names files, and its data has no /file_names")
 	}
 	masters, _ := sc.start["masters"].(map[string]any)
 	for _, f := range sortedKeys(r.masters) {
@@ -282,12 +312,25 @@ func (sc *screen) readParts(s *Set, k *kind, raw json.RawMessage, basic string) 
 				}
 				form[segs[1]] = true
 			}
+			if segs[0] == "due" && len(segs) > 1 && !slices.Contains(dueKeys, segs[1]) {
+				return fmt.Errorf("its rows read %q, which is no deadline of a ticket's row", at)
+			}
 		case sc.name == "history" && strings.HasPrefix(at, "/history/*/"):
 			key, _, _ := strings.Cut(strings.TrimPrefix(at, "/history/*/"), "/")
 			if !slices.Contains(recordKeys, key) {
 				return fmt.Errorf("its rows read %q, which a record of the history does not have", at)
 			}
 			keys[key] = true
+		case sc.name == "card" && strings.HasPrefix(at, "/agent/*/"):
+			key, _, _ := strings.Cut(strings.TrimPrefix(at, "/agent/*/"), "/")
+			if !slices.Contains(agentKeys, key) {
+				return fmt.Errorf("its rows read %q, which a line of what an agent answered does not have", at)
+			}
+		case sc.name == "card" && strings.HasPrefix(at, "/works/*/"):
+			key, _, _ := strings.Cut(strings.TrimPrefix(at, "/works/*/"), "/")
+			if !slices.Contains(workKeys, key) {
+				return fmt.Errorf("its rows read %q, which a line of the work a ticket launched does not have", at)
+			}
 		}
 	}
 	sc.rowForm = sortedKeys(form)
@@ -305,6 +348,7 @@ type reader struct {
 	people  map[string]bool
 	masters map[string]map[string]bool
 	files   map[string]bool
+	named   map[string]bool // the places of the files' IDs it names from /file_names
 	routes  map[string]bool
 }
 
@@ -420,6 +464,8 @@ func (r *reader) scan(v any, base string) error {
 					r.people[full] = true
 				case table == "/files":
 					r.files[full] = true
+				case table == "/file_names":
+					r.named[full] = true
 				case strings.HasPrefix(table, "/masters/") && !strings.Contains(table[len("/masters/"):], "/"):
 					f := table[len("/masters/"):]
 					if r.masters[f] == nil {
@@ -562,6 +608,7 @@ func (sc *screen) differs(o *screen) string {
 		{"the people it names", sc.people, o.people},
 		{"the masters it names", sc.masters, o.masters},
 		{"the files it opens", sc.files, o.files},
+		{"the files it names", sc.fileNames, o.fileNames},
 		{"the route it shows", sc.routes, o.routes},
 		{"the fields its rows read", sc.rowForm, o.rowForm},
 		{"the keys its rows read", sc.rowKeys, o.rowKeys},

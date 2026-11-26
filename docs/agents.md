@@ -130,9 +130,14 @@ An operation that cannot be taken is answered with the reason, and the field of 
 the cookie of someone who signed in with a browser. That ends after 12 hours at the most, so it is not for your
 staff to use.
 
-For your staff, use bearer tokens in place of the cookie. The server of `cmd/server` stops a request with no one
-signed in before it comes to `/mcp`, so put `/mcp` on a server you [put together yourself](embedding.md). Write a
-function that finds the person by the token, and give it as `Verify` of `HTTP`.
+For your staff, give each agent a key in place of the cookie. Start the server with `-api-keys`, with a line for the
+key that names the person the agent works for ([Call it from a program](api.md#call-it-from-a-program)), and have the
+agent send the key in the header `Authorization` (`Bearer <key>`). A key does not expire. To stop one, take its line
+out and start the server again.
+
+For tokens that expire, such as those your organization's sign-in service gives, put `/mcp` on a server you [put
+together yourself](embedding.md): the server of `cmd/server` finds the person before a request comes to `/mcp`.
+Write a function that finds the person by the token, and give it as `Verify` of `HTTP`.
 
 ```go
 func verify(ctx context.Context, token string, r *http.Request) (mcp.Token, error) {

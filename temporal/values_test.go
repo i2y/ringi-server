@@ -3,9 +3,13 @@ package temporal
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	sdktemporal "go.temporal.io/sdk/temporal"
 
 	server "github.com/i2y/ringi-server"
 )
@@ -149,5 +153,33 @@ func TestAnswerOf(t *testing.T) {
 	}
 	if got := answerOf(note, nil, nil); got.Failed || string(got.Outputs) != "[]" {
 		t.Errorf("answerOf(a note with no outputs) = %+v; want no outputs", got)
+	}
+}
+
+func TestEndedOf(t *testing.T) {
+	key := server.EffectKey{Ticket: "T-1", Round: 1, Serial: 9}
+	in := launchInput{Key: key, Outputs: []string{"reference", "amount"}}
+	// the outputs in the order the flow declares them, and the others after them
+	got := endedOf(in, json.RawMessage(`{"amount":4800,"note":"paid","reference":"PAY-1"}`), nil)
+	want := named("reference", str("PAY-1"), "amount", num("4800"), "note", str("paid"))
+	if got.Failed || string(got.Outputs) != want {
+		t.Errorf("endedOf(outputs) = %+v; want the outputs %s", got, want)
+	}
+	for _, out := range []string{``, `null`} {
+		if got := endedOf(in, json.RawMessage(out), nil); got.Failed || got.Outputs != nil {
+			t.Errorf("endedOf(%q) = %+v; want done, with no outputs", out, got)
+		}
+	}
+	if got := endedOf(in, json.RawMessage(`{"payment":{"reference":"PAY-1"}}`), nil); !got.Failed || !strings.HasPrefix(got.Reason, "the outputs do not fit: ") {
+		t.Errorf("endedOf(an object in the outputs) = %+v; want failed, with why", got)
+	}
+	// the message of the innermost application error, as a reason the server takes
+	err := fmt.Errorf("child workflow failed: %w", sdktemporal.NewApplicationErrorWithCause("activity failed", "Act", sdktemporal.NewApplicationError("the accounts system\tis down", "Down")))
+	if got := endedOf(in, nil, err); !got.Failed || got.Reason != "the accounts system is down" {
+		t.Errorf("endedOf(an error) = %+v; want failed, with the innermost message", got)
+	}
+	long := strings.Repeat("あ", server.MaxReason+10)
+	if got := endedOf(in, nil, errors.New(long)); utf8.RuneCountInString(got.Reason) != server.MaxReason || !strings.HasSuffix(got.Reason, "…") {
+		t.Errorf("endedOf(a long error) has a reason of %d characters", utf8.RuneCountInString(got.Reason))
 	}
 }

@@ -19,8 +19,8 @@ import (
 // cannot be one (DESIGN 7.3).
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	segs := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if segs[0] == "admin" {
-		s.serveAdmin(w, r, segs) // the administration's API (DESIGN 13.6)
+	if segs[0] == "admin" || len(segs) == 1 && segs[0] == "tickets" {
+		s.serveAdmin(w, r, segs) // the framework's own operations: the administration's (DESIGN 13.6), and list_tickets (10.5)
 		return
 	}
 	var op *operation

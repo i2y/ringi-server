@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -400,4 +401,48 @@ func never2(json.RawMessage, json.RawMessage, json.RawMessage, int64) (json.RawM
 
 func never3(json.RawMessage) (json.RawMessage, error) {
 	return nil, errors.New("not run")
+}
+
+// TestLookupFiles: the screens name and open the files a person may open, and no others: with no
+// ticket, the files they uploaded, by the names they were kept by and at /files/{id}; a file someone
+// else uploaded, and an ID no file has, get no name and no address (the screens show such an ID as
+// it is).
+func TestLookupFiles(t *testing.T) {
+	var kinds []server.Kind
+	for _, n := range []string{"account", "account_ja", "contract", "contract_ja", "expense", "expense_ja", "leave", "leave_ja", "purchase", "purchase_ja"} {
+		kinds = append(kinds, server.Kind{Name: n, Version: 1, Start: never, Next: never2, Worked: never3})
+	}
+	p, err := server.LoadKinds(3, "en", kinds, os.DirFS(filepath.Join("..", "screens", "testdata", "requests")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := &servertest.Files{}
+	srv, err := server.New(server.Config{Packages: []*server.Package{p}, Store: memstore.New(), Authenticator: servertest.Header{}, Gate: server.AllowAll, Files: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := New(srv, Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	mine, err := files.Put(ctx, server.FileInfo{Name: "shop.pdf", ContentType: "application/pdf", By: "e1"}, strings.NewReader("%PDF-1.7\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	theirs, err := files.Put(ctx, server.FileInfo{Name: "theirs.pdf", ContentType: "application/pdf", By: "e2"}, strings.NewReader("%PDF-1.7\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := h.Lookup(ctx, server.Person{ID: "e1"}, "")
+	ids := []string{mine, theirs, "no-such-file"}
+	slices.Sort(ids)
+	names, err := l.FileNames(ids)
+	if err != nil || !maps.Equal(names, map[string]string{mine: "shop.pdf"}) {
+		t.Errorf("the names: %v %v", names, err)
+	}
+	urls, err := l.FileURLs(ids)
+	if err != nil || !maps.Equal(urls, map[string]string{mine: "/files/" + mine}) {
+		t.Errorf("the addresses: %v %v", urls, err)
+	}
 }

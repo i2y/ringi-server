@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -43,6 +44,11 @@ import (
 //	    each recorded. Of twenty kept at once with one key, with a limit of one and with none, one is
 //	    recorded and each of the twenty is answered its ID. An upload let go is its key's no more:
 //	    UploadOf answers ErrNotFound, and the next one kept with the key is recorded.
+//	(e) The thing to do of (a), done at a time in that zone, is answered with DoneAt that time, cut to
+//	    the microsecond, in UTC. What its work said (KeepOutcome) is answered as it was given, with
+//	    OutcomeAt likewise, by ToDoItem and ToDoList; what it says again replaces it. What the work
+//	    of another thing to do said before it was marked done stays when it is (a work may say it
+//	    from Launch itself). KeepOutcome of an ID no thing to do has answers ErrNotFound.
 func Keeping(t *testing.T, s Setup) {
 	t.Helper()
 	ctx := context.Background()
@@ -334,4 +340,50 @@ func Keeping(t *testing.T, s Setup) {
 
 	// (d)
 	keepingUploads(t, store, t0.Add(48*time.Hour))
+
+	// (e)
+	if err := store.DoneToDo(ctx, todo.ID, t0.Add(time.Hour)); err != nil {
+		t.Fatalf("(e) marking the thing to do done: %v", err)
+	}
+	for i, said := range []string{`{"failed":true,"reason":"The accounts system is down","outputs":[]}`, `{"failed":false,"reason":null,"outputs":[{"name":"reference","value":{"str":{"v":"PAY-1"}}}]}`} {
+		at := t0.Add(time.Duration(2+i) * time.Hour)
+		if err := store.KeepOutcome(ctx, todo.ID, at, json.RawMessage(said)); err != nil {
+			t.Fatalf("(e) keeping what the work said: %v", err)
+		}
+		td, err := store.ToDoItem(ctx, todo.ID)
+		tds, err2 := store.ToDoList(ctx, "keeping-1")
+		if err != nil || err2 != nil || len(tds) != 1 {
+			t.Fatalf("(e) reading the thing to do: %v, %d, %v", err, len(tds), err2)
+		}
+		for _, x := range []server.ToDo{td, tds[0]} {
+			if !x.Done || string(x.Outcome) != said {
+				t.Errorf("(e) the thing to do is done: %v, and its work said %s; want %s", x.Done, x.Outcome, said)
+			}
+			check("(e) DoneAt", x.DoneAt, t0.Add(time.Hour))
+			check("(e) OutcomeAt", x.OutcomeAt, at)
+		}
+	}
+	launch := server.ToDo{ID: "keeping-1/launch", Ticket: "keeping-1", What: "launch", Body: []byte(`{}`), Created: t0, TryAt: t0}
+	if err := store.KeepToDo(ctx, launch); err != nil {
+		t.Fatalf("(e) keeping a launch: %v", err)
+	}
+	said := `{"failed":false,"reason":null,"outputs":[{"name":"number","value":{"str":{"v":"ORD-1001"}}}]}`
+	if err := store.KeepOutcome(ctx, launch.ID, t0.Add(time.Hour), json.RawMessage(said)); err != nil {
+		t.Fatalf("(e) keeping what the work of the launch said: %v", err)
+	}
+	if err := store.DoneToDo(ctx, launch.ID, t0.Add(2*time.Hour)); err != nil {
+		t.Fatalf("(e) marking the launch done: %v", err)
+	}
+	if td, err := store.ToDoItem(ctx, launch.ID); err != nil {
+		t.Fatalf("(e) reading the launch: %v", err)
+	} else {
+		if !td.Done || string(td.Outcome) != said {
+			t.Errorf("(e) the launch is done: %v, and its work said %s; want %s", td.Done, td.Outcome, said)
+		}
+		check("(e) DoneAt of the launch", td.DoneAt, t0.Add(2*time.Hour))
+		check("(e) OutcomeAt of the launch", td.OutcomeAt, t0.Add(time.Hour))
+	}
+	if err := store.KeepOutcome(ctx, "no-such-thing", t0, json.RawMessage(`{}`)); !errors.Is(err, server.ErrNotFound) {
+		t.Errorf("(e) KeepOutcome of an ID no thing to do has: %v; want ErrNotFound", err)
+	}
 }

@@ -222,15 +222,26 @@ func newestFirst(a, b server.Line) int {
 
 // CountTickets counts the tickets of the versions given by kind, version and status.
 func (s *Store) CountTickets(_ context.Context, versions []server.KindVersion) ([]server.TicketCount, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	counted := map[server.KindVersion]bool{}
 	for _, v := range versions {
 		counted[v] = true
 	}
+	return s.count(func(v server.KindVersion) bool { return counted[v] }), nil
+}
+
+// KeptVersions counts the tickets of every version the store keeps any of, by kind, version and
+// status.
+func (s *Store) KeptVersions(context.Context) ([]server.TicketCount, error) {
+	return s.count(func(server.KindVersion) bool { return true }), nil
+}
+
+// count counts the tickets of the versions counted, by kind, version and status.
+func (s *Store) count(counted func(server.KindVersion) bool) []server.TicketCount {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	n := map[server.TicketCount]int{}
 	for _, t := range s.tickets {
-		if counted[server.KindVersion{Kind: t.Kind, Version: t.Version}] {
+		if counted(server.KindVersion{Kind: t.Kind, Version: t.Version}) {
 			n[server.TicketCount{Kind: t.Kind, Version: t.Version, Status: t.Status}]++
 		}
 	}
@@ -248,7 +259,7 @@ func (s *Store) CountTickets(_ context.Context, versions []server.KindVersion) (
 		}
 		return strings.Compare(a.Status, b.Status)
 	})
-	return out, nil
+	return out
 }
 
 // Record reads a record by its ID.

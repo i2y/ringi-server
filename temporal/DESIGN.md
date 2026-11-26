@@ -10,15 +10,18 @@ Japanese: [DESIGN.ja.md](DESIGN.ja.md).
 
 ## 1. What it does
 
-- **Launch.** It starts the flow with the thing to do's key as the run's workflow ID. Starting the
-  same key again starts nothing and is a success: the framework may do a thing to do twice.
+- **Launch.** It starts a small workflow of its own for the key (the *launching run*). The
+  launching run runs the flow as a child workflow, with the key as the child's workflow ID, and
+  tells the framework's `Server.WorkEnded` what became of it (done, with what it ended with, or
+  failed, with why) from an activity Temporal tries until it is done. Starting the same key again
+  starts nothing and is a success: the framework may do a thing to do twice.
 - **Ask.** It starts a small workflow of its own for the key (the *asking run*). The asking run
   runs the flow as a child workflow, with the key as the child's workflow ID, reads what the flow
   ended with, and gives the answer to the framework's `Server.Answered` from an activity Temporal
   tries until it is done. The answer is not lost when a process stops between the flow's end and
   the answer: the asking run is still open, and its activity is tried again.
-- **Run.** The asking runs and their activity run on a worker in the server's process (the activity
-  calls the server). The flows run on their own workers, the ones dandori generates, in the same
+- **Run.** The asking and the launching runs and their activities run on the runner's own worker,
+  in the server's process (the activities call the server). The flows run on their own workers, the ones dandori generates, in the same
   process or in others.
 
 The approvals themselves (`next`, the clocks, the things to do) do not use Temporal: the framework
@@ -89,13 +92,14 @@ type Config struct {
 	// makes a generated package's worker (its NewWorker, with your own tasks and the Transport its
 	// agents call out through). A flow whose task queue has none here is run by another process.
 	Workers map[string]func(c client.Client) worker.Worker
-	// TaskQueue is the task queue of the asking runs and of their answers
-	// (default DefaultTaskQueue, "requests.ask").
+	// TaskQueue is the task queue of the asking and the launching runs, and of what they tell the
+	// server (default DefaultTaskQueue, "requests").
 	TaskQueue string
-	// AnswerTimeout is how long one try at giving an answer to the server may take (default one
-	// minute). A try that takes longer, or whose worker stops, is tried again.
+	// AnswerTimeout is how long one try at telling the server an answer, or what became of a
+	// launched flow, may take (default one minute). A try that takes longer, or whose worker stops,
+	// is tried again.
 	AnswerTimeout time.Duration
-	// WorkerOptions are the options of the worker of the asking runs.
+	// WorkerOptions are the options of the worker of the asking and the launching runs.
 	WorkerOptions worker.Options
 }
 
@@ -104,12 +108,14 @@ func New(c client.Client, cfg Config) (*Runner, error)
 func (r *Runner) Launch(ctx context.Context, l server.Launch) error // server.Flows
 func (r *Runner) Ask(ctx context.Context, a server.Ask) error       // server.Agents
 
-// Answerer is where the answers go: *server.Server is one.
+// Answerer is where the answers and what became of the launched flows go: *server.Server is one.
 type Answerer interface {
 	Answered(ctx context.Context, key server.EffectKey, a server.Answer) (server.Reply, error)
+	WorkEnded(ctx context.Context, key server.EffectKey, e server.WorkEnd) (server.Reply, error)
 }
 
-// Worker is the worker of the asking runs and their answers, on Config.TaskQueue.
+// Worker is the worker of the asking and the launching runs and of what they tell the server, on
+// Config.TaskQueue.
 func (r *Runner) Worker(to Answerer) worker.Worker
 // Run runs Worker(to) and the flows' workers of Config.Workers, until ctx ends or a worker stops
 // on an error it cannot go on from.
@@ -124,26 +130,26 @@ one kind, a task queue of `Config.Workers` given a nil function ("Config.Workers
 the task queue …"), and a worker of a task queue no flow is on ("Config.Workers has a worker for
 the task queue …, which no flow of Config.Flows is on"). The server is made with the runner
 (`Config.Flows` and `Config.Agents`), and the runner then answers the server, so the runner is
-given the server when its worker is made, not in `New`. `Run` starts the asking runs' worker and the
+given the server when its worker is made, not in `New`. `Run` starts the runner's own worker and the
 worker each function of `Workers` makes, one for each task queue; when one does not start, it stops
 the ones it started and answers that error. It answers `ctx.Err()` when ctx ends, and the error of
-the asking runs' worker when that worker stops on one.
+the runner's own worker when that worker stops on one.
 
-`CheckWorkers` asks Temporal (`DescribeTaskQueue`) whether a worker polls each task queue the
-runner starts runs on: `Config.TaskQueue`, where `Run`'s worker takes the asking runs, and the queue
-of each flow of `Config.Flows`, whichever process runs it. A run on a queue no worker polls waits
-until one does, and its ticket with it. `CheckWorkers` asks about every queue again every 250
-milliseconds until Temporal has answered a worker on each, and answers nil. A question that fails
-is asked again at the next turn, whatever its error: Temporal may still be starting, or one call
-may fail. When ctx ends first, between two questions or in the middle of one, it answers one error
-("no worker polls the task queues …: their runs wait until one does"), which names each queue it
-has found no worker on by what Temporal last answered about it: the name alone when Temporal
-answered that no worker polls the queue, the name with the error when the last question failed
-("(the last question to Temporal failed: …)"), and the name with "(Temporal has not answered)" when
-Temporal has answered nothing about the queue. A question ctx ends in the middle of is no answer:
-what Temporal answered before it stands. The error wraps the errors of the last questions that
-failed. Call it once the workers are up: after `Run` has started this process's, with the processes
-that run the others started.
+`CheckWorkers` asks Temporal (`DescribeTaskQueue`) whether a worker polls each task queue the runner
+starts runs on: `Config.TaskQueue`, where the runner's own worker takes the asking and the launching
+runs, and the queue of each flow of `Config.Flows`, whichever process runs it. A run on a queue no
+worker polls waits until one does, and its ticket with it. `CheckWorkers` asks about every queue
+again every 250 milliseconds until Temporal has answered a worker on each, and answers nil. A
+question that fails is asked again at the next turn, whatever its error: Temporal may still be
+starting, or one call may fail. When ctx ends first, between two questions or in the middle of one,
+it answers one error ("no worker polls the task queues …: their runs wait until one does"), which
+names each queue it has found no worker on by what Temporal last answered about it: the name alone
+when Temporal answered that no worker polls the queue, the name with the error when the last
+question failed ("(the last question to Temporal failed: …)"), and the name with "(Temporal has not
+answered)" when Temporal has answered nothing about the queue. A question ctx ends in the middle of
+is no answer: what Temporal answered before it stands. The error wraps the errors of the last
+questions that failed. Call it once the workers are up: after `Run` has started this process's, with
+the processes that run the others started.
 
 `CheckWorkers` tells that a worker has polled each queue lately, not that one polls it now:
 Temporal still lists a worker as a poller of its queue for a while after its last poll (on the dev
@@ -164,40 +170,70 @@ if err := w.Run(worker.InterruptCh()); err != nil {
 ```
 
 - **In one process.** Give `Workers` a worker for the queue of every flow `FlowsOf` lists, and
-  `Run` runs them all beside the asking runs' worker. This is the shape of a small deployment.
+  `Run` runs them all beside the runner's own worker. This is the shape of a small deployment.
 - **In two or more.** The server's process runs the workers of some flows, or of none: with no
-  `Workers`, it runs only the asking runs and their answers. The other flows run in the processes
+  `Workers`, it runs only the asking and the launching runs. The other flows run in the processes
   that run their workers. The README's example runs the day trip's decision (`travel_decision`) and
   the payment (`expense_payment`) in the server's process, and leaves the expense's check
   (`expense_precheck`) and the contract's summary (`contract_summary`) to another.
 
-The asking runs' worker must be where `Answered` can be called: in a process of the server (any of
+The runner's own worker must be where `Answered` and `WorkEnded` can be called: in a process of the server (any of
 them, when several run on one store). Before the server serves, `CheckWorkers` (2.2) says whether
 every queue has a worker, in this process or another.
 
-The client is the user's, and the runner starts every flow and every asking run with it, so the
+The client is the user's, and the runner starts every flow and every asking and launching run with it, so the
 workers must read payloads the way that client writes them. When a flow says `history encrypted`,
 give the runner the client its package's `Dial` makes (a `client.Client` whose payloads go through
 the codec), and run the workers with clients that have the same codec.
 
 ## 3. Launching a flow
 
-`Launch` starts the flow named by the thing to do (`Launch.Flow`, looked up for `Launch.Kind`):
-
-- workflow ID: the key, `<ticket>/<round>/<serial>` (`EffectKey.String`);
-- type and task queue: the `Flow`'s;
-- input: the arguments as one JSON object (5);
-- a duplicate ID refused, and an error when the ID is taken
-  (`WorkflowExecutionErrorWhenAlreadyStarted`).
+`Launch` starts the launching run of the flow named by the thing to do (`Launch.Flow`, looked up
+for `Launch.Kind`): type `requests.launch`, workflow ID `<key>/launch` (`LaunchID(key)`), task
+queue `Config.TaskQueue`, a duplicate ID refused, and an error when the ID is taken
+(`WorkflowExecutionErrorWhenAlreadyStarted`). Its input holds all it needs (the key, the kind, the
+flow's name, type and task queue, its input, the order of its outputs, and `AnswerTimeout`), as an
+asking run's does (4.1).
 
 A start refused because the ID is taken is a success: the run was started before. Any other error
 is returned, and the framework tries the thing to do again (after 2 seconds, then doubling up to 10
 minutes, with no end), so a flow that could not be started (Temporal out of reach, a flow missing
-from `Config.Flows`) is started once it can be. The generated package's `Start` sets the same
-options; the runner does not call it, so that a launch and the child of an asking run are started
-from one list.
+from `Config.Flows`) is started once it can be. Meanwhile the ticket's card says that the work
+could not be started and is tried again.
 
-A launched flow answers nothing back. What it ends with stays in Temporal.
+The launching run does two things:
+
+1. It runs the flow as a child workflow: workflow ID the key, `<ticket>/<round>/<serial>`
+   (`EffectKey.String`); the flow's type and task queue; the arguments as one JSON object (5). The
+   ID may be taken again only after a run of it that failed
+   (`WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY`), so that a launching run reset after
+   its flow failed runs the flow again. The generated package's `Start` sets the options of a run
+   of its own; the runner does not call it, so that a launched flow and an asked one are started
+   from one list.
+2. It tells `WorkEnded` what became of the flow, from the activity `requests.ended`, tried as an
+   asking run's answer is (4.1).
+
+| The flow ended | What the server is told |
+|---|---|
+| with outputs that fit | done, with its outputs as named values in the order of `Flow.Outputs` (5) |
+| with outputs that do not fit | failed, with why (`the outputs do not fit: …`) |
+| with an error (a task failed to the end, a timeout, its run cancelled or terminated) | failed, with the message of the innermost application error of the chain (the one a task or the flow failed with), else the error's own |
+
+A reason is made one the server takes (`server.WorkEnd`): a character the server refuses in a
+reason is a space, and a reason longer than `server.MaxReason` characters is cut, with "…". The
+server is told even when the launching run is cancelled: cancelling it cancels the flow, and the
+card says that it failed.
+
+| `WorkEnded` answers | The activity | The launching run ends |
+|---|---|---|
+| `OK` | done | done |
+| `NotFound` (nothing was launched by the key) or `Invalid` | fails, and is not tried again (`requests.not_found`, `requests.invalid`) | failed, for an administrator to see |
+| an error (the store failed) | tried again | (when a try succeeds) |
+
+A flow that failed to the end is run again, once its cause is put right, by resetting its
+launching run to its first workflow task (`temporal workflow reset -w '<key>/launch' --type
+FirstWorkflowTask`). The flow runs again under the key, and the server is told again: what a work
+says last stands (`Server.WorkEnded`).
 
 Temporal refuses a taken ID only while it keeps the closed run (the namespace's retention). The
 framework marks a thing to do done as soon as `Launch` returns, so a second start comes within its
@@ -308,13 +344,15 @@ so. A row's members keep the order the run ended with them in.
 
 | What | Name |
 |---|---|
-| a launched flow's run | workflow ID `<ticket>/<round>/<serial>`, the flow's type and task queue |
+| a launched flow's run | workflow ID `<ticket>/<round>/<serial>`, the flow's type and task queue, as a child of the launching run |
 | an asked flow's run | the same, as a child of the asking run |
-| the asking run | workflow ID `<ticket>/<round>/<serial>/ask`, type `requests.ask`, `Config.TaskQueue` (`requests.ask`) |
+| the launching run | workflow ID `<ticket>/<round>/<serial>/launch`, type `requests.launch`, `Config.TaskQueue` (`requests`) |
+| telling what became of a launched flow | activity `requests.ended`, on the same task queue |
+| the asking run | workflow ID `<ticket>/<round>/<serial>/ask`, type `requests.ask`, `Config.TaskQueue` (`requests`) |
 | giving the answer | activity `requests.answer`, on the same task queue |
 
-The asking run's code is part of this module. Its history is replayed by later versions of it, so
-a change to what it schedules goes through `workflow.GetVersion`.
+The code of the asking and the launching runs is part of this module. Their histories are replayed
+by later versions of it, so a change to what they schedule goes through `workflow.GetVersion`.
 
 ## 7. Tests
 
@@ -326,7 +364,9 @@ namespace `one-process`, for the README's example (`TestOneProcess`). The agents
 fake `Transport`; nothing goes out to a network.
 
 - `values_test.go` (no server): the values both ways, a note's outputs in their declared order and
-  without it, the answer made from the outputs.
+  without it, the answer made from the outputs, and what the server is told of a launched flow's
+  end (`TestEndedOf`): its outputs in their declared order, outputs that do not fit, the innermost
+  message of an error, a reason made one the server takes.
 - `flows_test.go`: `TestFlowsOf` reads the flows of the examples' kinds from their descriptions
   (`../examples/requests`; without them it says `SKIP`): the six flows (`provision`, `summarize`,
   `precheck_agent`, `travel_decision`, `pay`, `order`), each one `Flow` for the kinds in English and
@@ -343,11 +383,14 @@ fake `Transport`; nothing goes out to a network.
 - `runner_test.go` runs the runner on workflows written for the test, in the shape of the
   generated ones, and on a fake server that keeps answers by key: `New`'s refusals, of the flows
   and of `Workers` (a queue with a nil worker, a worker of a queue no flow is on); a launch started
-  twice, and again after its run ended, runs once; an ask gives `ok`, `doubt`, `Failed`, and a
+  twice, and again after its run ended, runs once and tells the server once what it ended with; a
+  flow that fails to the end is told failed, with its error's message, and its launching run, reset,
+  runs the flow again under the key and tells the server it was done; a launching run whose key
+  launched nothing ends failed after one try; an ask gives `ok`, `doubt`, `Failed`, and a
   note's outputs in their declared order and without it; refusals end the run, errors are tried
   again, `NotFound` fails it; an ask given twice runs once; a cancelled asking run gives `Failed`;
   a worker stopped while it gives an answer, and another started, gives it once; `Run` runs the
-  asking runs' worker and the workers of `Workers`, and ends with ctx.
+  runner's own worker and the workers of `Workers`, and ends with ctx.
 - `examples_test.go` runs the examples on the framework: it generates the expense and contract
   kinds and their flows with `ritsu` (`RITSU`, or `ritsu` on `PATH`) from the examples
   (`RINGI_EXAMPLES`, else the framework's `examples/project`) into a module made for the test,
@@ -366,7 +409,8 @@ fake `Transport`; nothing goes out to a network.
   answer is out of shape (the flow fails: `agent failed`); a contract's note attached in its
   declared order, and one that comes after the deadline (the ticket goes on without it, and the late
   answer is refused `stale`); a day trip the agent approves, whose payment runs once when launched
-  again; the worker of the asking runs stopped between the server's taking an answer and its reply;
+  again, and whose card says the payment was done, with its reference; the worker of the asking
+  runs stopped between the server's taking an answer and its reply;
   and the README's example (`TestOneProcess`), on the namespace `one-process`, where the test runs
   the workers of the other two flows as another process would and no other worker polls: the
   server's process runs the day trip's decision and its payment on its own workers, `CheckWorkers`
@@ -377,7 +421,8 @@ fake `Transport`; nothing goes out to a network.
 - **Asking Temporal for the answers.** The server's process could look, when it starts and every
   so often, for the keys that wait for an answer, and ask Temporal how their runs ended. It needs
   the framework to list the keys that wait, and the results must be read before the namespace's
-  retention ends. The asking run keeps the answer in one place, and Temporal does the trying.
+  retention ends. The asking and the launching runs keep what they tell in one place, and Temporal
+  does the trying.
 - **Giving the answer from the flow's own run.** An interceptor on the flow's worker could call
   `Answered` when the flow ends. The answer would then be part of the flow's history, which
   dandori's `Replay` replays without the interceptor, and it would have to run in the server's

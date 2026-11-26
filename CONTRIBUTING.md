@@ -18,11 +18,12 @@ function is one check:
 | `WaitingCounts` | the counts of what waits for a person, against the tickets, with proxies, on days before, in and after theirs |
 | `WaitingOrder` | the order of what waits (the newest first, to the microsecond), and that a comment leaves a ticket in its place |
 | `MineOrder` | the order of a person's own requests and their counts by state |
+| `TicketsOrder` | the order of the requests of a kind (the newest first, to the microsecond), of its versions and of a status |
 | `Reminded` | that a stage keeps whether its reminder has rung, through a pause and a resume |
 | `Administration` | switches, drafts and imports of the organization's data, the record, and nothing changed or read for one the gate does not allow |
 | `Keeping` | that times are in UTC, that old operations are forgotten in their order, a limit at a time, and that one upload of a key is recorded once |
 
-The last two need no vectors. The two orders are read a page at a time too.
+The last two need no vectors. The three orders are read a page at a time too.
 
 ```go
 func TestConformance(t *testing.T) {
@@ -42,6 +43,7 @@ func TestConformance(t *testing.T) {
 	conformance.WaitingCounts(t, s)
 	conformance.WaitingOrder(t, s)
 	conformance.MineOrder(t, s)
+	conformance.TicketsOrder(t, s)
 	conformance.Reminded(t, s)
 	conformance.Administration(t, s)
 	conformance.Keeping(t, s)

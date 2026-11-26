@@ -94,8 +94,11 @@ anything. The lines `post` and `void` need nothing.
 Without a budget, requests are not taken in the scenarios either. In each scenario, write the budget given out
 beforehand on the line after `requester`.
 
-```ringi title="project/purchase.ringi" hl_lines="2"
+```ringi title="project/purchase.ringi" hl_lines="2 5"
   requester s1201
+  given budget.allocate(dept: "sales", period: "2026", amount: 10_000_000JPY)
+…
+  requester s1202
   given budget.allocate(dept: "sales", period: "2026", amount: 10_000_000JPY)
 ```
 

@@ -144,7 +144,7 @@ func TestDocumentsGo(t *testing.T) {
 	untitled := func(b docBlock) bool { return b.title == "" }
 	own := read("embedding_test.go")
 	for path, which := range map[string]func(docBlock) bool{
-		"../docs/embedding.md": func(b docBlock) bool { return b.title == "" || b.title == "tokens.go" },
+		"../docs/embedding.md": untitled,
 		"../docs/agents.md":    untitled,
 	} {
 		for _, b := range goBlocks(path, which) {

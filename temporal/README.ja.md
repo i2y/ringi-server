@@ -22,10 +22,10 @@
 | `New` | flow と Temporal のクライアントから `Runner` を作る |
 | `Runner.Run` | このプロセスのワーカーを、コンテキストが終わるまで動かす。ワーカーが始められなければすぐに、続けられないエラーで止まればそのときに戻る |
 | `Runner.CheckWorkers` | flow が動くどのタスクキューにもワーカーが付くまで待つ。先にコンテキストが終われば、ワーカーのいないキューの名前を返す |
-| `Runner.Launch` | 承認のあとの flow を始める。サーバーが呼ぶ |
+| `Runner.Launch` | 承認のあとの flow を始め、終わったら、どうなったかをサーバーに伝える。サーバーが呼ぶ |
 | `Runner.Ask` | エージェントの flow を始め、終わったら答えをサーバーに返す。サーバーが呼ぶ |
 
-flow は、サーバーが渡すキーをワークフロー ID にして始めます。同じキーがもう一度来ても、何も始めません。`Ask` は、このパッケージの小さなワークフローを始め、それが flow を子ワークフローとして動かします。flow の終わり方から答え（`ok`、`doubt`、要約の出力、失敗）を作り、アクティビティで `Server.Answered` に渡します。サーバーが答えを受け取るまで Temporal がアクティビティをやり直すので、途中でプロセスが止まっても、答えは失われません。
+flow は、サーバーが渡すキーをワークフロー ID にして始めます。同じキーがもう一度来ても、何も始めません。`Launch` と `Ask` は、それぞれこのパッケージの小さなワークフローを始め、それが flow を子ワークフローとして動かします。`Launch` のワークフローは、flow がどうなったか（済んだなら終わったときの値、失敗したならその理由）を `Server.WorkEnded` に伝え、申請のページにそれが出ます。`Ask` のワークフローは、flow の終わり方から答え（`ok`、`doubt`、要約の出力、失敗）を作り、`Server.Answered` に渡します。どちらもアクティビティで伝え、サーバーが受け取るまで Temporal がアクティビティをやり直すので、途中でプロセスが止まっても、伝えることは失われません。
 
 ## 使い方
 
@@ -105,7 +105,7 @@ case err := <-checked:
 
 タスクキューにワーカーがいなければ、flow は待ち、その申請も待つことになります。上のコードは、`CheckWorkers` が済んでから受け付けを始めます（`http.ListenAndServe(":8080", srv)`）。`Run` がエラーで戻れば、30 秒を待たずに止まります。受け付けを始めたあとも、`stopped` を見続けます。
 
-- `CheckWorkers` は、Runner が処理を始めるすべてのキューと、答えを求めるワークフローのキュー（`Config.TaskQueue`）を見ます。Temporal への問い合わせが失敗したら、もう一度問い合わせます。
+- `CheckWorkers` は、Runner が処理を始めるすべてのキューと、このパッケージのワークフローのキュー（`Config.TaskQueue`）を見ます。Temporal への問い合わせが失敗したら、もう一度問い合わせます。
 - Temporal は、止まったワーカーも、最後のポーリングからしばらく（開発用サーバーでは 5 分ほど）一覧に残します。止まったばかりのワーカーは、いるものとして数えます。
 
 ## Temporal の中の名前
@@ -113,7 +113,9 @@ case err := <-checked:
 | 何か | 名前 |
 |---|---|
 | `launch` や `ask_agent`、`ask_note` で始めた flow | ワークフロー ID `<チケット>/<回>/<通し番号>`、flow の型とタスクキュー |
-| 答えを求めるワークフロー | ワークフロー ID `<チケット>/<回>/<通し番号>/ask`、型 `requests.ask`、タスクキュー `requests.ask`（`Config.TaskQueue`） |
+| flow を launch するワークフロー | ワークフロー ID `<チケット>/<回>/<通し番号>/launch`、型 `requests.launch`、タスクキュー `requests`（`Config.TaskQueue`） |
+| flow がどうなったかをサーバーに伝える | アクティビティ `requests.ended` |
+| 答えを求めるワークフロー | ワークフロー ID `<チケット>/<回>/<通し番号>/ask`、型 `requests.ask`、タスクキュー `requests`（`Config.TaskQueue`） |
 | 答えをサーバーに渡す | アクティビティ `requests.answer` |
 
 ## 試験
@@ -142,21 +144,21 @@ go test -race ./...
 - `TestOneProcess`：この文書のコードを、ほかの試験のワーカーがいないネームスペースで動かす。日帰りの出張が、申請からエージェントの決裁を経て、支払いまで進む。
 - エージェントが、通す、疑う、失敗する、形の合わない答えを返す。
 - 契約の要約が付く。遅すぎて付かない。
-- 支払いを二度始めても、一度だけ動く。
+- 支払いを二度始めても、一度だけ動き、申請のページに支払いが済んだことと、その番号が出る。
 - サーバーが答えを受け取ってから返事を返すまでのあいだに、ワーカーが止まる。
 
 エージェントの代わりに試験の `Transport` が答えるので、ネットワークには何も出ません。生成したものは残りません。`go test -v -run TestExamples .` の出力は次のとおりです。いちばん長いのは `TestAgentFails` で、その flow は、エージェントを試し直すまでに 10 秒、次に 20 秒待ちます。
 
 ```
---- PASS: TestOneProcess (0.32s)
---- PASS: TestSummaryAttached (0.30s)
---- PASS: TestAgentAnswersOutOfShape (0.30s)
---- PASS: TestAgentPasses (0.30s)
---- PASS: TestSummaryLate (0.30s)
---- PASS: TestAgentDoubts (0.30s)
---- PASS: TestPaymentStartsOnce (0.45s)
---- PASS: TestWorkerStopsWhileAnswering (4.26s)
---- PASS: TestAgentFails (30.18s)
-ok  	example.test/requests/driver	31.008s
---- PASS: TestExamples (81.94s)
+--- PASS: TestOneProcess (0.33s)
+--- PASS: TestSummaryAttached (0.32s)
+--- PASS: TestAgentPasses (0.32s)
+--- PASS: TestAgentAnswersOutOfShape (0.32s)
+--- PASS: TestSummaryLate (0.37s)
+--- PASS: TestAgentDoubts (0.37s)
+--- PASS: TestPaymentStartsOnce (0.73s)
+--- PASS: TestWorkerStopsWhileAnswering (4.34s)
+--- PASS: TestAgentFails (30.21s)
+ok  	example.test/requests/driver	31.167s
+--- PASS: TestExamples (52.32s)
 ```

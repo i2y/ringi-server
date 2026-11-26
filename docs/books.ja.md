@@ -85,8 +85,11 @@ use book 予算(budget) from "shared/budget.book"
 
 予算がないと、シナリオでも申請できなくなります。どのシナリオにも、`requester` の次の行に、前もって配っておく予算を書きます。
 
-```ringi title="project/purchase.ringi" hl_lines="2"
+```ringi title="project/purchase.ringi" hl_lines="2 5"
   requester s1201
+  given 予算.allocate(dept: "sales", period: "2026", amount: 10_000_000JPY)
+…
+  requester s1202
   given 予算.allocate(dept: "sales", period: "2026", amount: 10_000_000JPY)
 ```
 

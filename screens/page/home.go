@@ -56,8 +56,8 @@ func (p *Pages) StageIn(kind, stage, lang string) (words, in string) {
 
 // homeView is what the template writes of the start page.
 type homeView struct {
-	Waiting, New, Mine []entryView
-	Admin              string
+	Waiting, New, Mine, All []entryView
+	Admin                   string
 }
 
 type entryView struct {
@@ -72,8 +72,8 @@ type entryView struct {
 // entryTicketView is a ticket an entry lists: its ID as a link, its state as a badge, its stage, who
 // it names, and its short line.
 type entryTicketView struct {
-	ID, URL, Status, State, Who, Info string
-	Stage                             text
+	ID, URL, Status, State, Who, Info, Due string
+	Stage                                  text
 }
 
 // Home makes the start page.
@@ -102,7 +102,7 @@ func (p *Pages) Home(in Home) (Page, error) {
 			}
 			for _, et := range e.Tickets {
 				tv := entryTicketView{ID: et.ID, URL: et.URL, Status: et.Status, State: w.badge(et.Status, et.SentBack),
-					Stage: text{Text: et.Stage, Lang: et.StageLang}, Who: et.Who, Info: et.Info}
+					Stage: text{Text: et.Stage, Lang: et.StageLang}, Who: et.Who, Info: et.Info, Due: et.Due}
 				if tv.Stage.Lang == lang {
 					tv.Stage.Lang = ""
 				}
@@ -112,7 +112,7 @@ func (p *Pages) Home(in Home) (Page, error) {
 		}
 		return out
 	}
-	hv.Waiting, hv.New, hv.Mine = entries(in.Waiting), entries(in.New), entries(in.Mine)
+	hv.Waiting, hv.New, hv.Mine, hv.All = entries(in.Waiting), entries(in.New), entries(in.Mine), entries(in.All)
 	for i, e := range in.Waiting {
 		hv.Waiting[i].Count = w.Count(e.Count)
 	}
@@ -122,6 +122,27 @@ func (p *Pages) Home(in Home) (Page, error) {
 	hv.Admin = in.Admin
 	v.Home = hv
 	return p.render(v)
+}
+
+// TicketDue is the deadline a ticket runs to, in words, as an entry of the start page shows it
+// (EntryTicket.Due) and with the card's words: "Due 2026-11-30 18:00" while it waits at a stage,
+// "Resubmit by …" while it is back with its requester, "On hold until …" while it is on hold, the
+// time in zone (nil is UTC); one at midnight there is the end of the day before ("Due 2026-11-19 at
+// the end of the day", screens.EndOfDay). "" for none.
+func (p *Pages) TicketDue(lang string, ticket json.RawMessage, zone *time.Location) string {
+	d, ok, err := screens.DeadlineOf(ticket)
+	if err != nil || !ok {
+		return ""
+	}
+	if zone == nil {
+		zone = time.UTC
+	}
+	w := words{lang}
+	at := d.At.In(zone)
+	if day, ok := screens.EndOfDay(at); ok {
+		return w.due(d.Of) + " " + w.endOfDay(day)
+	}
+	return w.due(d.Of) + " " + at.Format("2006-01-02 15:04")
 }
 
 // TicketInfo is a ticket's short line, as an entry of the start page shows it (EntryTicket.Info):
@@ -146,7 +167,7 @@ func (p *Pages) TicketInfo(kind, lang string, ticket json.RawMessage) string {
 		if v == nil || v == "" {
 			continue
 		}
-		s, _ := p.shown(f, v, lang, nil, nil, nil)
+		s, _ := p.shown(f, v, lang, nil, nil, fileTables{})
 		if s.Text == "" {
 			continue
 		}

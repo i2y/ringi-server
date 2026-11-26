@@ -87,7 +87,7 @@ form
 | `"見積書"` | ページに出る文言 |
 | `required when 金額 > 500_000JPY` | 金額が 500,000 円を超えるときは必須。それ以外は、なくてもよい |
 
-ページは英語でも出るので、英語の文言も足します。同じファイルの終わりにある `labels en` です。
+ページは英語でも出るので、英語の文言も足します。同じファイルの終わりにある `labels en` です。足し忘れると、検査（`ritsu check`）が E703 で、足りない文言を挙げます。
 
 ```ringi title="project/purchase.ringi" hl_lines="5"
 labels en

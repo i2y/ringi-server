@@ -132,7 +132,7 @@ func sentencePages(t *testing.T, p *Pages, kind, lang string) map[string]*node {
 	// the card, an approver's edit refused, the lists, a history
 	if raw := ticket(func(m map[string]any) bool { return m["status"] == "in_progress" }); raw != nil {
 		can, _ := p.set.Actions(kind, "card")
-		cin := Card{Card: screens.Card{Language: lang, Ticket: raw, Can: can, Names: namer{}}, Action: "/post", Now: testNow, Zone: zone}
+		cin := Card{Card: screens.Card{Language: lang, Ticket: raw, Can: can, Names: namer{}, Zone: zone}, Action: "/post", Now: testNow}
 		pg, err := p.Card(cin)
 		add("card", pg, err)
 		if b, err := browse(checkPageBytes(t, pg, err)); err == nil && slices.Contains(b.buttons, "button.edit") {

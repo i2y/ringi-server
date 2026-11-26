@@ -218,6 +218,18 @@ func TestMineOrderPostgres(t *testing.T) {
 	conformance.MineOrder(t, s)
 }
 
+func TestTicketsOrderMemory(t *testing.T) {
+	s := setup(t)
+	s.Store = memory
+	conformance.TicketsOrder(t, s)
+}
+
+func TestTicketsOrderPostgres(t *testing.T) {
+	s := setup(t)
+	s.Store = pgStore(t, "conformance_tickets_order")
+	conformance.TicketsOrder(t, s)
+}
+
 // TestMineOrderByReading runs MineOrder on a store that does not count a person's own requests: the
 // server reads them to count them.
 func TestMineOrderByReading(t *testing.T) {

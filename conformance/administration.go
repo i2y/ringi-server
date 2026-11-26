@@ -107,6 +107,10 @@ func Administration(t *testing.T, s Setup) {
 		}
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, r)
+		// every answer is what the description of the framework's own operations says
+		if err := server.CheckOwnAnswer(method, path, w.Code, w.Body.Bytes()); err != nil {
+			t.Errorf("%s %s answered %d, which framework.openapi.json does not describe: %v\n%s", method, path, w.Code, err, w.Body.Bytes())
+		}
 		return w.Code, w.Body.Bytes(), w.Header()
 	}
 

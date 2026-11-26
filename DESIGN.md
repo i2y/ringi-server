@@ -24,7 +24,8 @@ The framework holds the code that does not depend on any kind of request:
   design of its own),
 - a server's command line: the flags every server takes and their checks, where the tickets and the
   attachments are kept, the sign-in and the HTTP server (`serve`), with the two ways of signing in
-  that check no one, for trying a server on one's own computer (`devlogin`),
+  that check no one, for trying a server on one's own computer (`devlogin`), and the keys of
+  programs that use the API as a person of the organization (`apikeys`),
 - one event in order: who it is, the gate, `start` or `next`, one save, the reply, then the things
   to do,
 - one ticket at a time: a save writes only over the ticket it read,
@@ -48,7 +49,7 @@ You swap these:
 
 | Part | Interface | When you give none |
 |---|---|---|
-| Who signs in | `Authenticator` | required; `oidc` signs people in through the organization's OpenID Connect provider, `web.ProxyHeader` trusts a proxy that signs them in, `devlogin` lets a person be chosen on a page or named by a header, for trying a server on one's own computer only, and `servertest.Header` trusts a header, for tests and examples only |
+| Who signs in | `Authenticator` | required; `oidc` signs people in through the organization's OpenID Connect provider, `web.ProxyHeader` trusts a proxy that signs them in, `devlogin` lets a person be chosen on a page or named by a header, for trying a server on one's own computer only, `apikeys` finds a program by its key and everyone else by another of these, and `servertest.Header` trusts a header, for tests and examples only |
 | Where tickets are kept | `Store` | required; `postgres.Store`, or `memstore.Store` for tests |
 | Who may do what | `Gate` | required; wrap the code sekisho wrote, or `server.AllowAll` |
 | Where the organization's data comes from | `OrgSource` | no organization: every event is refused as `data` |
@@ -255,7 +256,8 @@ And the rest of `*Server`:
   (10.2), and `CountMine(ctx, person)` how many requests of their own there are, by kind and by state
   (10.4), for the start page of the pages.
 - `People(ctx)` and `Teams(ctx)` answer the people and the teams of the version of the organization
-  in effect today (9.1).
+  in effect today (9.1), and `InOrganization(ctx, id)` whether it has a person, as a sign-in asks
+  before it takes someone (`apikeys`).
 - `Zone(kind, version)` answers the UTC offset a kind reads its days in (9.3), and `Now()` the time
   of the server's clock.
 - `Title(kind, version, lang)` answers a kind's title for a person who reads a language, and the
@@ -383,10 +385,11 @@ Where the title's language is not the person's, the kind has no title in theirs,
 written. A mail of HTML can mark it with its language (`<span lang="ja">…</span>`), as the pages
 mark it, so that a screen reader reads it in that language.
 
-**Flows and Agents.** A flow that starts after a ticket ends (`launch`) is given to `Flows`; it
-answers nothing back. An agent's step (`ask_agent`) and a note (`ask_note`) are given to `Agents`,
-and the answer comes back by `Server.Answered` with the same key. The key is the run's ID: starting
-the same key twice must start one run.
+**Flows and Agents.** A flow that starts after a ticket ends (`launch`) is given to `Flows`, and
+what became of it comes back, when the work says it, by `Server.WorkEnded` with the same key. An
+agent's step (`ask_agent`) and a note (`ask_note`) are given to `Agents`, and the answer comes back
+by `Server.Answered` with the same key. The key is the run's ID: starting the same key twice must
+start one run.
 
 ```go
 type EffectKey struct { Ticket string; Round, Serial int64 } // JSON {"ticket","round","serial"}; String() "T/1/4"
@@ -412,9 +415,34 @@ type Answer struct {
 	Failed          bool            // the flow failed; the ticket goes on as its kind says
 }
 
+type WorkEnd struct {
+	Failed  bool         // the work failed to the end
+	Reason  string       // why, in words: at most MaxReason characters, as a reason of the administration
+	Outputs []NamedValue // what it ended with (NamedText, NamedNumber, NamedTruth); at most MaxOutputs bytes as JSON
+}
+
+func ParseEffectKey(s string) (EffectKey, error) // the key String wrote ("T/1/4"), as another system gives it back
+
 type Flows interface{ Launch(ctx context.Context, l Launch) error }
 type Agents interface{ Ask(ctx context.Context, a Ask) error }
 ```
+
+`WorkEnded` keeps what the work said with its launch among the things to do (`Store.KeepOutcome`),
+at the server's time, and the ticket's card shows it (`Server.Works`; screens' `/works`). The ticket
+does not change: it ended when it launched the work, and its history is its own. What a work says
+replaces what it said before, so that work run again after it failed can say it was done in the
+end; the work may say it before the server has marked its launch done. Its reply is `OK` with what
+it kept (`{"failed", "reason", "outputs"}`), `NotFound` for a key that launched nothing (no thing to
+do of that key, or one that is not a launch of that ticket), and `Invalid` for a reason or outputs
+that do not read (an output's value is one of the contract: `str`, `num`, `truth`, `"nothing"` or
+`rows`). The module `temporal` says it for every flow it runs; a `Flows` of another kind of system
+calls it when it learns what became of the work.
+
+`Works` answers the work a ticket launched, in its order, for a person who may see the ticket (nil
+otherwise): each with its flow and its state, read from the thing to do. `waiting` (not started
+yet: no try, not done), `retrying` (a try failed, and it is tried again), `started` (done, with no
+word from the work; `At` is when), and `done` or `failed` (as the work said; `At` is when it said
+it, with its `Reason` and `Outputs`).
 
 `Answered` makes the event the contract writes (`agent_answered`, `note_ready` or `flow_failed`)
 with the revision of the ticket the asking move answered, which the framework kept with the ask; a
@@ -532,12 +560,15 @@ bits, as text).
   each button makes; `screens/page`: the same screens as plain HTML pages, and the reading of their
   posts.
 - `web`: the screens, the pages and their attachments over HTTP, in front of the API, with the
-  guards a browser needs; a store of files on disk; an authenticator for a server behind a proxy
-  that signs people in.
+  guards a browser needs, in the organization's look (its logo, name and colour); a store of files
+  on disk; an authenticator for a server behind a proxy that signs people in.
 - `oidc`: signing in through the organization's OpenID Connect provider; `oidc/oidctest`, a provider
   for tests.
 - `devlogin`: the two ways of signing in that check no one, for trying a server on one's own
   computer, and the checks that keep them away from a server that serves people (2.6).
+- `apikeys`: the keys of programs that use the API as a person of the organization: a file of their
+  SHA-256 sums, and an authenticator that finds a request's person by its key, in front of another
+  (2.6).
 - `serve`: a server's command line: the flags every server takes and their checks, the store and the
   files they name, the sign-in, and the HTTP server with the pages in front (2.6).
 - `conformance`: the conformance tests (12), to run on any store.
@@ -564,16 +595,19 @@ than failing each request after. Each part checks its own when it is made:
 | `New` (no I/O) | a required part missing; a part that is a `Checker` and answers an error (`web.ProxyHeader`: no secret, one shorter than 32 characters, one with characters a header does not carry as they are, two headers named alike) |
 | `postgres.New` | a database it cannot reach within `postgres.ReachWithin` (10 seconds), and tables newer than the code |
 | `oidc.New`, and `oidc.Config.Check` before anything is reached | an issuer or a redirect URL that is not https; no client ID or secret, or one with a space or a line break at its ends; no key of the sessions, or one that is not 32 random bytes (text, bytes over and over, a key given twice); a provider whose discovery document or keys cannot be read, or do not say what they must |
-| `web.New`, `mcp.New`, `(*mcp.Tools).Handler` | their own settings (their designs); `web.New` also two packages whose screens give one catalog ID to other files ([the design of `web`](web/DESIGN.md), 2.3) |
+| `web.New`, `mcp.New`, `(*mcp.Tools).Handler` | their own settings (their designs); `web.New` also two packages whose screens give one catalog ID to other files ([the design of `web`](web/DESIGN.md), 2.3), and a look whose name, logo or colours it does not take, a colour that reads at less than 4.5:1 on the pages among them (`web.Look.Check`, 9.5 of the same) |
+| `Unpackaged` (`serve` asks it after `New`) | tickets the store keeps of a version no package has: each version, with how many tickets of each status, and to put its package back (11) |
 | `ImportOrganization` | organization's data that does not read or does not pass its checks (13.3): the first 100 problems, each on a line of its own at its file and line, how many more there are and whether the checks stopped at 1,000, and a word to check the data with `ritsu ringi check`; the example commands log each line as a record of its own (`server.LogStop`) |
-| `serve`'s `Stores.Serve`, before anything is made or reached | a route the project added (`Stores.Handle`, 2.6) whose pattern is empty, does not read as a pattern of `http.ServeMux`, takes a path of the framework's, or conflicts with a route added before; a route with no handler. A handler that cannot be made, or is nil, stops it before it serves |
+| `serve`'s `Stores.Serve`, before anything is made or reached | a route the project added (`Stores.Handle`, 2.6) whose pattern is empty, does not read as a pattern of `http.ServeMux`, takes a path of the framework's, or conflicts with a route added before; a route with no handler; a `Look` that `web.Look.Check` refuses. A handler that cannot be made, or is nil, stops it before it serves |
 
 A server's command that runs on package `serve` (2.6; the example server is one) checks its flags
 and the environment first, before it reads or reaches anything (`serve.Flags.Check`). It stops on
 `-db` with `-files`, as `-db` keeps the attachments in the database (a server that keeps them
 somewhere else than PostgreSQL is made in Go, and gives `Config.Files`: 2.3); on two ways of
 signing in at once; on the provider's settings given in part (it names the ones
-missing), or a claim of the roles (`-oidc-roles-claim`) with a space at its ends; and on a way that
+missing), or a claim of the roles (`-oidc-roles-claim`) with a space at its ends; on a file of
+`-api-keys` that cannot be read, has a line that does not read (it names the line), or lists no
+key; and on a way that
 checks no one (the header `X-Person`, `-dev-login`) on an address other
 computers reach, with the provider's settings in the environment (`RINGI_OIDC_CLIENT_SECRET`,
 `RINGI_SESSION_KEYS`), or with a certificate (`-tls-cert`). These are the settings of a server that
@@ -597,7 +631,7 @@ files; makes the sign-in; and serves the pages in front of the API until it is t
 
 ```go
 var f serve.Flags
-f.Register(flag.CommandLine) // -addr, -db, -files, -dev-login, the -oidc-… flags, -session-keys, -tls-cert, -tls-key
+f.Register(flag.CommandLine) // -addr, -db, -files, -dev-login, the -oidc-… flags, -session-keys, -tls-cert, -tls-key, -api-keys
 flag.Parse()
 ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 defer stop()
@@ -631,6 +665,18 @@ return st.Serve(ctx, server.Config{
   (`oidc.Roles`), which the gate reads; without it no one who signs in has a role, and the server's
   log says so when it starts. `-oidc-scopes` asks for more scopes than `openid`, `email` and
   `profile`, for a provider that puts the roles in its ID tokens only then.
+- `-api-keys` names a file of the keys of programs (package `apikeys`), whichever way people sign
+  in. A line holds the ID of the person a key stands for, the SHA-256 of the key in hexadecimal,
+  and the person's roles if they have any, separated by commas; a word that begins with `#` begins
+  a comment. A request that sends a key (`Authorization: Bearer <key>`) is the person of its line,
+  with its roles, while the organization in effect today has them (`Server.InOrganization`). A key
+  no line has, and the key of a person the organization does not have, are no one (401), and the
+  log says which with a warning that does not hold the key. A request with no key goes on to the
+  sign-in. The file is read when the server starts, and the server keeps only the sums: a key is a
+  secret its program alone holds, and one that leaked is stopped by taking its line out. Such a key
+  does not expire; tokens that do are for a server the project puts together itself, with a
+  `server.Authenticator` of its own. The guards of a browser do not stop a program, which sends
+  neither `Origin` nor `Sec-Fetch-Site`.
 - `Stores.Handle` adds a route of the project's to the server `Serve` makes: the agents' tools of
   `mcp/` at `/mcp`, say. Its `handler` makes the route's handler of the server, once `made` has been
   given the server and before anything is served. The route is behind the same guards as the pages
@@ -638,11 +684,15 @@ return st.Serve(ctx, server.Config{
   request the sign-in of the flags finds no one in is answered 401, as the API answers it, and the
   handler is not called. The handler reads the person with `serve.Person`; what it does as them
   through the server (`Server.Do`) is asked of the gate. A route may not take a path of the
-  framework's: `/`, `/pages`, `/a2ui`, `/files`, the API's `/requests`, `/waiting`, `/mine`,
-  `/tickets`, `/organization`, `/masters`, `/find` and `/admin`, `/login`, `/logout`, and the
-  provider's callback.
+  framework's: `/`, `/pages`, `/a2ui`, `/files`, `/openapi.json`, the API's `/requests`,
+  `/waiting`, `/mine`, `/tickets`, `/organization`, `/masters`, `/find` and `/admin`, `/login`,
+  `/logout`, and the provider's callback.
   `Serve` stops before it makes or reaches anything on such a route, on a pattern that is empty or
   does not read, on two routes that conflict, and on a route with no handler (2.5).
+- `Stores.Look` is how the pages look for the organization (`web.Look`): its logo and name at the
+  start of the pages' bar, and the colour of their links and buttons, in light and in dark. The
+  project's command sets it before `Serve`, which refuses one that `web.Look.Check` refuses before
+  it makes or reaches anything, and gives it to `web.New`.
 - `Flags.ProviderClient` is the client the server reaches the provider with: its discovery
   document, its keys, its tokens. It is not a flag but a field a project's command sets, for a
   provider reached through a proxy, or one whose certificate the organization's own authority
@@ -662,8 +712,9 @@ st.Handle("/mcp", func(srv *server.Server) (http.Handler, error) {
 
 An agent signs in as a client of the server does: with the header `X-Person`, or the cookie of
 `-dev-login`, on one's own computer; with the provider, with the cookie of a session a browser
-signed in to. The tools over a bearer token (`mcp.HTTP.Verify`) are for a server the project serves
-itself, as a route `Handle` adds asks for the sign-in's person first.
+signed in to, or with a key of `-api-keys`. The tools over a bearer token that expires
+(`mcp.HTTP.Verify`) are for a server the project serves itself, as a route `Handle` adds asks for
+the sign-in's person first.
 
 `devlogin` has the two ways of signing in that check no one, for trying a server on one's own
 computer: `SignIn`, a page that lists the people of the organization (it finds them by a part of a
@@ -894,10 +945,11 @@ kept with the key already, `*UploadGone` when one of the uploads was let go, and
 the error `Books` returned. A move with no ticket keeps a refused operation's key and reply, its
 audit entry, and the removal of a timer that was refused.
 
-The rest of the interface reads what `Save` wrote, the lists a page at a time (`Waiting`, `Mine`;
-10.2, 10.4); keeps the operations begun with the names of their tries (`Begin`, and `Renew` for a new
+The rest of the interface reads what `Save` wrote, the lists a page at a time (`Waiting`, `Mine`,
+`Tickets`; 10.2, 10.4, 10.5); keeps the operations begun with the names of their tries (`Begin`, and `Renew` for a new
 try; 3, 3.2); takes a ticket's lock (3.2); leases the timers and the things to do (5, 6); keeps the
-void of a hold no move keeps as a thing to do (`KeepToDo`, 3.2); records the uploads, one to a key of
+void of a hold no move keeps as a thing to do (`KeepToDo`, 3.2); keeps what the work a launch
+started said became of it, with the launch (`KeepOutcome`; `Server.WorkEnded`); records the uploads, one to a key of
 a person's, finds one by its key, and lets go of them (2.3); forgets the operations past their time,
 and the ones begun and never answered (4.4); and keeps the administration's records with what they
 change, all or nothing, and reads them (`SaveChange`, `Records`, the starts, the imports and the
@@ -940,7 +992,7 @@ In a schema of their own (`requests` unless `postgres.New` is given another):
 
 | Table | Holds | Key |
 |---|---|---|
-| `tickets` | the ticket's JSON as `next` answered it, its kind and version, its status, its number, and since when it waits for the people it waits for | `id` |
+| `tickets` | the ticket's JSON as `next` answered it, its kind and version, its status, its number, since when it waits for the people it waits for, and when it was made (the time of its first move: the list of a kind's, 10.5) | `id` |
 | `moves` | each move: number, time, person, key, event, things to do, snapshot of the organization, and the ticket's kind and version and the way in (13.8) | `ticket`, `number` |
 | `waiting` | who each ticket waits for, and since when (`list_waiting`, and the start page's counts) | `ticket`, `person` |
 | `timers` | the timers set: which, of which stage, when, when next tried, the lease | `ticket`, `timer`, `stage` |
@@ -970,7 +1022,12 @@ time its stage started (its JSON's `stages[].started`) or else the time of its l
 the tickets that wait for a person by an index on that time (`waiting_list`), in place of the index
 by person alone. Step 8 adds the administration's tables (13.8), and step 9 is one too: it gives each
 move kept before it the kind and the version of its ticket. Step 10 adds the key of an upload (2.3),
-and the index by which a person has at most one upload of a key that is not let go.
+and the index by which a person has at most one upload of a key that is not let go. Step 11 adds
+what the work of a thing to do said became of it, and when (`outcome`, `outcome_at`: null until it
+says; `Server.WorkEnded`). Step 12 adds the time each ticket was made, and step 13 is one that
+rewrites rows: it gives each ticket kept before it the time of its first move (or else the time it
+was last saved), and reads the tickets of a kind by an index on the kind and that time
+(`tickets_list`; 10.5).
 
 ### 4.4 How long rows are kept
 
@@ -1167,7 +1224,8 @@ its own type.
 
 The framework checks with its own small checker of the keywords ritsu writes (`type`, `enum`,
 `required`, `properties`, `additionalProperties`, `items`, `$ref`, `oneOf`, `format`, `minItems`,
-`maxItems`, `minLength`, `maxLength`, `minimum`, `maximum`, `title`, `description`). `Load` refuses an
+`maxItems`, `minLength`, `maxLength`, `minimum`, `maximum`, `title`, `description`; an
+`additionalProperties` is true, false or the schema of the values of a map). `Load` refuses an
 `openapi.json` that uses another, so a new keyword is not passed over in silence. Every `$ref` is
 followed once, when the package is loaded, so checking a body changes nothing and many requests may
 check at once.
@@ -1235,7 +1293,8 @@ for a kind written by hand that has none, whose form is then shown as before it 
 ## 8. Asking the gate
 
 Each event is one of the gate's actions, and one action is no event's: `see`, asked of a person on
-neither side of a ticket (10.3) before they read it or do anything on it. The administration's
+neither side of a ticket (10.3) before they read it or do anything on it, and of a version of a kind,
+with no ticket, before the server lists the kind's tickets for a person (10.5). The administration's
 operations ask four actions of their own (13.4): `change_request_type`, `read_audit`,
 `import_organization` and `read_organization_audit`.
 
@@ -1251,7 +1310,7 @@ operations ask four actions of their own (13.4): `change_request_type`, `read_au
 | `add_approver` | `add_approver` | the stage |
 | `hand_over` | `hand_over` | the stage |
 | `comment` | `comment` | the stage |
-| (none) | `see` | the ticket |
+| (none) | `see` | the ticket; a version of a kind, with no ticket (10.5) |
 
 The question carries the values ritsu decides for the gate:
 
@@ -1616,14 +1675,15 @@ the API, the agents' tools (and `check_operation`), the pages and the A2UI scree
 not see the ticket is answered 404 before the gate is asked of the operation, even when the gate
 would allow it: letting a person do an operation does not let them see the ticket, and the answer
 of an operation carries the whole ticket. `server.AllowAll` allows `see` too, so with it everyone
-sees every ticket. The lists (`list_waiting`, `list_mine`) answer a person's own tickets only,
-whatever else they may see.
+sees every ticket. The lists `list_waiting` and `list_mine` answer a person's own tickets only,
+whatever else they may see; the tickets of a kind a person sees whoever is on them are listed apart
+(10.5).
 
 In the examples, the gate lets the department that owns a kind see its tickets, its administrators
 among them (`company.gate`): the people it lets comment on a ticket, add an approver or hand an
 approver's part over, other than the two sides, are of that department, so they see the tickets they
 act on. A member of another department whom a ticket does not name is answered 404 by every way in
-(`TestOwningDepartmentSees`).
+(`TestOwningDepartmentSees`). The department lists them too (10.5).
 
 A ticket sent back from a later stage to an earlier one no longer names the approvers of the later
 stage. The store keeps everyone a ticket's moves named (`Move.People`, the table `people`), so they
@@ -1649,6 +1709,50 @@ index `people_mine` with their tickets, and answers a row for each kind and stat
 JSON. Under each kind the page lists five of them: the ones back with the person first (`MineQuery`'s
 `Status`, `with_requester`), whenever they were made, then the newest.
 
+### 10.5 The requests of a kind
+
+`list_tickets` (`GET /tickets?kind=`) answers the tickets of a kind, whoever is on them, to a person
+the gate lets see them for the kind: in the examples, the people of the department that owns it. It
+is the framework's own operation, as the administration's are (13.6): no package's `openapi.json`
+has it, `framework.openapi.json` describes it, and the agents' tools do not have it.
+
+The server asks the gate `see` of each version of the kind it has, as of a ticket that names no one.
+The question's `Ticket`, `Requester` and `Stage` are "", and it has no `Requesters` or `Approvers`. It
+has the version's owner (`Owner`), whether its route lets a requester approve their own request
+(`SelfApproval`), and the version of the organization in effect that day in the kind's offset (`Org`;
+while none is in effect, the server asks nothing and lists nothing). A gate that allows it says the
+person sees the version's tickets whoever is on them. The tickets of the versions it allows are
+listed the newest first, by when each was made (the time of its first move, kept to the
+microsecond), and tickets of the same time by ID, from the highest. The list pages as `list_waiting`
+does (`limit`, `before`, and `more` in the answer), and `status` keeps one status. A person the gate
+allows for no version is answered an empty page, as is one with no request of their own; no `kind`,
+a kind the server does not serve, and a status that is none of the seven are 400.
+
+Each ticket is then asked of as 10.3 says: a person on its two sides sees it, and the gate is asked
+`see` of the ticket for anyone else. A gate that lets a person see a version but not one of its
+tickets keeps that ticket out of the list, and the server reads on past it to fill the page. A gate
+sekisho wrote answers the question of a version as it answers one of a ticket that names no one. In
+`company.gate`, the rule of the owning department reads only `resource.owner` and the person's
+department, so a person of the department is allowed both, and the rules that read the requester or
+the approvers allow nothing of a version.
+
+`Server.Tickets` answers the same with a `TicketsQuery` (`Kind`, `Status`, `Before`, `Limit`), for the
+pages and the screens, and `Server.KindsSeen` the kinds whose requests a person sees for the kind, in
+the order the server lists its kinds. The store reads one page (`Store.Tickets`, of the kind and the
+versions the server names); PostgreSQL reads it by the index `tickets_list` (the kind, the time each
+ticket was made, its ID). The start page of the pages has a part "All requests" after the person's
+own requests, with a link to the list of each kind of `KindsSeen` (`/pages/requests/{kind}`); a
+person with none has no such part. When the gate fails to answer which kinds a person sees, the
+start page leaves the part out and says so in the log, and the list itself is the server's failure
+(500). The list on the A2UI screens (`/a2ui/requests/{kind}`) is the kind's screen `list`, of the
+surface `all` (web's DESIGN 2.1).
+
+The examples' `TestOwningDepartmentLists` lists the expense requests of three people to a person of
+the department that owns the kind, through the API, the pages and the A2UI screen, and none to a
+person of another department or to a requester. `TestTicketsOfAKind` checks the question of a
+version, the reading on, and a gate that fails, and `TestStartPageWhenSeeFails` the start page then.
+`conformance.TicketsOrder` checks the order on any store (12).
+
 ## 11. Versions
 
 - **The contract.** `ticketkinds.Contract` and `x-ritsu-contract` are one number. The framework lists
@@ -1660,13 +1764,18 @@ JSON. Under each kind the page lists five of them: the ones back with the person
   without one: `Import` refuses it, and a read of it or an event to it is the server's failure
   (500). Each says which ticket and which stage, that contract 3 gives every stage the key, and that
   a server of an earlier contract kept the ticket; the failure says it in the log.
-- **A kind.** A ticket keeps the version it was submitted with to its end. Hand in the old package
-  with the new one while tickets of the old version are open.
+- **A kind.** A ticket keeps the version it was submitted with to its end, and is shown, as well as
+  moved, by the code of that version. Hand in the old package with the new one for as long as the
+  store keeps tickets of the old version, ended ones too. `Server.Unpackaged` answers the tickets the
+  store keeps of a version no package has, counted by kind, version and status
+  (`Store.KeptVersions`), and `serve` refuses to start while there is any (`UnpackagedError`, 2.5),
+  rather than fail each page of such a ticket after (500). A program that starts the server itself
+  asks it the same before it serves.
 - **The store.** `schema_version` (4.3).
 
 ## 12. Conformance
 
-Ten tests check a server against the contract, and all run on any store:
+Eleven tests check a server against the contract, and all run on any store:
 
 - **The vectors** (`conformance.Vectors`): each vector is given to a server with a store emptied for
   it: its ticket is put in the store as it was (`Import`), the clock is set to its time, and the
@@ -1746,6 +1855,17 @@ Ten tests check a server against the contract, and all run on any store:
   too; (c) the API's `list_mine` answers them as `list_waiting` does in (e) above; (d)
   `Server.CountMine` is the counts the test says, by kind and by status, with how many were sent back,
   and so is the store's when it is a `MineCounter`.
+- **The order of a kind's** (`conformance.TicketsOrder`): seven tickets of the vectors, the requests
+  of three people, are put in a store emptied for it, one of them of another kind when the vectors
+  have two. The six of the kind are made at four times (two at one time, and two 400 nanoseconds
+  apart, of one time to the microsecond, the later with the lower ID), the tickets of one time put in
+  with the lower ID first. Two are back with their requester, one was rejected, and the others were
+  approved. Then, and again after the newest is withdrawn: (a) `Store.Tickets` reads the kind's the
+  newest first by when each was made, then by ID from the highest (10.5), and so do its pages and
+  `Status`; it reads none of the other kind, none of a version it is not given, none when it is given
+  no version, and none after a `Before` of the other kind; (b) `Server.Tickets` answers them in that
+  order, a page at a time too, with a gate that lets everyone see everything; (c) the API's
+  `list_tickets` answers them as `list_waiting` does in (e) above.
 - **Whether a reminder has rung** (`conformance.Reminded`): a vector of a clock that rings the
   reminder of a stage that the kind's vectors pause is given to a server (its ticket's `reminded`
   false, the one it answers true): the store keeps the ticket answered, its stage's `reminded` true.
@@ -1780,7 +1900,8 @@ Ten tests check a server against the contract, and all run on any store:
   and answers `ErrNotFound` for an ID the store does not keep; a change with a record of an ID the
   store keeps is the store's error, and writes nothing (no second record, no start, no key). (f) A
   page's `before` names a move by its ID as `Line.ID` writes it, and by no other writing of it (a
-  zero before the number, a sign, a fraction, past int64, none).
+  zero before the number, a sign, a fraction, past int64, none). Every answer over HTTP is what
+  `framework.openapi.json` says the operation answers with its status (13.6).
 - **What a store keeps** (`conformance.Keeping`, which needs no vectors): (a) a move of a new
   ticket is saved with every time it keeps given in a zone other than UTC (half an hour off a whole
   hour) and finer than a microsecond, and an operation is begun, a snapshot saved and an upload
@@ -1798,7 +1919,10 @@ Ten tests check a server against the contract, and all run on any store:
   past the person's limit too and after a move holds the first, the same key is another upload of
   another person, and uploads with no key are each recorded; of twenty kept at once with one key,
   with a limit of one and with none, one is recorded, and each of the twenty is answered its ID; an
-  upload let go is found by its key no more, and the next one with the key is recorded.
+  upload let go is found by its key no more, and the next one with the key is recorded; (e) the
+  thing to do of (a), done at such a time, is answered with that time as when it was done, and what
+  its work said (`KeepOutcome`) as it was given, with its time, by both reads; what it says again
+  replaces it, and `KeepOutcome` of an ID no thing to do has answers `ErrNotFound`.
 
 On the examples, every vector agrees, on the memory store and on PostgreSQL: 2,990 of 2,990, 2,166
 through the HTTP handler, and through `Deliver` 626 timers, 102 operations that name no person (the
@@ -1820,7 +1944,8 @@ people, and gives one of them the comment of a vector of `account_ja` through th
 order and the times agree on the memory store and on PostgreSQL, and so do the pages of
 `list_waiting`. `MineOrder` puts in 7 tickets of `account` and `account_ja`, 6 of them one person's:
 the order, the pages of `list_mine` and the counts agree on both, and on the store that does not
-count them. `Reminded` agrees on both: the stage whose reminder rang keeps `reminded` through a pause
+count them. `TicketsOrder` puts in 7 tickets of `account` and `account_ja`, 6 of them of `account`: the
+order and the pages of `list_tickets` agree on both. `Reminded` agrees on both: the stage whose reminder rang keeps `reminded` through a pause
 and a resume. `Administration` agrees on both, on the examples' first kind (`account`). `Keeping`
 agrees on the memory store with the memory files and on PostgreSQL with its files.
 
@@ -2224,11 +2349,34 @@ no form. Its columns are fixed, a column added only at the end: `at`, `line`, `w
 
 ### 13.6 The API
 
-The administration's operations are the framework's own, not the contract's: `openapi.json` has none
-of them (`Load` refuses an operation the framework does not serve: 2.1). `Do` runs them by their
-operation IDs, so that the API and the pages make the same calls, and the HTTP handler serves them as
-it serves the contract's (a person; a body as `application/json`, within `Config.MaxBody`;
-`Idempotency-Key` for each POST: 7.1, 7.3), an upload apart. The agents' tools have none of them.
+The administration's operations are the framework's own, not the contract's: a package's
+`openapi.json` has none of them (`Load` refuses an operation the framework does not serve: 2.1), nor
+the attachments' (an upload to `/files`, a file at `/files/{id}` and at `/tickets/{ticket}/files/{id}`,
+which package `web` serves: web's DESIGN 6), nor the list of a kind's requests (`list_tickets`, 10.5).
+`Do` runs the administration's and `list_tickets` by their operation IDs, so that the API and the
+pages make the same calls, and the HTTP handler serves them as it serves the
+contract's (a person; a body as `application/json`, within `Config.MaxBody`; `Idempotency-Key` for
+each POST: 7.1, 7.3), an upload apart. The agents' tools have none of them.
+
+The framework describes its own operations in `framework.openapi.json`, beside its code (OpenAPI 3.1,
+in the keywords of 7.2; the counts of a draft are a map, an `additionalProperties` that is a
+schema). `Server.OpenAPI` answers the description of the whole API, and package `web` serves it at
+`GET /openapi.json` to a person signed in (401 to no one):
+
+- each kind as the package of its newest version describes it: its paths, under
+  `/requests/<kind>/`, and the schemas named for it, `<kind>.…`;
+- the paths and the components no kind owns, of every package together: two lists of strings at one
+  place join (the kinds a list may be narrowed to), and two lists as long as each other join item by
+  item (the parameters of a list);
+- the framework's own operations and the schemas and answers they name.
+
+What two packages write differently where no kind owns it, and a package's path or component that is
+the framework's, is an error, which `web.New` returns. The document holds every kind the server has,
+as the packages' files do; the operations are asked of the gate as always. The tests hold the
+description to what the framework does: `TestOwnAPI` holds its operations to the routes (`adminOps`,
+`adminRoute`, and web's routes of the attachments), and each answer of the administration's
+operations that the tests make, `conformance.Administration`'s among them, and each answer of an
+upload, is checked against it (`CheckOwnAnswer`).
 
 | Method | Path | Operation | What |
 |---|---|---|---|
@@ -2240,6 +2388,7 @@ it serves the contract's (a person; a body as `application/json`, within `Config
 | POST | `/admin/organization/imports` | `admin_import_organization` | import a draft (13.3) |
 | GET | `/admin/records` | `admin_list_records` | a page of the record (13.5) |
 | GET | `/admin/records.csv` | `admin_records_csv` | the same lines as CSV (13.5) |
+| GET | `/tickets` | `list_tickets` | the tickets of a kind the person sees for the kind (10.5) |
 
 A list of kinds:
 
@@ -2395,7 +2544,8 @@ A store keeps a record with what it changes, in one write, all or nothing:
 - `Record(ctx, id)`: one record by its ID (`ErrNotFound` for none): the one that decided a start.
 - `Records(ctx, q)`: a page of the record (13.5), of the versions and the organization `q` allows.
 - `CountTickets(ctx, versions)`: how many tickets of each of the versions given, by status: the
-  versions whose lines the person may read.
+  versions whose lines the person may read. `KeptVersions(ctx)`: the same, of every version the store
+  keeps tickets of, which the server compares with its packages as it starts (11).
 - `Imports(ctx, since)`: the times of the imports that added a snapshot since a time, and
   `LastImport(ctx)`: the latest import from the source.
 - `KeepDraft(ctx, d, max)`, `Draft(ctx, person, id)`, `ForgetDrafts(ctx, before, limit)`.
@@ -2457,7 +2607,9 @@ The administration keeps the guards of the rest:
   send, and each POST needs a key, which such a form cannot send either.
 - **Who signs in.** The roles that make an administrator come from what the sign-in checks. The two
   ways of signing in that check no one (`devlogin`) answer only on the computer the server runs on,
-  as before; a proxy's three headers are each taken once (`web.ProxyHeader`).
+  as before; a proxy's three headers are each taken once (`web.ProxyHeader`). A program's key
+  (`apikeys`) has the roles its line writes, in a file only the administrator should write, and
+  stands for its person only while the organization in effect today has them.
 - **The sizes.** A body is held to `Config.MaxBody`; an upload, and its files as read, to
   `Config.MaxOrganization`, and to 10,000 entries; a reason to 500 characters; a page to 100 lines; a
   CSV to 10,000 rows and 16 MiB; the drafts to 5 a person and a day; the imports that add a snapshot

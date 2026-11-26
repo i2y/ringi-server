@@ -27,6 +27,7 @@ type view struct {
 	Form    *formView
 	Values  []valueView
 	Route   []stageView
+	Works   []workView
 	List    *listView
 	History []lineView
 	Home    *homeView
@@ -60,6 +61,8 @@ type fact struct {
 type text struct {
 	Text string
 	Lang string
+	// URL is the address the words open: a file's in a row of a card.
+	URL string
 	// Row is whether the words are the number of a row in its legend (`Items, row 2`), which the
 	// script writes again when it adds or removes a row.
 	Row bool
@@ -172,8 +175,8 @@ type input struct {
 	RowsName string // "items"
 	AddValue string
 	Kept     string // an attachment kept: its ID
-	KeptURL  string
-	Remove   bool // the box to take the file away is checked
+	KeptName string // its name; its ID where the names do not have it
+	Remove   bool   // the box to take the file away is checked
 	Checked  bool
 	Marker   bool // the part has the hidden s.<place>
 	// A part that finds its value by a name (Kind find): the value of its button Search
@@ -371,6 +374,20 @@ type stageView struct {
 	PhaseKey string // the phase as the ticket holds it ("active"), which the words are marked with
 	Current  bool
 	Parts    []partStateView
+	Agent    []agentView // what an agent answered at the stage in the round the ticket is in
+}
+
+// workView is a line of the work a ticket launched (a card's /works): its flow, what became of it
+// in words (and the state, which the words are marked with), when, what it ended with and why it
+// failed ("" for none).
+type workView struct {
+	Flow, State, StateKey, At, Outputs, Reason string
+}
+
+// agentView is a line of what an agent answered (a card's /agent): what it said, in words, and the
+// reason it gave ("" for none).
+type agentView struct {
+	Said, Reason string
 }
 
 type partStateView struct {
@@ -577,7 +594,7 @@ func (p *Pages) Form(in Form) (Page, error) {
 		b, _ := json.Marshal(rev)
 		fv.Revision = string(b)
 	}
-	b := builder{p: p, k: k, lang: lang, again: again, picks: in.Picks, people: people, masters: dm.obj("masters"), find: dm.find()}
+	b := builder{p: p, k: k, lang: lang, again: again, picks: in.Picks, people: people, masters: dm.obj("masters"), files: dm.obj("file_names"), find: dm.find()}
 	values := dm.obj("form")
 	// what the form works out as the page shows it: the fields the requester gives, as they start or
 	// as the post shown again holds them
@@ -664,6 +681,7 @@ type builder struct {
 	picks   Picks
 	people  map[string]any
 	masters map[string]any
+	files   map[string]any    // the names of the files the parts hold (the data's /file_names)
 	edit    bool              // the parts are an approver's edit (their values compare with the ticket's form)
 	find    string            // the address the script finds values under: the data's /find; "" for none
 	placed  map[string]string // the places a post shown again says something at → the element to go to
@@ -782,6 +800,7 @@ func (b *builder) field(f, rows *field, n string, value any) *input {
 			in.Kept = b.entered("a."+path, "")
 			in.Remove = b.entered("d."+path, "") != ""
 		}
+		in.KeptName = name(b.files, in.Kept)
 	case "bool":
 		in.Kind = "checkbox"
 		on, _ := value.(bool)

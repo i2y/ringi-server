@@ -175,7 +175,7 @@ func TestOtherLanguageMarked(t *testing.T) {
 		if i < 0 {
 			t.Fatalf("%s has no ticket in progress", kind)
 		}
-		pg, err = p.Card(Card{Card: screens.Card{Language: lang, Ticket: ticks[kind][i], Can: []string{"approve", "send_back"}, Names: namer{}}, Action: "/post", Now: testNow, Zone: zone})
+		pg, err = p.Card(Card{Card: screens.Card{Language: lang, Ticket: ticks[kind][i], Can: []string{"approve", "send_back"}, Names: namer{}, Zone: zone}, Action: "/post", Now: testNow})
 		out["card"] = checkPage(t, kind+" card "+lang, pg, err)
 		pg, err = p.List(List{List: screens.List{Kind: kind, Language: lang, Tickets: ticks[kind], Names: namer{}}, Open: "/tickets/{id}", Of: ListWaiting})
 		out["list"] = checkPage(t, kind+" list "+lang, pg, err)

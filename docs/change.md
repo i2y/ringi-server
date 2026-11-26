@@ -90,7 +90,7 @@ form
 | `"Quotation"` | Its label on the pages |
 | `required when amount > 500_000JPY` | Required when the amount is above 500,000 yen. Otherwise it may be left empty |
 
-The pages are in Japanese too, so add the Japanese label, under `labels ja` at the end of the same file.
+The pages are in Japanese too, so add the Japanese label, under `labels ja` at the end of the same file. If you leave one out, the check (`ritsu check`) names it, as E703.
 
 ```ringi title="project/purchase.ringi" hl_lines="5"
 labels ja

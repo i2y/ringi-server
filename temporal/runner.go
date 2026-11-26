@@ -31,8 +31,13 @@ const (
 	AskWorkflow = "requests.ask"
 	// AnswerActivity gives an asking run's answer to the server.
 	AnswerActivity = "requests.answer"
-	// DefaultTaskQueue is the task queue of the asking runs when Config.TaskQueue is "".
-	DefaultTaskQueue = "requests.ask"
+	// LaunchWorkflow is the type of the launching runs: one for each work a ticket launches.
+	LaunchWorkflow = "requests.launch"
+	// EndedActivity tells the server what became of a launching run's flow.
+	EndedActivity = "requests.ended"
+	// DefaultTaskQueue is the task queue of the asking and the launching runs when Config.TaskQueue
+	// is "".
+	DefaultTaskQueue = "requests"
 )
 
 // Flow is a flow the kinds name, and where Temporal runs it. FlowsOf makes them from the kinds'
@@ -62,19 +67,21 @@ type Config struct {
 	// makes a generated package's worker (its NewWorker, with your own tasks and the Transport its
 	// agents call out through). A flow whose task queue has none here is run by another process.
 	Workers map[string]func(c client.Client) worker.Worker
-	// TaskQueue is the task queue of the asking runs and of their answers (default
-	// DefaultTaskQueue).
+	// TaskQueue is the task queue of the asking and the launching runs, and of what they tell the
+	// server (default DefaultTaskQueue).
 	TaskQueue string
-	// AnswerTimeout is how long one try at giving an answer to the server may take (default one
-	// minute). A try that takes longer, or whose worker stops, is tried again.
+	// AnswerTimeout is how long one try at telling the server an answer, or what became of a
+	// launched flow, may take (default one minute). A try that takes longer, or whose worker stops,
+	// is tried again.
 	AnswerTimeout time.Duration
-	// WorkerOptions are the options of the worker of the asking runs.
+	// WorkerOptions are the options of the worker of the asking and the launching runs.
 	WorkerOptions worker.Options
 }
 
 // Answerer is where the answers go: *server.Server is one.
 type Answerer interface {
 	Answered(ctx context.Context, key server.EffectKey, a server.Answer) (server.Reply, error)
+	WorkEnded(ctx context.Context, key server.EffectKey, e server.WorkEnd) (server.Reply, error)
 }
 
 // Runner starts the flows on Temporal for a server: it is the server's Config.Flows and
@@ -162,8 +169,9 @@ func startOptions(id, queue string) client.StartWorkflowOptions {
 	}
 }
 
-// Launch starts a flow a ticket launches, with the key as its workflow ID. A key started before is
-// a success. An error is the framework's to try again.
+// Launch starts the launching run of a flow a ticket launches, with the workflow ID "<key>/launch":
+// it runs the flow, with the key as its workflow ID, and tells the server what became of it
+// (Server.WorkEnded). A key started before is a success. An error is the framework's to try again.
 func (r *Runner) Launch(ctx context.Context, l server.Launch) error {
 	f, err := r.flow(l.Kind, l.Flow)
 	if err != nil {
@@ -173,12 +181,19 @@ func (r *Runner) Launch(ctx context.Context, l server.Launch) error {
 	if err != nil {
 		return fmt.Errorf("the arguments of the flow %s: %w", l.Flow, err)
 	}
-	_, err = r.c.ExecuteWorkflow(ctx, startOptions(l.Key.String(), f.TaskQueue), f.Type, input)
+	in := launchInput{
+		Key: l.Key, Kind: l.Kind, Flow: l.Flow, Type: f.Type, TaskQueue: f.TaskQueue, Input: input,
+		Outputs: f.Outputs, AnswerTimeout: r.cfg.AnswerTimeout.String(),
+	}
+	_, err = r.c.ExecuteWorkflow(ctx, startOptions(LaunchID(l.Key), r.cfg.TaskQueue), LaunchWorkflow, in)
 	if err != nil && !sdktemporal.IsWorkflowExecutionAlreadyStartedError(err) {
 		return fmt.Errorf("starting the flow %s for %s: %w", l.Flow, l.Key, err)
 	}
 	return nil
 }
+
+// LaunchID is the workflow ID of the launching run of a key.
+func LaunchID(key server.EffectKey) string { return key.String() + "/launch" }
 
 // Ask starts the asking run of an agent's step or a note, with the workflow ID "<key>/ask": it
 // runs the flow and gives its answer to the server. A key asked before is a success. An error is
@@ -210,8 +225,9 @@ func (r *Runner) Ask(ctx context.Context, a server.Ask) error {
 // AskID is the workflow ID of the asking run of a key.
 func AskID(key server.EffectKey) string { return key.String() + "/ask" }
 
-// Worker makes the worker of the asking runs and their answers, on Config.TaskQueue: the answers
-// go to to. It must run where to can be called, that is in a process of the server.
+// Worker makes the worker of the asking runs and the launching runs, on Config.TaskQueue: their
+// answers, and what became of the work launched, go to to. It must run where to can be called, that
+// is in a process of the server.
 func (r *Runner) Worker(to Answerer) worker.Worker {
 	return r.worker(to, r.cfg.WorkerOptions)
 }
@@ -220,6 +236,8 @@ func (r *Runner) worker(to Answerer, o worker.Options) worker.Worker {
 	w := worker.New(r.c, r.cfg.TaskQueue, o)
 	w.RegisterWorkflowWithOptions(askWorkflow, workflow.RegisterOptions{Name: AskWorkflow})
 	w.RegisterActivityWithOptions(answers{to}.give, activity.RegisterOptions{Name: AnswerActivity})
+	w.RegisterWorkflowWithOptions(launchWorkflow, workflow.RegisterOptions{Name: LaunchWorkflow})
+	w.RegisterActivityWithOptions(answers{to}.tell, activity.RegisterOptions{Name: EndedActivity})
 	return w
 }
 

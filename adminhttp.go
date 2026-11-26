@@ -11,8 +11,9 @@ import (
 	"strings"
 )
 
-// serveAdmin serves the administration's API under /admin (DESIGN 13.6): it finds who sends the
-// request, reads the path and the body, calls Do and writes the reply. A body is taken as
+// serveAdmin serves the framework's own operations: the administration's API under /admin (DESIGN
+// 13.6), and the list of a kind's requests at /tickets (10.5). It finds who sends the request, reads
+// the path and the body, calls Do and writes the reply. A body is taken as
 // application/json, within Config.MaxBody; an upload of the organization's data as application/zip,
 // read by Do only once the gate allows the person to import, within Config.MaxOrganization.
 func (s *Server) serveAdmin(w http.ResponseWriter, r *http.Request, segs []string) {
@@ -72,8 +73,12 @@ func (s *Server) serveAdmin(w http.ResponseWriter, r *http.Request, segs []strin
 	writeAdmin(w, r, c.Operation, reply)
 }
 
-// adminRoute reads the path of an administration's operation (segs begin with "admin").
+// adminRoute reads the path of an administration's operation (segs begin with "admin"), or of
+// list_tickets (segs are "tickets").
 func adminRoute(segs []string) (c Call, method string, ok bool) {
+	if len(segs) == 1 && segs[0] == "tickets" {
+		return Call{Operation: "list_tickets"}, http.MethodGet, true
+	}
 	path := strings.Join(segs[1:], "/")
 	switch {
 	case path == "kinds":

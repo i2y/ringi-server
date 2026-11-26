@@ -60,6 +60,9 @@ type kept struct {
 func keptOf(t *testing.T, h http.Handler, person string, w *httptest.ResponseRecorder) kept {
 	t.Helper()
 	k := kept{code: w.Code}
+	if err := server.CheckOwnAnswer("POST", "/files", w.Code, w.Body.Bytes()); err != nil {
+		t.Errorf("an upload answered %d, which framework.openapi.json does not describe: %v\n%s", w.Code, err, w.Body.Bytes())
+	}
 	var b struct {
 		ID          string `json:"id"`
 		Name        string `json:"name"`
@@ -195,9 +198,10 @@ func TestFileTypes(t *testing.T) {
 	}
 }
 
-// TestFileNamesOnThePages: the name of a file shown on the pages and the screens, and a page's form
-// that sends a file that is not what the end of its name says (a browser sends the type the name
-// ends with): the page is shown again, with the reason at the field, and keeps no file.
+// TestFileNamesOnThePages: the name of a file shown on the pages and the screens (the card, and the
+// form to make a request sent back again, show the file by the name it was kept by), and a page's
+// form that sends a file that is not what the end of its name says (a browser sends the type the
+// name ends with): the page is shown again, with the reason at the field, and keeps no file.
 func TestFileNamesOnThePages(t *testing.T) {
 	files := &countedFiles{Files: &servertest.Files{}}
 	_, h := newWeb(t, webSetup{Store: memstore.New(), At: monday, Gate: &Gate{}, Files: files})
@@ -219,6 +223,36 @@ func TestFileNamesOnThePages(t *testing.T) {
 	d := send(h, "GET", "/tickets/"+id+"/files/"+k.ID, "e1101", nil)
 	if _, params, _ := mime.ParseMediaType(d.Header().Get("Content-Disposition")); d.Code != http.StatusOK || params["filename"] != "invoicefdp.exe.pdf" {
 		t.Errorf("the approver's download: %d %q", d.Code, d.Header().Get("Content-Disposition"))
+	}
+	// The card shows the file by the name it was kept by, not by its ID, and opens it: the page, and
+	// the A2UI card's data (/file_names beside /files).
+	held := "/tickets/" + id + "/files/" + k.ID
+	if w := send(h, "GET", "/pages/tickets/"+id, "e1101", nil); !strings.Contains(pageText(t, w.Body.Bytes()), "invoicefdp.exe.pdf") ||
+		strings.Contains(pageText(t, w.Body.Bytes()), k.ID) || !strings.Contains(w.Body.String(), `href="`+held+`"`) {
+		t.Errorf("the card page shows the receipt otherwise: %s", pageText(t, w.Body.Bytes()))
+	}
+	sc, err := readScreen(send(h, "GET", "/a2ui/tickets/"+id+"/card", "e1101", nil).Body.Bytes())
+	if names, _ := sc.data["file_names"].(map[string]any); err != nil || names[k.ID] != "invoicefdp.exe.pdf" || sc.data["files"].(map[string]any)[k.ID] != held {
+		t.Errorf("the A2UI card's files: %v %v %v", err, sc.data["file_names"], sc.data["files"])
+	}
+	// sent back, the form to make the request again shows the file it holds by its name too (in the
+	// requester's language, Japanese)
+	var tk struct {
+		Ticket struct {
+			Revision json.RawMessage `json:"revision"`
+		} `json:"ticket"`
+	}
+	json.Unmarshal(send(h, "GET", "/tickets/"+id, "e1201", nil).Body.Bytes(), &tk)
+	back, _ := json.Marshal(map[string]any{"revision": tk.Ticket.Revision, "comment": "Please add the shop's name."})
+	if w := send(h, "POST", "/tickets/"+id+"/send_back", "e1101", back, "Content-Type", "application/json", "Idempotency-Key", "names-back"); w.Code != http.StatusOK {
+		t.Fatalf("the send-back: %d %s", w.Code, w.Body.String())
+	}
+	if text := pageText(t, send(h, "GET", "/pages/tickets/"+id+"/form", "e1201", nil).Body.Bytes()); !strings.Contains(text, "添付: invoicefdp.exe.pdf") || strings.Contains(text, k.ID) {
+		t.Errorf("the form to make the request again shows the receipt otherwise: %s", text)
+	}
+	sc, err = readScreen(send(h, "GET", "/a2ui/tickets/"+id+"/form", "e1201", nil).Body.Bytes())
+	if names, _ := sc.data["file_names"].(map[string]any); err != nil || names[k.ID] != "invoicefdp.exe.pdf" {
+		t.Errorf("the A2UI form's files: %v %v", err, sc.data["file_names"])
 	}
 	// The page's form, with a program as its receipt.
 	before := files.n.Load()

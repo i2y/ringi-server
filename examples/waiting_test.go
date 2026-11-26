@@ -84,14 +84,16 @@ func waitingPages(t *testing.T, store server.Store) {
 	check("below a ticket that still waits", manager, server.WaitingQuery{Before: ids[2], Limit: 2}, ids[3:5])
 }
 
-// TestA2UIListsInPages reads the A2UI lists of a person's requests and of the tickets that wait for
-// a person a page at a time, as the API's lists are read: limit (1 to 100, 50 when not given) and
-// before (the last ticket of the page before). Another limit is answered 400, in the API's words.
-// Each page holds whether the list has more after it (/more), not on the last page, though it is as
-// full as its limit; the screen's button `more` sends the list's operation with the last ticket of
-// the page as before (and the kind, on the list of one's own), and is answered the next page in place
-// of the one shown (ringi's DESIGN 13.8). The tickets are all made at one time here (the clock stands
-// still), so the lists show them by ID, from the highest.
+// TestA2UIListsInPages reads the A2UI lists of a person's requests, of the tickets that wait for a
+// person, and of all the requests of a kind (for accounting, which owns expense) a page at a time, as
+// the API's lists are read: limit (1 to 100, 50 when not given) and before (the last ticket of the
+// page before). Another limit is answered 400, in the API's words. Each page holds whether the list
+// has more after it (/more), not on the last page, though it is as full as its limit; the screen's
+// button `more` sends the list's operation with the last ticket of the page as before (and the kind,
+// on the list of one's own), and is answered the next page in place of the one shown (ringi's DESIGN
+// 13.8): the list of all requests is the screen `list` under the surface "all", and its button reads
+// on in it. The tickets are all made at one time here (the clock stands still), so the lists show them
+// by ID, from the highest.
 func TestA2UIListsInPages(t *testing.T) {
 	_, h := newWeb(t, webSetup{Store: memstore.New(), At: monday, Gate: &Gate{}, Files: &servertest.Files{}})
 	var ids []string
@@ -134,7 +136,7 @@ func TestA2UIListsInPages(t *testing.T) {
 		}
 		return page(w.Body.Bytes())
 	}
-	for _, l := range []struct{ person, path, op string }{{"e1201", "/a2ui/mine/expense", "list_mine"}, {"e1101", "/a2ui/waiting/expense", "list_waiting"}} {
+	for _, l := range []struct{ person, path, op string }{{"e1201", "/a2ui/mine/expense", "list_mine"}, {"e1101", "/a2ui/waiting/expense", "list_waiting"}, {"e1002", "/a2ui/requests/expense", "list_waiting"}} {
 		for _, c := range []struct {
 			query string
 			want  []string
@@ -146,6 +148,9 @@ func TestA2UIListsInPages(t *testing.T) {
 		}
 		// the button `more` of the first page of two: the next page, in place of the first
 		_, _, surface := shown(l.person, l.path+"?limit=2")
+		if want := map[string]string{"/a2ui/mine/expense": "expense.mine", "/a2ui/waiting/expense": "expense.list", "/a2ui/requests/expense": "expense.list.all"}[l.path]; surface != want {
+			t.Errorf("%s is shown under the surface %q; want %q", l.path, surface, want)
+		}
 		context := map[string]any{"before": ids[1]}
 		if l.op == "list_mine" {
 			context["kind"] = "expense"

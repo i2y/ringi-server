@@ -99,6 +99,14 @@ func (s *Set) Mine(in List) (Screen, error) // the list of the viewer's own requ
 func (s *Set) History(in History) (Screen, error)
 func (s *Set) Offered(in Offered) (Screen, error) // the screen of a kind with no version in effect
 
+// DeadlineOf answers the deadline a ticket runs to now, as a card's /due and a list's row's due say
+// it (2.2): Of is "stage", "resubmit" or "pause_ends", and At when; false for none.
+func DeadlineOf(ticket json.RawMessage) (Deadline, bool, error)
+
+// EndOfDay answers the day a deadline at midnight is the end of (2.2): for 2026-11-20 00:00,
+// 2026-11-19; false for another time.
+func EndOfDay(at time.Time) (string, bool)
+
 // Screen is a filled screen: the messages to send, in their order.
 type Screen struct {
 	SurfaceID string
@@ -129,7 +137,27 @@ type Card struct {
 	Can      []string
 	Names    Lookup
 	Surface  string
+	Zone     *time.Location // the zone the deadlines (/due) are written in: the kind's; nil is UTC
+	Records  []Record       // the ticket's history, of which the card shows what an agent answered (/agent); nil shows none
+	Works    []Work         // the work the ticket launched once it ended, in its order (/works); nil shows none
 	Serving
+}
+
+// Work is a piece of work a ticket launched (an `on … launch` line of its kind), as the server
+// knows it (the framework's server.Work).
+type Work struct {
+	Flow    string    // the name the kind gives its flow
+	State   string    // waiting, retrying, started, done or failed
+	At      time.Time // when it was started (started), or when it said what became of it (done, failed); zero for none
+	Reason  string    // why it failed, as it said
+	Outputs []Output  // what it ended with
+}
+
+// Output is a value a work ended with: its name and its value of the contract ({"str": {"v": …}},
+// {"num": …}, {"truth": …}, "nothing" or {"rows": …}).
+type Output struct {
+	Name  string
+	Value json.RawMessage
 }
 
 // Serving is what the server puts in a form or a card of its own (ringi's DESIGN 13.2, 13.8).
@@ -148,6 +176,7 @@ type List struct {
 	More     bool              // the list holds tickets after the last of Tickets (/more)
 	Names    Lookup
 	Surface  string
+	Zone     *time.Location    // the zone the rows' deadlines (due) are written in; nil is UTC
 }
 
 type History struct {
@@ -203,7 +232,8 @@ error, so a misspelled one does not hide a button silently. The form of a new re
 ### 2.1 Names, masters and files
 
 The screens show IDs and keys through tables in their data: the people's and teams' names in
-`/people`, the names of a master's rows in `/masters/<field>`, the files' addresses in `/files`.
+`/people`, the names of a master's rows in `/masters/<field>`, the files' addresses in `/files` and
+the names they were uploaded by in `/file_names`.
 This package works out which IDs a screen shows, and asks the server for those alone, once for each
 table:
 
@@ -216,16 +246,19 @@ type Lookup interface {
 	MasterNames(lang, master string, keys []string) (map[string]string, error)
 	// FileURLs answers the addresses a browser opens the files with these IDs at.
 	FileURLs(ids []string) (map[string]string, error)
+	// FileNames answers the names the files with these IDs were given when they were uploaded, of
+	// those the person may open (as FileURLs answers their addresses).
+	FileNames(ids []string) (map[string]string, error)
 }
 ```
 
 The IDs come sorted, each once, and never empty; a method is not called when there is none to ask.
 An ID left out of the answer is shown as it is (the screens' `lookup` shows a code it does not find),
-and an error stops the fill. `Tables` is a `Lookup` over three maps, for tests and for a server that
+and an error stops the fill. `Tables` is a `Lookup` over four maps, for tests and for a server that
 reads them beforehand.
 
 Which IDs a screen shows is read from the screen itself, when the set is loaded: every value the
-template looks up in one of the three tables (`lookup(value, table)`, in a part, a row of a `List` or
+template looks up in one of the tables (`lookup(value, table)`, in a part, a row of a `List` or
 of `LineItems`, or a button's local action), the values of the `PersonPicker`s and the lists they
 choose among (`among`), and the people of the route an `ApprovalRoute` shows (each part's
 `approvers` and `team`, its answers' `by` and `seat`, and the person of its `sole`; a part's `of` is
@@ -246,7 +279,10 @@ What the server hands in, and what this package makes of it, place by place (rin
 | `/submit_for` | form | `SubmitFor` | the IDs, for a new request; empty when made again |
 | `/may_submit` | form, of a kind with `submitted by` | `MaySubmit` | it |
 | `/ticket` | form, card, history | `Ticket` | each key the template's `/ticket` has, as the ticket has it: in ritsu's templates its `id`; on a form and a card its `revision`; on a form `sent_back_by`; on a card `status`, `stage`, `requester` and `made_by` |
+| `/due` | card | `Ticket`, `Zone` | the deadlines the ticket runs to now, each a time in `Zone` in RFC 3339, null where it runs to none: `stage`, the `due` of the stage it waits at (of its route's stages of the ticket's `stage`, the last that is `active`), while it is `in_progress`; `resubmit`, its `resubmit_due`, while it is `with_requester`; `pause_ends`, its `pause_ends`, while it is `paused`. A ticket that has ended runs to none. Beside each, `stage_day`, `resubmit_day` and `pause_ends_day`: the day it is the end of, when it is at midnight in `Zone` (`EndOfDay`), else null. The card says such a deadline as ringi says it, "2026-11-19 at the end of the day", and not as the next day's 00:00, which reads as if it could still be answered that day |
 | `/route` | card | `Ticket` | its `stages`, as they are |
+| `/agent` | card, of a kind with an agent's stage | `Records` | what an agent answered in the round the ticket is in: of the lines of its history after the last whose `did` is `submitted` or `resubmitted`, those whose `did` is `agent ok`, `agent doubt` or `agent failed`, each as `{"stage", "did", "comment"}` (the comment is the agent's reason), in their order; none with no `Records` |
+| `/works` | card, of a kind that launches work | `Works`, `Zone` | what became of each work the ticket launched, in its order, each as `{"flow", "state", "at", "outputs", "reason"}`: `state` is `waiting` (not started yet), `retrying` (starting it failed, and it is tried again), `started`, `done` or `failed`; `at` is the time of that state in `Zone` in RFC 3339 (null while it waits or is tried again); `outputs` is what it ended with as a text in the screen's language (`reference: PAY-1`, `reference：PAY-1`; a number in digits, true and false as words, nothing as a dash, rows by their count; null for none); `reason` is why it failed (null for none). None with no `Works` |
 | `/edit` | card, of a kind whose approvers give or correct fields | `Ticket` | each such field's value on the ticket, as its input holds it (a choice as a list of one); the empty value where it has none |
 | `/comment` | form, card | | `""` |
 | `/send_back`, `/hand_over` | card | | nothing chosen, as the template starts them |
@@ -258,7 +294,8 @@ What the server hands in, and what this package makes of it, place by place (rin
 | `/people` | all | `Names.PeopleNames` | the names of the IDs the screen shows (2.1) |
 | `/masters/<field>` | card, the two lists | `Names.MasterNames` | the names of the keys the screen shows, by the field's master |
 | `/files` | card | `Names.FileURLs` | the addresses of the files the screen opens (the form's and its rows' attachments) |
-| `/tickets` | the two lists | `Tickets` | for each, `{"id", "status", "stage", "requester", "form"}` on the list that waits, `{"id", "status", "stage", "made_by", "form"}` on the list of one's own requests, the form holding the fields the rows read |
+| `/file_names` | card; form, of a kind with attachments | `Names.FileNames` | the names of the files the screen shows (the form's, its rows' and an approver's attachments, the files a request made again holds), which it shows in place of their IDs |
+| `/tickets` | the two lists | `Tickets`, `Zone` | for each, `{"id", "status", "stage", "requester", "due", "form"}` on the list that waits, `{"id", "status", "stage", "made_by", "due", "form"}` on the list of one's own requests, `due` holding the deadlines as a card's `/due` does, the form holding the fields the rows read |
 | `/more` | the two lists | `More` | it |
 | `/history` | history | `Records` | a row for each record, with the keys the template's rows read; `at` is the record's time, in RFC 3339 in the time's own zone |
 | `/from` | offered | `From` | the day; null when it is `""` |
@@ -551,14 +588,17 @@ that do not hold.
 
 | Test | What it holds |
 |---|---|
-| `TestFillEveryScreen` | 5,542 screens filled from the vectors: a card for each of the 2,174 tickets they hold (before a line and in its answer, each once; in one language or the other by turns), a request made again for each ticket sent back (568), a history for each answer that keeps lines of history (2,280), each kind's list of all its tickets (20), each person's list of their own requests, the tickets they are the requester of or made for someone else, in both languages (460), new requests for oneself and for others (40). Each is held to its template (three messages of version 1.0 of one surface, the template's `createSurface` and parts as they are, each place in the shape and with the keys it starts with), its values to the ticket's (read again from the kind's description, not from the templates; a list's rows to its tickets, in their order, with the requester on the list that waits and who made the request on one's own), and `Lookup` to its promise (each table asked once, sorted, each ID once). Node draws them (276,484 parts): no lookup misses a name, no format is given null, nothing throws, and each person the route shows is named. |
+| `TestFillEveryScreen` | 5,542 screens filled from the vectors: a card for each of the 2,174 tickets they hold (before a line and in its answer, each once; in one language or the other by turns), a request made again for each ticket sent back (568), a history for each answer that keeps lines of history (2,280), each kind's list of all its tickets (20), each person's list of their own requests, the tickets they are the requester of or made for someone else, in both languages (460), new requests for oneself and for others (40). Each is held to its template (three messages of version 1.0 of one surface, the template's `createSurface` and parts as they are, each place in the shape and with the keys it starts with), its values to the ticket's (read again from the kind's description, not from the templates; a list's rows to its tickets, in their order, with the requester on the list that waits and who made the request on one's own; a card's `/due` and a row's `due` to the deadlines read from the ticket, each of the three shown on some card, some list that waits and some list of one's own, both as a time and as the end of a day: the screens in Japanese are filled in the zone of Tokyo, where the vectors' deadlines are at midnight, the others in UTC), and `Lookup` to its promise (each table asked once, sorted, each ID once). Node draws them (322,840 parts): no lookup misses a name, no format is given null, nothing throws, and each person the route shows is named. |
+| `TestWorks` | A card of `purchase`, which launches `order`, with three works of its ticket: done at a time written in the kind's zone, with what it ended with as a text in English and in Japanese (a text, a number, true, rows, nothing); failed, with why; waiting, with no time. With no works, `/works` is empty; a card of `leave`, which launches none, has no `/works` |
+| `TestAgentSaid` | A card of `expense`, whose stage `decide` asks an agent, with the lines of a history: what the agent answered after the last submission alone (a doubt with its reason before the request is made again, a failure after), none of the other lines, none with no history; a card of `leave` has no `/agent`; a line that is not an object stops the fill |
+| `TestDeadlinesInTheirZone` | The deadlines of a card and of a list's rows written in the zone given (`Card.Zone`, `List.Zone`) at its offset, as the same times as the ticket's; with no zone, in UTC. In the zone of Tokyo, where the deadline is at midnight, the day before is beside it; in UTC, none. `EndOfDay` of midnight, of 18:00 and of a second after midnight |
 | `TestReplayVectors` | Each line whose event a person makes, made on its screen: the screen filled with the ticket before the line, what the event says put in (the form, the fields an approver corrects, the fields made empty, the stage to send back to, the approver to add, the comment), its button pressed in Node, the message made into an operation, and the operation, with the person, into the event the kind takes. Of the 2,990 lines, 848 are no screen's: 626 clocks, 82 answers of flows, 2 that edit a field to the value it has (which a screen sends as no change), and 138 that ask what no screen sends, each of which the kind refuses (an event the kind's card has no button for, 68; a field the form does not have, 16; a field given and made empty at once, 12; a field the requester does not fill in, 10; an event with no revision, 10 (a screen sends the revision of the ticket it shows); an approver added where the card has no button for it, 8; a field approvers do not edit, 6; a stage to send back to, on a card that sends back to the requester alone, 6; a list that may have no rows made empty, 2). The rest make 2,230 presses (a request given up is also given up on its form). 2,052 are sent and answered as the vector answers (1,984 the same event, 68 the same answer to an event said another way: a part named where the vector leaves it to the one that waits, 56, or no field made empty where the vector empties one that is empty already, 12); 310 of them are refusals (114 `person`, 84 `stale`, 40 `clock`, 30 `limit`, 20 `form`, 12 `state`, 10 `submit`). 176 are stopped by the button's checks, and the kind refuses each (106 `form`, 56 `comment`, 14 `stale`). 2 give a field the screen hides (its `shown when` does not hold): the screen leaves it out of what it sends, the rest as the line, and the kind refuses each line (`form`). |
 | `TestEveryButton` | Each of the 336 buttons of the 100 screens every kind has pressed, on screens filled with a ticket in progress, a ticket sent back, the two lists: the 324 that send an event make the operation of their name (40 operations), of the path with the ticket put in, with a key for each POST; the 12 that open a file are refused (`ErrButton`); a ticket's buttons pressed on a new request's form are refused (`ErrContext`). A card's operations are run through the kind: none is refused as `event`. |
 | `TestOffered` | A kind's `offered` screen in both languages, with the day and the address of the start page and with neither: `/from` and `/home` hold them or null, and Node draws it. A package whose files of the screen are left out, or one language's, loads without it, and `Offered` is `ErrKind`. |
 | `TestRefusalsWhereTheScreensSayThem` | The vectors' 230 refusals of `form` and of `comment`, put at `/refused` of the kind's form and card in both languages (`Set.Refused`): 158 that name a place (12 of them a field of a row, 4 a value the form works out in a row) are shown beside that field on each screen that has it, one at least, and at the head of one that has not; 56 of the comment under the comment; 16 that name no place at the head. |
 | `TestWaitingParts` | `/add_approver/parts` holds the parts that are active or stopped, and no other: each state put on the parts of a ticket in progress in turn. |
 | `TestDriverSees` | The driver sees what it must: a name a table lacks, a format given null, a button not drawn. |
-| `TestLoad`, `TestLoadRefuses`, `TestTicketPlaces` | The kinds, versions and languages of the set; `Load` refuses sixteen broken sets with the error and the words that say what is wrong (among them a screen that starts refused, a key of `/refused` this package does not fill, a set with no list of one's own requests, and a row of that list that reads the requester); a card made to show its requester by name loads, and is filled and named. |
+| `TestLoad`, `TestLoadRefuses`, `TestTicketPlaces` | The kinds, versions and languages of the set; `Load` refuses twenty-six broken sets with the error and the words that say what is wrong (among them a screen that starts refused, a key of `/refused` this package does not fill, a set with no list of one's own requests, a row of that list that reads the requester, a card that starts with deadlines, work or what an agent answered, and a line of `/works` or `/agent` that reads what it does not have); a card made to show its requester by name loads, and is filled and named. |
 | `TestParseAction`, `TestOperation`, `TestOperationKeys` | The message's form; the operation, the path escaped, the body's nulls (a comment with nothing written sent as null, for the kind to refuse); each refusal of section 3; the keys of 3.1. |
 | `TestReadPlace` | The places `ReadPlace` reads, and those it does not; what `Refusal.Place` and `Refusal.Field` make of each. |
 | `TestFillRefuses`, `TestWithOldNames`, `TestAssets` | The errors of a fill; the four names; the two files, their types and ETags, `Assets` as a file system (`testing/fstest`). |

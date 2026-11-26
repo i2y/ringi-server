@@ -15,11 +15,12 @@
 | `WaitingCounts` | 人を待っているものの件数を、チケットと突き合わせる。代理があり、その期間の前、中、後の日で |
 | `WaitingOrder` | 待っているものの順（新しい順、マイクロ秒まで）と、コメントで順が変わらないこと |
 | `MineOrder` | 自分の申請の順と、状態ごとの件数 |
+| `TicketsOrder` | 申請の種類ごとの申請の順（新しい順、マイクロ秒まで）と、版と状態での絞り込み |
 | `Reminded` | 催促を出したかどうかが、一時停止と再開のあとも残ること |
 | `Administration` | 版の切り替え、組織のデータの確認と取り込み、記録。gate が許さない人には何も変えられず、何も読めないこと |
 | `Keeping` | 時刻が UTC であること、古い操作を順に、決まった件数ずつ消すこと、一つのキーのアップロードを一度だけ記録すること |
 
-最後の二つは、ベクタなしで動きます。二つの順は、ページに分けて読んだときも確かめます。
+最後の二つは、ベクタなしで動きます。三つの順は、ページに分けて読んだときも確かめます。
 
 ```go
 func TestConformance(t *testing.T) {
@@ -39,6 +40,7 @@ func TestConformance(t *testing.T) {
 	conformance.WaitingCounts(t, s)
 	conformance.WaitingOrder(t, s)
 	conformance.MineOrder(t, s)
+	conformance.TicketsOrder(t, s)
 	conformance.Reminded(t, s)
 	conformance.Administration(t, s)
 	conformance.Keeping(t, s)

@@ -1,14 +1,83 @@
 # 自分の画面を作る
 
-サーバーのページの色やロゴは変えられません。見た目を自分で決めたいとき、会社のポータルに件数を出したいとき、自分のアプリの中で承認したいときは、次のどれかを選びます。英語版は [screens.md](screens.md) です。
+サーバーのページには、会社のロゴと名前と色を付けられます。見た目をすべて自分で決めたいとき、会社のポータルに件数を出したいとき、自分のアプリの中で承認したいときは、ほかの方法を選びます。英語版は [screens.md](screens.md) です。
 
 | したいこと | 方法 |
 |---|---|
+| サーバーのページに、会社のロゴ、名前、色を付ける | [ページの見た目を変える](#ページの見た目を変える) |
 | 同じサーバーに、自分のページや API を足す | [ルートを足す](#ルートを足す) |
 | 自分のアプリから、申請を出す、承認する | [HTTP API を使う](#http-api-を使う) |
 | フォームや承認の画面の部品を、自分のアプリに表示する | [A2UI の画面を使う](#a2ui-の画面を使う) |
 
 サーバーのページを使いながら、一部だけを自分で作ることもできます。
+
+## ページの見た目を変える
+
+サーバーのページの上に会社のロゴと名前を出し、リンクやボタンを会社の色にします。まず、プロジェクトのコードの横にロゴを置きます。
+
+```svg title="logo.svg"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#0f766e"/><path d="M18 46 32 16l14 30" fill="none" stroke="#fff" stroke-width="6"/></svg>
+```
+
+プロジェクトのパッケージに、見た目を書きます。
+
+```go title="look.go"
+package shinsei
+
+import (
+	_ "embed"
+
+	"github.com/i2y/ringi-server/web"
+)
+
+//go:embed logo.svg
+var logo []byte
+
+// Look は、ページの見た目。会社のロゴと名前と色。
+func Look() web.Look {
+	return web.Look{Name: "アクメ", Logo: logo, Accent: "#0f766e"}
+}
+```
+
+`cmd/server/main.go` で、申請の置き場を開く行のあとに、サーバーに渡します。
+
+```go title="cmd/server/main.go" hl_lines="2"
+	defer stores.Close()
+	stores.Look = shinsei.Look()
+	cfg, err := shinsei.Parts(log)
+```
+
+試用のログインでサーバーを起動し、`http://localhost:8080/pages/` を開きます。ロゴと名前から、ホームへ戻れます。
+
+```sh
+go run ./cmd/server -dev-login
+```
+
+<img src="images/look.ja.webp" width="600" alt="Acme の見た目にした、承認する人のホーム。上に Acme のロゴと名前があり、リンクが Acme の色になっている">
+
+色は、ページのスタイルシートの最後に足されます。そのため、試用のログインのページにも付きます。ロゴには、専用のアドレスがあります。
+
+```sh
+curl -s localhost:8080/pages/assets/page.css | tail -n 5
+curl -s -o /dev/null -w '%{content_type}\n' localhost:8080/pages/assets/logo
+```
+
+```
+/* the organization's colours (web.Look) */
+.ringi { --accent: #0f766e; }
+@media (prefers-color-scheme: dark) {
+  .ringi { --accent: #4b9892; }
+}
+image/svg+xml
+```
+
+`#4b9892` は、暗い配色にしたブラウザのための色です。サーバーが、暗いページの上で読めるように、`Accent` を明るくして作りました。自分で選ぶときは、`AccentDark` も渡します。ページの文字は読めなければならないので、背景との比が 4.5:1 に届かない色（WCAG 1.4.3）では、サーバーは起動せず、理由を言います。
+
+```
+web: Look.Accent #e11d48 reads at 4.26:1 on the pages' tint #f1f4f9, and the links and the buttons need 4.5:1 (WCAG 1.4.3): take a darker colour
+```
+
+ロゴは SVG、PNG、JPEG、GIF、WebP のどれかで、名前は 60 文字までです（[ページの見た目](reference.ja.md#ページの見た目)）。この見た目は、サーバーのページの物です。自分のアプリに出す A2UI の画面は、アプリの見た目になります。
 
 ## ルートを足す
 
@@ -115,6 +184,7 @@ jq -c '.form[] | {name, label, type, min, max, count_max}' requests/types/purcha
 | `GET /a2ui/tickets/{id}/form` | 再申請のフォーム |
 | `GET /a2ui/tickets/{id}/history` | 履歴 |
 | `GET /a2ui/waiting/{kind}`、`/a2ui/mine/{kind}` | 待っている申請、自分の申請の一覧 |
+| `GET /a2ui/requests/{kind}` | 受け持つ部のための、申請の種類のすべての申請の一覧（一覧の画面を、サーフェス `<kind>.list.all` で） |
 | `POST /a2ui/actions` | ボタンが押されたときに送る。操作を実行し、次の画面を返す |
 | `GET /a2ui/catalog.json`、`/a2ui/functions.js` | 部品の一覧と、画面の中の計算に使う関数 |
 

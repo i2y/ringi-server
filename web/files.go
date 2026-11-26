@@ -301,6 +301,17 @@ func cleanName(name string) string {
 	return name
 }
 
+// OpenAPIPath is where the description of the whole API is served (server.Server.OpenAPI): the
+// kinds' operations, the ones no kind owns, the administration's and the attachments', as OpenAPI
+// 3.1, to a person signed in.
+const OpenAPIPath = "/openapi.json"
+
+// openAPI serves the description of the whole API.
+func (h *Handler) openAPI(w http.ResponseWriter, r *http.Request, _ server.Person) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(h.api)
+}
+
 // ownFile serves a file to the person who uploaded it.
 func (h *Handler) ownFile(w http.ResponseWriter, r *http.Request, p server.Person) {
 	id := r.PathValue("id")

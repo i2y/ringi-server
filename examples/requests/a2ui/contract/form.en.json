@@ -42,6 +42,7 @@
             "comment": false
           },
           "upload": null,
+          "file_names": {},
           "find": null
         }
       }
@@ -464,6 +465,18 @@
             "label": "Contract",
             "value": {
               "@path": "/form/document"
+            },
+            "name": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "/form/document"
+                },
+                "table": {
+                  "@path": "/file_names"
+                }
+              }
             },
             "upload": {
               "@path": "/upload"

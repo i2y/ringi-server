@@ -230,7 +230,7 @@ func newRig(t *testing.T, start bool) *rig {
 	ctx := context.Background()
 	runner, err := temporal.New(dial, temporal.Config{
 		Flows:         flows,
-		TaskQueue:     "requests.ask." + t.Name(),
+		TaskQueue:     "requests." + t.Name(),
 		AnswerTimeout: 2 * time.Second,
 	})
 	if err != nil {
@@ -656,7 +656,8 @@ func TestOneProcess(t *testing.T) {
 }
 
 // TestPaymentStartsOnce: the agent approves a day trip; the payment the ticket launches runs once,
-// when it is launched again as well.
+// when it is launched again as well, and the requester's card says it was done, with the reference
+// of the payment.
 func TestPaymentStartsOnce(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, true)
@@ -681,6 +682,11 @@ func TestPaymentStartsOnce(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+	// the launching run runs the payment, then tells the server what became of it
+	launching := temporal.LaunchID(launches[0].Key)
+	if err := dial.GetWorkflow(ctx, launching, "").Get(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
 	var out map[string]any
 	if err := dial.GetWorkflow(ctx, launches[0].Key.String(), "").Get(ctx, &out); err != nil {
 		t.Fatal(err)
@@ -688,20 +694,35 @@ func TestPaymentStartsOnce(t *testing.T) {
 	if out["reference"] != "PAY-"+r.id {
 		t.Errorf("the payment ended with %v", out)
 	}
-	first, err := dial.DescribeWorkflowExecution(ctx, launches[0].Key.String(), "")
+	works, err := r.srv.Works(ctx, server.Person{ID: "e1201"}, r.id)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(works) != 1 || works[0].Flow != "pay" || works[0].State != "done" || len(works[0].Outputs) != 1 {
+		t.Fatalf("the requester's card says of the payment: %+v", works)
+	}
+	if ref, _ := works[0].Outputs[0].Str(); works[0].Outputs[0].Name != "reference" || ref != "PAY-"+r.id {
+		t.Errorf("the card's outputs of the payment: %+v", works[0].Outputs)
+	}
+	runs := func() [2]string {
+		t.Helper()
+		var ids [2]string
+		for i, id := range []string{launching, launches[0].Key.String()} {
+			d, err := dial.DescribeWorkflowExecution(ctx, id, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids[i] = d.WorkflowExecutionInfo.Execution.RunId
+		}
+		return ids
+	}
+	first := runs()
 	// Once the payment has ended, a launch again starts nothing either.
 	if err := r.rec.runner.Launch(context.Background(), launches[0]); err != nil {
 		t.Fatal(err)
 	}
-	again, err := dial.DescribeWorkflowExecution(ctx, launches[0].Key.String(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a, b := first.WorkflowExecutionInfo.Execution.RunId, again.WorkflowExecutionInfo.Execution.RunId; a != b {
-		t.Errorf("a second payment: %s, then %s", a, b)
+	if again := runs(); again != first {
+		t.Errorf("a second launching run or payment: %v, then %v", first, again)
 	}
 	if paid, told := own.counts(r.id); paid != 1 || told != 1 {
 		t.Errorf("the request was paid %d times and told %d; want once each", paid, told)
@@ -724,6 +745,11 @@ func (h *holding) Answered(ctx context.Context, key server.EffectKey, a server.A
 	return server.Reply{}, errors.New("the process stopped before it replied")
 }
 
+// WorkEnded tells the server what became of a launched flow, as it is.
+func (h *holding) WorkEnded(ctx context.Context, key server.EffectKey, e server.WorkEnd) (server.Reply, error) {
+	return h.srv.WorkEnded(ctx, key, e)
+}
+
 // TestWorkerStopsWhileAnswering: the worker of the asking runs stops after the server took the
 // agent's answer and before the reply; another worker gives the answer again, and the ticket moves
 // once.
@@ -737,7 +763,7 @@ func TestWorkerStopsWhileAnswering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := temporal.New(first, temporal.Config{Flows: flows, TaskQueue: "requests.ask." + t.Name(), AnswerTimeout: 2 * time.Second})
+	before, err := temporal.New(first, temporal.Config{Flows: flows, TaskQueue: "requests." + t.Name(), AnswerTimeout: 2 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

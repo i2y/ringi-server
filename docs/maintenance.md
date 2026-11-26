@@ -101,7 +101,9 @@ error, 500). The same happens when you go back to the old executable file after 
 
 The code of an old version cannot be taken out while there is even one request of it, as opening a request that has
 ended uses the code of its version too. There is no operation that deletes a request, so the code of a version that
-was ever used stays for good.
+was ever used stays for good. If it is taken out, the server stops as it starts, saying how many requests there are of
+which version in which state (as `the store keeps tickets of versions no package has: purchase v1 (12 approved, 1
+in_progress)`). Put the code of that version back.
 
 "Tickets (open / all)" on the page for administrators says how many requests there are of which version. In the
 database, this SQL does.

@@ -24,6 +24,7 @@ import (
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/servertest"
+	"github.com/i2y/ringi-server/web"
 )
 
 // adminAs sends requests to the pages as a browser does, as a person with roles.
@@ -358,6 +359,36 @@ func TestStartPageWhenTheGateFails(t *testing.T) {
 	}
 	if n := strings.Count(log.String(), "asking the gate whether to link to the administration"); n != 1 {
 		t.Errorf("the log says the gate's failure %d times: %s", n, log.String())
+	}
+}
+
+// failingKindSee is the examples' gate, whose answers to `see` asked of a kind with no ticket fail.
+type failingKindSee struct{ Gate }
+
+func (g *failingKindSee) Allow(ctx context.Context, q server.Question) (bool, error) {
+	if q.Action == "see" && q.Ticket == "" {
+		return false, errors.New("the gate's service does not answer")
+	}
+	return g.Gate.Allow(ctx, q)
+}
+
+// TestStartPageWhenSeeFails: when the gate fails to answer which kinds' requests a person sees for the
+// kind, the start page is shown (200) without the part of all requests, the log says it once for the
+// page, and the list itself is the server's failure (500).
+func TestStartPageWhenSeeFails(t *testing.T) {
+	var log bytes.Buffer
+	lg := slog.New(slog.NewTextHandler(&log, nil))
+	_, h := newWeb(t, webSetup{Store: memstore.New(), At: time.Date(2026, 11, 16, 10, 0, 0, 0, Zone), Gate: &failingKindSee{},
+		Logger: lg, Web: web.Config{Logger: lg}})
+	w := browse(h, "GET", "/pages/?lang=en", "e1002", nil)
+	if w.Code != 200 || strings.Contains(w.Body.String(), "all-title") || !strings.Contains(w.Body.String(), "<main") {
+		t.Errorf("the start page when the gate fails: %d %.300s", w.Code, w.Body.String())
+	}
+	if n := strings.Count(log.String(), "asking the gate which kinds' requests the person sees"); n != 1 {
+		t.Errorf("the log says the gate's failure %d times: %s", n, log.String())
+	}
+	if w := send(h, "GET", "/tickets?kind=expense", "e1002", nil); w.Code != 500 {
+		t.Errorf("list_tickets when the gate fails: %d %s", w.Code, w.Body.String())
 	}
 }
 

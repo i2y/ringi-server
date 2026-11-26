@@ -135,9 +135,15 @@ of the general affairs department do.
 | The agent's answer | What becomes of the request |
 |---|---|
 | `ok` | It goes to the next stage |
-| `doubt` | The people after `else` answer the stage. The reason is in the history of the request |
+| `doubt` | The people after `else` answer the stage. The page of the request says the reason under the stage, and so does its history |
 | The work failed | The same as `doubt` |
 | No answer by the deadline | What `when late` says. In this example, it expires |
+
+When the people after `else` are one person, a line `same approver approves once` under `ticket` counts the stage as
+that person's once the agent doubts: they answer it with the doubt in front of them, and a later stage that comes to
+them alone is done with that approval, when no stage of another person comes between them. With
+`same approver approves once, at the last stage`, the stage waits instead for the last of the later stages that come to
+them alone. A stage the agent answers first is never done with an approval before it, and no stage waits for it.
 
 Check it. `ritsu check` also sees that `inputs` and `outputs` of the `.flow` file fit the request.
 
@@ -249,8 +255,8 @@ a notice.
 level=INFO msg=notice notice=waiting to="g1001 g1001@example.com, g1201 g1201@example.com" kind=trip title="Trip request" title_lang=en ticket=01M89R0TCPEP3XTSK6TJ6BT9QS stage=check
 ```
 
-Sign in as General affairs staff and press "See the history" on the page of the request: it has the agent's
-doubt. When you approve it, it goes to the manager of Sales Section 1.
+Sign in as General affairs staff and open the page of the request: under the stage, it says the agent had
+doubts, and why. When you approve it, it goes to the manager of Sales Section 1.
 
 ## Connect a real model
 

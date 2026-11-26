@@ -59,6 +59,10 @@ export SMTP_ADDR='mail.example.com:587'
 How to make the key is in [Connect the sign-in](sign-in.md#3-give-it-the-settings), and the list of the flags in
 [Flags and settings](reference.md).
 
+To let programs of your company use the API, add `-api-keys` with the file of their keys ([Call it from a
+program](api.md#call-it-from-a-program)). The file holds only the SHA-256 of each key, but whoever can change it can
+let a key in, so let only the administrator write it.
+
 When it starts, the server makes the tables in the database, and imports the organization's data built into it. If a
 setting is wrong, it writes why to the log and stops before it takes a request ([When it does not
 start](troubleshooting.md#when-it-does-not-start)).
@@ -142,6 +146,8 @@ cookies. Any process answers any request. Nothing has to connect them to each ot
 | The key of the cookies (everyone stays signed in) | 1. Make it `old key,new key`, and start every process again. 2. Make it `new key,old key`, and start every process again. 3. After 12 hours, make it the new key alone, and start them again. With one process, you need not do 1 |
 | A key of the cookies that leaked | Make it the new key alone, and start every process again. Everyone signs in again |
 | The client's secret | Change it at the sign-in service and in `RINGI_OIDC_CLIENT_SECRET`, and start the server again. People who are signed in stay so |
+| A key of a program | Add the line of the new key, and start every process again. Once the program uses the new key, take the old line out, and start them again |
+| A key of a program that leaked | Take its line out, and start every process again |
 | The certificate | Change the files, and start the server again. It reads them when it starts |
 
 ## Stop it

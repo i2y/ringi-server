@@ -3,6 +3,7 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -19,7 +20,7 @@ import (
 // reads each field back: a move of a new ticket (with an operation's key, a timer, a thing to do,
 // the people it waits for and since when, and the way it came in), a second move that gives another
 // kind and version, no event and no things done, and waits for no one; a thing to do kept apart, and
-// one tried again and done; a timer put off; an operation begun; snapshots of the organization, one
+// one tried again and done, with when, and what its work said, twice; a timer put off; an operation begun; snapshots of the organization, one
 // saved twice; the administration's changes (a switch with its record and the version's start, an
 // import with its record, read as the record's lines with the moves) and a draft; an upload; and
 // files put with a time and without one. The memory store and PostgreSQL read back the same.
@@ -138,6 +139,16 @@ func TestStoresKeepEveryField(t *testing.T) {
 			t.Fatal(err)
 		}
 		checkToDo("done", todo.ID, "notify", t3, 1, "the mail server did not answer", true)
+		for i, said := range []string{`{"failed":true,"reason":"down","outputs":[]}`, `{"failed":false,"reason":null,"outputs":[{"name":"reference","value":{"str":{"v":"PAY-1"}}}]}`} {
+			at := since.Add(time.Duration(i) * time.Hour)
+			if err := s.KeepOutcome(ctx, todo.ID, at, json.RawMessage(said)); err != nil {
+				t.Fatal(err)
+			}
+			td, err := s.ToDoItem(ctx, todo.ID)
+			if err != nil || !td.DoneAt.Equal(us(t3)) || string(td.Outcome) != said || !td.OutcomeAt.Equal(us(at)) {
+				fail("what the work said: done at %v, said %s at %v; want %v, %s at %v (%v)", td.DoneAt, td.Outcome, td.OutcomeAt, us(t3), said, us(at), err)
+			}
+		}
 		if err := s.PutOffTimer(ctx, timer.TimerKey, t3); err != nil {
 			t.Fatal(err)
 		}

@@ -9,8 +9,8 @@ import (
 )
 
 // Lookup answers the names a screen shows to a person (screens.Lookup): the names of the people
-// and teams and of the masters' rows in the screen's language, and the addresses of the files the
-// person may open. One serves a screen: the A2UI screens and the plain HTML pages alike.
+// and teams and of the masters' rows in the screen's language, and the addresses and the names of
+// the files the person may open. One serves a screen: the A2UI screens and the plain HTML pages alike.
 type Lookup struct {
 	ctx    context.Context
 	h      *Handler
@@ -126,6 +126,32 @@ func (l *Lookup) FileURLs(ids []string) (map[string]string, error) {
 		}
 		if info.By == l.person.ID {
 			out[id] = "/files/" + url.PathEscape(id)
+		}
+	}
+	return out, nil
+}
+
+// FileNames answers the names the files were given when they were uploaded, of those FileURLs
+// answers an address for: a file the ticket holds, and one the person uploaded. Any other ID gets
+// none, and the screen shows it by its ID.
+func (l *Lookup) FileNames(ids []string) (map[string]string, error) {
+	if err := l.readHeld(); err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	if l.h.files == nil {
+		return out, nil
+	}
+	for _, id := range ids {
+		info, err := l.h.files.Stat(l.ctx, id)
+		if notFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if l.held[id] || info.By == l.person.ID {
+			out[id] = info.Name
 		}
 	}
 	return out, nil

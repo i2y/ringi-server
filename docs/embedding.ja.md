@@ -7,10 +7,10 @@
 | したいこと | 読むところ |
 |---|---|
 | すでにある Go のプログラムの中で動かす。データベースの接続を共有する | [1. サーバーを組み立てる](#1-サーバーを組み立てる) |
-| 社内のほかのプログラムに、トークンで API を使わせる | 1 と [2. プログラムのトークンを受け付ける](#2-プログラムのトークンを受け付ける) |
+| 自分で組み立てたサーバーの API を、社内のほかのプログラムに鍵で使わせる | 1 と [2. プログラムの鍵を受け付ける](#2-プログラムの鍵を受け付ける) |
 | 手前のプロキシがログインさせた人を、そのまま使う | 1 と [3. プロキシがログインさせる](#3-プロキシがログインさせる) |
 
-ページや API のルートを足すだけなら、`serve` のままでできます（[ルートを足す](screens.ja.md#ルートを足す)）。
+ページや API のルートを足すだけなら、`serve` のままでできます（[ルートを足す](screens.ja.md#ルートを足す)）。プログラムに鍵で API を使わせるのも、`serve` のままで、`-api-keys` でできます（[プログラムから呼ぶ](api.ja.md#プログラムから呼ぶ)）。
 
 ## 1. サーバーを組み立てる
 
@@ -154,58 +154,40 @@ go vet ./...
 - ログインのクッキーは https でだけ送られるので、https で出す。
 - 上のコードのように、リクエストにかける時間を区切り、止めるときは応答の途中のリクエストを待つ。
 
-## 2. プログラムのトークンを受け付ける
+## 2. プログラムの鍵を受け付ける
 
-人がログインしないプログラムには、プログラムごとのトークンを渡します。リクエストのヘッダー `Authorization` にトークンがあれば、それに対応させた人の操作にし、なければ会社のログインで人を見つけます。
+人がログインしないプログラムには、`serve` の `-api-keys` と同じく、プログラムごとの鍵を渡します（[プログラムから呼ぶ](api.ja.md#プログラムから呼ぶ)）。パッケージ `apikeys` が鍵のファイルを読み、ヘッダー `Authorization` に鍵を付けたリクエストの人を見つけます。鍵の無いリクエストは、会社のログインで人を見つけます。
 
-```go title="tokens.go"
-package shinsei
-
-import (
-	"crypto/sha256"
-	"encoding/hex"
-	"net/http"
-	"strings"
-
-	server "github.com/i2y/ringi-server"
-)
-
-// Tokens は、プログラムをトークンで、ほかの人を SignIn で見つける。
-type Tokens struct {
-	SignIn server.Authenticator
-	People map[string]string // トークンの SHA-256（16 進）と、操作する人の ID
-}
-
-// Authenticate は、だれのリクエストかを答える。
-func (t Tokens) Authenticate(r *http.Request) (server.Person, error) {
-	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok {
-		return t.SignIn.Authenticate(r)
-	}
-	sum := sha256.Sum256([]byte(token))
-	id, ok := t.People[hex.EncodeToString(sum[:])]
-	if !ok {
-		return server.Person{}, server.ErrNoPerson // 401 になる
-	}
-	return server.Person{ID: id}, nil
-}
-```
-
-トークンを作ります。一行目の値はプログラムに渡し、二行目の値（SHA-256）だけをサーバーに書きます。
+鍵を作り、その行をファイルに書きます。`echo` が出す値をプログラムに渡します。`b0001` は、プログラムのための人の ID です。組織のデータに、ほかの社員と同じように足しておきます。
 
 ```sh
-TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')
-echo "$TOKEN"
-printf %s "$TOKEN" | shasum -a 256 | cut -d ' ' -f 1
+KEY=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')
+echo "$KEY"
+printf 'b0001 %s # 購買のシステム\n' "$(printf %s "$KEY" | shasum -a 256 | cut -d ' ' -f 1)" > api-keys.txt
 ```
 
-`cmd/server/main.go` の `Authenticator` を替えます。`b0001` は、プログラムのための人の ID です。組織のデータに、ほかの社員と同じように足しておきます。
+`cmd/server/main.go` のインポートにパッケージを足し、`Authenticator` を替えます。
 
-```go title="cmd/server/main.go" hl_lines="2-4"
+```go title="cmd/server/main.go" hl_lines="2"
+	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/apikeys"
+	"github.com/i2y/ringi-server/oidc"
+```
+
+```go title="cmd/server/main.go" hl_lines="2-13"
 	cfg.Store, cfg.Files = store, store.Files()
-	cfg.Authenticator = shinsei.Tokens{SignIn: signIn, People: map[string]string{
-		"2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881": "b0001",
-	}}
+	programs, err := apikeys.ReadFile("api-keys.txt")
+	if err != nil {
+		return err
+	}
+	cfg.Authenticator, err = apikeys.New(apikeys.Config{
+		Keys: programs, Next: signIn, Logger: log,
+		// 鍵が通るのは、組織のデータにその人がいるあいだだけ
+		Known: func(ctx context.Context, id string) (bool, error) { return srv.InOrganization(ctx, id) },
+	})
+	if err != nil {
+		return err
+	}
 	srv, err = server.New(cfg)
 ```
 
@@ -213,17 +195,17 @@ printf %s "$TOKEN" | shasum -a 256 | cut -d ' ' -f 1
 go vet ./...
 ```
 
-プログラムは、トークンを付けて API を呼びます。
+プログラムは、鍵を付けて API を呼びます。
 
 ```sh
-curl -s https://ringi.example.com/waiting -H "Authorization: Bearer $TOKEN"
+curl -s https://ringi.example.com/waiting -H "Authorization: Bearer $KEY"
 ```
 
-プログラムにできるのは、その人にできることだけです。社員の代わりに申請させるには、その人を申請の代理にします（[社員の代わりに申請する](api.ja.md#社員の代わりに申請する)）。`web.Config` の `Require` は、ページを開いたブラウザをログインへ送るだけなので、トークンを付けた API の呼び出しは止めません。
+プログラムにできるのは、その人にできることだけです。社員の代わりに申請させるには、その人を申請の代理にします（[社員の代わりに申請する](api.ja.md#社員の代わりに申請する)）。`web.Config` の `Require` は、ページを開いたブラウザをログインへ送るだけなので、鍵を付けた API の呼び出しは止めません。
 
-トークンを替えるときは、新しいトークンの SHA-256 を足してサーバーを起動し直し、プログラムを新しいトークンに切り替えてから、古いものを消します。
+鍵を替えるときは、新しい鍵の行を足してサーバーを起動し直し、プログラムを新しい鍵に切り替えてから、古い行を消します。
 
-ほかの方法で人を見つけるときも、同じ形の関数を書きます。リクエストを受け取り、人の ID と役割を返します。
+ほかの方法で人を見つけるときは、自分で server.Authenticator を書きます。リクエストを受け取り、人の ID と役割を返す関数です。
 
 ## 3. プロキシがログインさせる
 

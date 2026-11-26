@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -174,7 +175,7 @@ func TestPagesOfEveryTicket(t *testing.T) {
 				if i%3 == 2 {
 					can = nil // one who may only read it
 				}
-				pg, err := p.Card(Card{Card: screens.Card{Language: lang, Ticket: tk, Can: can, Names: namer{}}, Action: "/post", Now: testNow, History: "/history", Zone: time.FixedZone("", 9*3600), Worked: worked})
+				pg, err := p.Card(Card{Card: screens.Card{Language: lang, Ticket: tk, Can: can, Names: namer{}, Zone: time.FixedZone("", 9*3600)}, Action: "/post", Now: testNow, History: "/history", Worked: worked})
 				checkPage(t, what+" card", pg, err)
 				counts["card"]++
 				var m map[string]any
@@ -302,6 +303,14 @@ func (evilNamer) FileURLs(ids []string) (map[string]string, error) {
 	out := map[string]string{}
 	for _, id := range ids {
 		out[id] = `javascript:alert("x")`
+	}
+	return out, nil
+}
+
+func (evilNamer) FileNames(ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		out[id] = `<img src=x onerror=alert("x")>.pdf`
 	}
 	return out, nil
 }
@@ -456,6 +465,210 @@ func TestHistoryInItsZone(t *testing.T) {
 		at, err := time.Parse("2006-01-02 15:04", s)
 		if err != nil || tokyo[i] != at.Add(9*time.Hour).Format("2006-01-02 15:04") {
 			t.Errorf("line %d: %q in UTC, %q nine hours east", i, s, tokyo[i])
+		}
+	}
+}
+
+// TestFileInARow: a file in a row of a card is shown by the name it was kept by, and the name opens
+// it (the row has no room for a link of its own); a file the names do not have, one the person may
+// not open, is shown by its ID and opens nothing. The address is written as html/template writes an
+// attribute: one that is no address of the server's is not opened.
+func TestFileInARow(t *testing.T) {
+	_, p := testPages(t)
+	f := &field{Name: "items", kind: "rows", Fields: []*field{{Name: "receipt", kind: "attachment"}}}
+	rows := []any{map[string]any{"receipt": "f1"}, map[string]any{"receipt": "f2"}}
+	files := fileTables{urls: map[string]any{"f1": "/tickets/T-1/files/f1"}, names: map[string]any{"f1": "shop.pdf"}}
+	got := p.value(nil, f, rows, "en", nil, nil, files, nil)
+	want := [][]text{{{Text: "shop.pdf", URL: "/tickets/T-1/files/f1"}}, {{Text: "f2"}}}
+	if !reflect.DeepEqual(got.Rows, want) {
+		t.Fatalf("the rows: %+v", got.Rows)
+	}
+	for _, c := range []struct {
+		in   text
+		want string
+	}{
+		{want[0][0], `<a href="/tickets/T-1/files/f1">shop.pdf</a>`},
+		{want[1][0], `f2`},
+		{text{Text: "<b>x</b>.pdf", URL: `javascript:alert("x")`}, `<a href="#ZgotmplZ">&lt;b&gt;x&lt;/b&gt;.pdf</a>`},
+	} {
+		var b strings.Builder
+		if err := p.tmpl.ExecuteTemplate(&b, "text", c.in); err != nil || b.String() != c.want {
+			t.Errorf("%+v is written %s %v, not %s", c.in, b.String(), err, c.want)
+		}
+	}
+}
+
+// TestDeadlinesOnThePages: the card says the deadline a ticket runs to, in the zone it is given, with
+// the A2UI card's words: in progress, when its stage is due; back with its requester, by when they
+// are to submit it again; on hold, when the hold ends; ended, none. The start page's line says it
+// the same (Pages.TicketDue), and the list says each ticket's in a column of its own, "—" where it
+// runs to none. The vectors' deadlines are at the end of a day in Tokyo: in its zone, a page says
+// that day, as ringi does ("2026-11-19 at the end of the day"), not the next day's 00:00; in UTC, the
+// time (15:00).
+func TestDeadlinesOnThePages(t *testing.T) {
+	_, p := testPages(t)
+	tokyo := time.FixedZone("JST", 9*3600)
+	for _, zone := range []*time.Location{tokyo, time.UTC} {
+		at := func(lang string, v any) string {
+			n, _ := v.(json.Number)
+			s, err := n.Int64()
+			if err != nil {
+				t.Fatalf("no time: %v", v)
+			}
+			tm := time.Unix(s, 0).In(zone)
+			if tm.Format("15:04:05") == "00:00:00" {
+				return tm.Add(-time.Second).Format("2006-01-02") + t2(lang, " at the end of the day", " の終わり")
+			}
+			return tm.Format("2006-01-02 15:04")
+		}
+		for _, lang := range []string{"en", "ja"} {
+			for _, c := range []struct {
+				kind, status, words string
+				when                func(m map[string]any) string
+			}{
+				{"leave", "in_progress", t2(lang, "Due", "期限"), func(m map[string]any) string {
+					for _, x := range m["stages"].([]any) {
+						if st := x.(map[string]any); st["name"] == m["stage"] && st["phase"] == "active" {
+							return at(lang, st["due"])
+						}
+					}
+					return ""
+				}},
+				{"leave", "with_requester", t2(lang, "Resubmit by", "再申請の期限"), func(m map[string]any) string { return at(lang, m["resubmit_due"]) }},
+				{"contract", "paused", t2(lang, "On hold until", "保留の終わり"), func(m map[string]any) string { return at(lang, m["pause_ends"]) }},
+				{"leave", "approved", "", nil},
+			} {
+				kind := c.kind
+				if lang == "ja" {
+					kind += "_ja"
+				}
+				raw, m := ticketWhere(t, kind, func(m map[string]any) bool { return m["status"] == c.status })
+				pg, err := p.Card(Card{Card: screens.Card{Language: lang, Ticket: raw, Names: namer{}, Zone: zone}})
+				root := checkPage(t, kind+" "+c.status, pg, err)
+				facts := map[string]string{}
+				for _, d := range root.all(func(n *node) bool { return n.Name == "div" && n.Parent != nil && n.Parent.class("facts") }) {
+					facts[d.Kids[0].text()] = d.Kids[1].text()
+				}
+				var said []string
+				for _, w := range []string{t2(lang, "Due", "期限"), t2(lang, "Resubmit by", "再申請の期限"), t2(lang, "On hold until", "保留の終わり")} {
+					if v, ok := facts[w]; ok {
+						said = append(said, w+" "+v)
+					}
+				}
+				var want []string
+				if c.when != nil {
+					want = []string{c.words + " " + c.when(m)}
+				}
+				if !slices.Equal(said, want) {
+					t.Errorf("%s: the card of a ticket %s says %q, not %q", lang+" "+zone.String(), c.status, said, want)
+				}
+				// the start page's line says the same
+				if got := p.TicketDue(lang, raw, zone); got != strings.Join(want, "") {
+					t.Errorf("%s: the start page says the deadline of a ticket %s %q, not %q", lang+" "+zone.String(), c.status, got, strings.Join(want, ""))
+				}
+				// the list: a column of the deadlines, the ticket's in it (a row's first cell, its ID, is
+				// the head of the row)
+				lp, err := p.List(List{List: screens.List{Kind: kind, Language: lang, Tickets: []json.RawMessage{raw}, Names: namer{}, Zone: zone}})
+				list := checkPage(t, kind+" "+c.status+" listed", lp, err)
+				var heads, cells []string
+				for _, th := range list.all(func(n *node) bool { return n.Name == "th" && n.within("thead") }) {
+					heads = append(heads, strings.TrimSpace(th.text()))
+				}
+				for _, td := range list.all(func(n *node) bool { return (n.Name == "td" || n.Name == "th") && n.within("tbody") }) {
+					cells = append(cells, strings.TrimSpace(td.text()))
+				}
+				wantCell := "—"
+				if c.when != nil {
+					wantCell = c.when(m)
+				}
+				if i := slices.Index(heads, t2(lang, "Due", "期限")); i < 0 || i >= len(cells) || cells[i] != wantCell {
+					t.Errorf("%s: the list of a ticket %s: %q, %q; the deadline is %s", lang+" "+zone.String(), c.status, heads, cells, wantCell)
+				}
+			}
+		}
+	}
+}
+
+// t2 is the English or the Japanese, by the language.
+func t2(lang, en, ja string) string {
+	if lang == "ja" {
+		return ja
+	}
+	return en
+}
+
+// TestAgentOnTheCard: the card says what the agent answered in the round the ticket is in under the
+// stage it was asked at, in the words of the history, with its reason as it wrote it (markup in it
+// is text); the A2UI card's data holds the same lines.
+func TestAgentOnTheCard(t *testing.T) {
+	_, p := testPages(t)
+	rec := func(did string, stage, comment any) screens.Record {
+		b, _ := json.Marshal(map[string]any{"did": did, "stage": stage, "by": nil, "proxy_of": nil, "organization": nil, "once_with": nil, "to": []any{}, "note": "travel_decision", "comment": comment, "cleared": []any{}})
+		return screens.Record{At: time.Unix(1794790800, 0).UTC(), History: b}
+	}
+	records := []screens.Record{rec("submitted", nil, nil), rec("agent asked", "decide", nil), rec("agent doubt", "decide", "No <b>budget</b> line fits")}
+	for _, c := range []struct{ lang, kind, said string }{
+		{"en", "expense", "The agent had doubts"},
+		{"ja", "expense_ja", "エージェントが疑問を出しました"},
+	} {
+		raw, _ := ticketWhere(t, c.kind, func(m map[string]any) bool { return m["status"] == "in_progress" && m["stage"] == "decide" })
+		pg, err := p.Card(Card{Card: screens.Card{Language: c.lang, Ticket: raw, Names: namer{}, Records: records}})
+		root := checkPage(t, c.kind+" with the agent's doubt", pg, err)
+		lists := root.all(func(n *node) bool { return n.Name == "ul" && n.class("agent") })
+		if len(lists) != 1 {
+			t.Fatalf("%s: %d lists of what the agent answered, not 1", c.lang, len(lists))
+		}
+		stage := lists[0].Parent
+		if !stage.class("current") || !strings.Contains(stage.text(), c.said+" No <b>budget</b> line fits") {
+			t.Errorf("%s: under the stage %q (current: %v): %q", c.lang, stage.Kids[0].text(), stage.class("current"), lists[0].text())
+		}
+	}
+}
+
+// TestWorksOnTheCard: the card of a kind that launches work has a section of the work after
+// approval, in both languages: each work's flow, what became of it in words (marked with its state),
+// its time in the kind's zone, what it ended with and why it failed; a card with no work has none.
+func TestWorksOnTheCard(t *testing.T) {
+	_, p := testPages(t)
+	at := time.Date(2026, 11, 17, 1, 5, 0, 0, time.UTC)
+	works := []screens.Work{
+		{Flow: "order", State: "done", At: at, Outputs: []screens.Output{{Name: "reference", Value: json.RawMessage(`{"str":{"v":"ORD-1"}}`)}}},
+		{Flow: "order", State: "failed", At: at, Reason: "The purchasing system is <b>down</b>"},
+		{Flow: "order", State: "retrying"},
+	}
+	for _, c := range []struct{ lang, kind, head, done, failed, retrying, outputs string }{
+		{"en", "purchase", "After approval", "Done", "Failed", "Could not be started, and is tried again", "reference: ORD-1"},
+		{"ja", "purchase_ja", "承認のあとの処理", "済みました", "失敗しました", "始められず、やり直しています", "reference：ORD-1"},
+	} {
+		raw, _ := ticketWhere(t, c.kind, func(m map[string]any) bool { return m["status"] == "approved" })
+		pg, err := p.Card(Card{Card: screens.Card{Language: c.lang, Ticket: raw, Names: namer{}, Works: works, Zone: time.FixedZone("JST", 9*60*60)}})
+		root := checkPage(t, c.kind+" with its works", pg, err)
+		sections := root.all(func(n *node) bool { return n.Name == "section" && n.class("works") })
+		if len(sections) != 1 {
+			t.Fatalf("%s: %d sections of the works, not 1", c.lang, len(sections))
+		}
+		items := sections[0].all(func(n *node) bool { return n.Name == "li" })
+		want := []string{
+			"order " + c.done + " 2026-11-17 10:05" + c.outputs,
+			"order " + c.failed + " 2026-11-17 10:05The purchasing system is <b>down</b>",
+			"order " + c.retrying,
+		}
+		if h := sections[0].all(func(n *node) bool { return n.Name == "h2" }); len(h) != 1 || h[0].text() != c.head || len(items) != len(want) {
+			t.Fatalf("%s: the section %q has %d lines", c.lang, sections[0].text(), len(items))
+		}
+		for i, li := range items {
+			if li.text() != want[i] {
+				t.Errorf("%s: line %d is %q, not %q", c.lang, i, li.text(), want[i])
+			}
+		}
+		states := sections[0].all(func(n *node) bool { return n.class("state") })
+		if len(states) != 3 || states[1].Attr["data-state"] != "failed" {
+			t.Errorf("%s: the states are not marked", c.lang)
+		}
+		pg, err = p.Card(Card{Card: screens.Card{Language: c.lang, Ticket: raw, Names: namer{}}})
+		root = checkPage(t, c.kind+" with no works", pg, err)
+		if n := len(root.all(func(n *node) bool { return n.Name == "section" && n.class("works") })); n != 0 {
+			t.Errorf("%s: a card with no works has %d sections of them", c.lang, n)
 		}
 	}
 }

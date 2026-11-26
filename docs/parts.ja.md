@@ -21,7 +21,7 @@
 
 | 部品 | 項目 | `serve` が用意するもの |
 |---|---|---|
-| だれのリクエストか | `Authenticator` | `-dev-login`、`-oidc-…`、どちらもなければヘッダー `X-Person` |
+| だれのリクエストか | `Authenticator` | `-dev-login`、`-oidc-…`、どちらもなければヘッダー `X-Person`。`-api-keys` があれば、その前にプログラムの鍵 |
 | 申請を置く場所 | `Store` | `-db` の PostgreSQL か、メモリ |
 | 添付ファイルを置く場所 | `Files` | `-db` の PostgreSQL か、`-files` のディレクトリか、メモリ |
 
@@ -78,6 +78,7 @@ type AuditLog interface {
 | [`screens`](../screens/README.ja.md)、[`screens/page`](../screens/page/README.ja.md) | A2UI の画面と、HTML のページを作る |
 | [`oidc`](../oidc/README.ja.md) | 会社のログイン |
 | `devlogin` | 試用のログイン（`-dev-login` と `X-Person`） |
+| `apikeys` | プログラムの鍵（`-api-keys`）。ほかのログインの前に置く |
 | `postgres`、`memstore` | 申請と添付ファイルを、PostgreSQL かメモリに置く |
 | `orgfiles` | 組織のデータの CSV を読む |
 | `servertest`、`conformance` | 試験に使う部品と、サーバーが約束のとおりかを確かめる試験 |

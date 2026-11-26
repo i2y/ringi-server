@@ -11,7 +11,7 @@
 
 Temporal は、処理の手順を一段ずつ記録しながら進めるサーバーです。プログラムやコンピューターが止まっても、続きから進めます。
 
-どちらのやり方でも、始めた処理の結果は、申請のサーバーには戻りません。発注番号や失敗は、申請のページには出ません。申請した人に知らせたいときは、処理の中でメールを送るなどします。
+どちらのやり方でも、始めた処理がどうなったかは、申請のページの「承認のあとの処理」に出ます。まだ始めていない、始めた、のあと、済んだ（発注番号など、処理が終わったときの値も出る）か、失敗した（理由も出る）かです。Temporal で動かす処理は、自分でサーバーに伝えます。ほかのシステムに頼む関数は、手順 3 のように `WorkEnded` で伝えます。
 
 ## ほかのシステムに頼む
 
@@ -85,11 +85,14 @@ import (
 	server "github.com/i2y/ringi-server"
 )
 
-// Webhook は、承認のあとの処理を、ほかのシステムに頼む。
-type Webhook struct{ URL string }
+// Webhook は、承認のあとの処理を、ほかのシステムに頼み、システムが答えた番号をサーバーに伝える。
+type Webhook struct {
+	URL    string
+	Server *server.Server // Started が渡す
+}
 
 // Launch は、処理を一つ頼む。
-func (w Webhook) Launch(ctx context.Context, l server.Launch) error {
+func (w *Webhook) Launch(ctx context.Context, l server.Launch) error {
 	var args []server.NamedValue
 	if err := json.Unmarshal(l.Args, &args); err != nil {
 		return err
@@ -116,11 +119,19 @@ func (w Webhook) Launch(ctx context.Context, l server.Launch) error {
 	if err != nil {
 		return err // サーバーが、あとでもう一度呼ぶ
 	}
-	res.Body.Close()
+	defer res.Body.Close()
 	if res.StatusCode >= 300 {
 		return fmt.Errorf("the system answered %s", res.Status)
 	}
-	return nil
+	// システムが答えた発注番号。申請のページに出る
+	var answer struct {
+		Number string `json:"number"`
+	}
+	if json.NewDecoder(res.Body).Decode(&answer) != nil || answer.Number == "" || w.Server == nil {
+		return nil
+	}
+	_, err = w.Server.WorkEnded(ctx, l.Key, server.WorkEnd{Outputs: []server.NamedValue{server.NamedText("number", answer.Number)}})
+	return err
 }
 ```
 
@@ -131,21 +142,34 @@ func (w Webhook) Launch(ctx context.Context, l server.Launch) error {
 | `Key` | この依頼の番号。やり直しのときも同じ番号になる |
 | `Kind`、`Ticket` | 申請の種類と、申請の番号 |
 
-`shinsei.go` の `Parts` に、`Flows` を足します。
+`WorkEnded` は、処理がどうなったかをサーバーに伝えます。`Outputs` は処理が終わったときの値（`NamedText`、`NamedNumber`、`NamedTruth` で作る）で、失敗したときは `Failed` と、その理由の `Reason` を渡します。あとで処理を終えるシステムなら、渡されたキーを、自分で足したルートに返してもらい、そのルートで `WorkEnded` を呼びます（キーの文字列は `server.ParseEffectKey` で読めます）。プログラムがそのルートにログインする方法は、[プログラムから API を呼ぶ](api.ja.md#プログラムから呼ぶ)にあります。
+
+`shinsei.go` の `Parts` に `Flows` を足し、`Started` でサーバーを渡します。
 
 ```go title="shinsei.go" hl_lines="3"
 		Organization: Organization(),
 		Notifier:     &LogNotifier{Log: log, Lang: "ja"},
-		Flows:        Webhook{URL: "http://127.0.0.1:9000"},
+		Flows:        &Webhook{URL: "http://127.0.0.1:9000"},
 	}, nil
+```
+
+```go title="shinsei.go" hl_lines="5 6 7"
+func Started(cfg server.Config, srv *server.Server) {
+	if n, ok := cfg.Notifier.(*LogNotifier); ok {
+		n.Server = srv
+	}
+	if w, ok := cfg.Flows.(*Webhook); ok {
+		w.Server = srv
+	}
+}
 ```
 
 ### 4. 試す
 
-発注のシステムの代わりに、届いた依頼を表示するだけのプログラムを作ります。
+発注のシステムの代わりに、届いた依頼を表示して、発注番号を答えるプログラムを作ります。
 
 ```go title="cmd/orders/main.go"
-// orders は、届いた依頼を表示するだけのサーバー。発注のシステムの代わりに、手元で試すときに使う。
+// orders は、届いた依頼を表示して、発注番号を答えるサーバー。発注のシステムの代わりに、手元で試すときに使う。
 package main
 
 import (
@@ -153,12 +177,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sync/atomic"
 )
 
 func main() {
+	var orders atomic.Int64
 	log.Fatal(http.ListenAndServe("127.0.0.1:9000", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		fmt.Printf("%s %s\nIdempotency-Key: %s\n%s\n", r.Method, r.URL.Path, r.Header.Get("Idempotency-Key"), body)
+		fmt.Fprintf(w, `{"number":"ORD-%d"}`, 1000+orders.Add(1))
 	})))
 }
 ```
@@ -179,6 +206,12 @@ go run ./cmd/server -dev-login
 POST /order
 Idempotency-Key: 01M89PB269CQ4GTPETPAEMR9QQ/1/15
 {"amount":120000,"purpose":"新しいメンバーのノートパソコン","request_id":"01M89PB269CQ4GTPETPAEMR9QQ"}
+```
+
+申請のページの「承認のあとの処理」に、`order` が済んだことと、`number：ORD-1001` が出ます。申請のサーバーのログにも出ます。
+
+```
+level=INFO msg="work ended" key=01M89PB269CQ4GTPETPAEMR9QQ/1/15 flow=order failed=false
 ```
 
 `Launch` がエラーを返すと、サーバーは間隔を延ばしながら、成功するまで呼び直します。同じ依頼には同じ `Idempotency-Key` が付くので、頼まれる側は、同じキーの依頼を一度だけ行うように作ります。
@@ -225,7 +258,7 @@ level=INFO msg=paid request=01M89KP9C3A4YDKERR3S1Y8VY0 requester=s1201 amount=48
 level=INFO msg=told request=01M89KP9C3A4YDKERR3S1Y8VY0 text="申請 01M89KP9C3A4YDKERR3S1Y8VY0 の支払いが済みました（PAY-01M89KP9C3A4YDKERR3S1Y8VY0）"
 ```
 
-実際に支払うわけではありません。ログに書くだけの関数を、自分の会社の処理に替えて使います。
+申請のページの「承認のあとの処理」には、`pay` が済んだことと、支払いの番号（`reference：PAY-…`）が出ます。実際に支払うわけではありません。ログに書くだけの関数を、自分の会社の処理に替えて使います。
 
 ### 処理を書く三つのファイル
 
@@ -414,10 +447,10 @@ go test ./...
 | 起きること | どうなるか |
 |---|---|
 | ワーカーが止まっている | 処理は Temporal に残り、ワーカーを起動すると始まる。承認は済んでいる |
-| Temporal が止まっている | 申請のサーバーが、始められるまで間隔を延ばしながら繰り返す。承認は済んでいる。申請のサーバーを起動するときには、Temporal が動いている必要がある |
+| Temporal が止まっている | 申請のサーバーが、始められるまで間隔を延ばしながら繰り返す。承認は済んでいて、申請のページには、処理を始められずにやり直していると出る。申請のサーバーを起動するときには、Temporal が動いている必要がある |
 | 申請のサーバーが、処理を始めた直後に止まった | 起動し直したサーバーが、同じキーでもう一度始める。Temporal は、同じキーの処理を一度しか動かさない |
 | 一段が失敗した | `.flow` の `retry` のとおりにやり直す |
-| やり直しても、最後まで失敗した | 処理は失敗で終わる。申請は承認されたままで、申請のサーバーには知らされない |
+| やり直しても、最後まで失敗した | 処理は失敗で終わる。申請は承認されたままで、申請のページには、処理が失敗したことと、エラーの文が出る |
 
 最後まで失敗した処理は、Temporal の画面か、次のコマンドで探せます。
 
@@ -425,10 +458,10 @@ go test ./...
 temporal workflow list --query 'ExecutionStatus="Failed"'
 ```
 
-原因を直したら、最初の段からもう一度動かせます。`-w` には、上のコマンドに出た `WorkflowId` を書きます。
+原因を直したら、最初の段からもう一度動かせます。動かし直すのは、処理を始めて、どうなったかをサーバーに伝える実行です。その `WorkflowId` は、上のコマンドに出た `WorkflowId` の後ろに `/launch` を付けたものです。申請のページには、今度の結果が出ます。
 
 ```sh
-temporal workflow reset -w '01M89KP9C3A4YDKERR3S1Y8VY0/1/9' --type FirstWorkflowTask --reason '会計システムが直った'
+temporal workflow reset -w '01M89KP9C3A4YDKERR3S1Y8VY0/1/9/launch' --type FirstWorkflowTask --reason '会計システムが直った'
 ```
 
 一段の関数は、成功したかどうか分からないまま切れたときに、もう一度呼ばれることがあります。`idempotent` は、二度呼ばれても一度だけ支払うように作った関数だ、という印です。申請の番号を会計システムに渡すなどして、二度目に気づけるようにします。

@@ -57,6 +57,13 @@ from the address of its page.
 
 A notice of a circulation is for you to read. There is no button to answer it with.
 
+## All the requests of a type your department keeps
+
+Your company may let the department that keeps a request type see all its requests. In the sample company,
+Accounting keeps the expense request. Then "All requests", under "Your requests" on the start page, lists the types
+your department keeps. Choose one to see every request of that type, whoever made it, the newest first, and open
+any of them from the list. People of other departments do not have this part.
+
 ## Approving as a proxy, and asking someone to
 
 While you are someone's proxy for approving, what waits for that person is under "Waiting for you" too. When

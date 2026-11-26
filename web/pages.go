@@ -63,6 +63,7 @@ func (h *Handler) routePages() {
 	h.mux.Handle("GET "+PagesPath+"tickets/{id}/history", h.page(h.ticketPage("history")))
 	h.mux.Handle("GET "+PagesPath+"waiting/{kind}", h.page(h.pageList(page.ListWaiting)))
 	h.mux.Handle("GET "+PagesPath+"mine/{kind}", h.page(h.pageList(page.ListMine)))
+	h.mux.Handle("GET "+PagesPath+"requests/{kind}", h.page(h.pageList(page.ListAll)))
 	h.routeAdmin()
 	h.mux.Handle(PagesPath, h.page(func(w http.ResponseWriter, r *http.Request, p server.Person) {
 		h.notice(w, r, &p, http.StatusNotFound, page.NoticeNotFound)
@@ -185,7 +186,10 @@ func keepLang(r *http.Request, addr string) string {
 // signed in (nil for none), langs the languages the page may be shown in (nil for any of the
 // pages').
 func (h *Handler) show(w http.ResponseWriter, r *http.Request, p *server.Person, ps *page.Pages, lang string, langs []string, status int, pg page.Page) {
-	b := page.Bar{Language: lang, Home: PagesPath}
+	b := page.Bar{Language: lang, Home: PagesPath, Name: h.cfg.Look.Name}
+	if h.logo.Body != nil {
+		b.Logo = PageAssets + "logo"
+	}
 	if p != nil {
 		b.Person = p.ID
 		if names, err := h.Lookup(r.Context(), *p, "").PeopleNames(lang, []string{p.ID}); err == nil && names[p.ID] != "" {
@@ -241,9 +245,9 @@ func (h *Handler) pageFail(w http.ResponseWriter, r *http.Request, p *server.Per
 const homeListed = 5
 
 // home serves the start page: the kinds of the tickets that wait for the person, the kinds they may
-// make a request of, the kinds they have made requests of, and the administration's pages for one
-// who may use them. A kind whose tickets wait, or that the person has made requests of, lists a few
-// of them.
+// make a request of, the kinds they have made requests of, the kinds whose requests they see for the
+// kind (Server.KindsSeen), and the administration's pages for one who may use them. A kind whose
+// tickets wait, or that the person has made requests of, lists a few of them.
 func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) {
 	ctx := r.Context()
 	lang := h.pageLanguage(w, r, nil)
@@ -258,6 +262,13 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) 
 	if err != nil {
 		h.pageFail(w, r, &p, "list_mine", err)
 		return
+	}
+	// the kinds whose requests the person sees for the kind; a gate that fails to say is logged, and
+	// leaves the part out, as the link to the administration (DESIGN 10.5)
+	seen, err := h.srv.KindsSeen(ctx, p)
+	if err != nil {
+		h.log.Error("asking the gate which kinds' requests the person sees", "person", p.ID, "err", err)
+		seen = nil
 	}
 	in := page.Home{Language: lang}
 	for _, kind := range h.kindNames() {
@@ -313,6 +324,9 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) 
 				return
 			}
 			in.Mine = append(in.Mine, page.Entry{Name: kind, Title: title, Lang: tl, States: n.Status, SentBack: n.SentBack, URL: keepLang(r, PagesPath+"mine/"+url.PathEscape(kind)), Tickets: listed})
+		}
+		if slices.Contains(seen, kind) {
+			in.All = append(in.All, page.Entry{Name: kind, Title: title, Lang: tl, URL: keepLang(r, PagesPath+"requests/"+url.PathEscape(kind))})
 		}
 	}
 	// A link to the administration's pages for one who may use a part of them; a gate that fails to
@@ -384,7 +398,8 @@ func (h *Handler) homeTickets(r *http.Request, p server.Person, set *screenSet, 
 		if s := h.setOf(kind, t.Version); s != nil {
 			ps = s.pages
 		}
-		out[i] = page.EntryTicket{ID: t.ID, URL: keepLang(r, PagesPath+"tickets/"+url.PathEscape(t.ID)), Status: t.Status, SentBack: t.SentBack != "", Info: ps.TicketInfo(kind, lang, b)}
+		out[i] = page.EntryTicket{ID: t.ID, URL: keepLang(r, PagesPath+"tickets/"+url.PathEscape(t.ID)), Status: t.Status, SentBack: t.SentBack != "", Info: ps.TicketInfo(kind, lang, b),
+			Due: ps.TicketDue(lang, b, h.kindZone(kind))}
 		if t.Stage != "" {
 			out[i].Stage, out[i].StageLang = ps.StageIn(kind, t.Stage, lang)
 		}
@@ -833,8 +848,16 @@ func (h *Handler) ticketInput(ctx context.Context, r *http.Request, p server.Per
 		if resubmit {
 			again = keepLang(r, base+"/form")
 		}
-		out.card = page.Card{Card: screens.Card{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Serving: h.serving(nil)},
-			Action: keepLang(r, base), Now: h.srv.Now(), Picks: picks, Zone: h.srv.Zone(t.kind, t.version),
+		records, err := recordsOf(t)
+		if err != nil {
+			return out, err
+		}
+		works, err := h.works(ctx, p, t.id)
+		if err != nil {
+			return out, err
+		}
+		out.card = page.Card{Card: screens.Card{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Zone: h.srv.Zone(t.kind, t.version), Records: records, Works: works, Serving: h.serving(nil)},
+			Action: keepLang(r, base), Now: h.srv.Now(), Picks: picks,
 			History: keepLang(r, base+"/history"), Resubmit: again, Back: keepLang(r, PagesPath), Worked: h.workedFor(t.kind, t.version),
 			FormAt: h.formAt(ctx, p, t.id)}
 		return out, nil
@@ -901,9 +924,12 @@ func (h *Handler) pageList(of string) func(http.ResponseWriter, *http.Request, s
 		var tickets []json.RawMessage
 		var err error
 		before := r.URL.Query().Get("before")
-		if of == page.ListWaiting {
+		switch of {
+		case page.ListWaiting:
 			tickets, err = h.srv.Waiting(ctx, p, server.WaitingQuery{Kind: kind, Before: before, Limit: size + 1})
-		} else {
+		case page.ListAll:
+			tickets, err = h.srv.Tickets(ctx, p, server.TicketsQuery{Kind: kind, Before: before, Limit: size + 1})
+		default:
 			tickets, err = h.srv.Mine(ctx, p, server.MineQuery{Kind: kind, Before: before, Limit: size + 1})
 		}
 		more := ""
@@ -926,7 +952,7 @@ func (h *Handler) pageList(of string) func(http.ResponseWriter, *http.Request, s
 		if tickets == nil {
 			tickets = []json.RawMessage{}
 		}
-		pg, err := set.pages.List(page.List{List: screens.List{Kind: kind, Language: lang, Tickets: tickets, Names: h.Lookup(ctx, p, "")},
+		pg, err := set.pages.List(page.List{List: screens.List{Kind: kind, Language: lang, Tickets: tickets, Names: h.Lookup(ctx, p, ""), Zone: h.kindZone(kind)},
 			Open: keepLang(r, PagesPath+"tickets/{id}"), Of: of, More: more, Back: keepLang(r, PagesPath)})
 		if err != nil {
 			h.pageFail(w, r, &p, "a list of "+kind, err)

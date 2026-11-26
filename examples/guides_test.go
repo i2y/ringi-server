@@ -319,8 +319,14 @@ func runGuide(t *testing.T, doc, path, lang, bin, dir, plain, from string, own b
 			t.Fatal(err)
 		}
 	}
-	if ran == 0 { // what the document writes is Go that builds, at least
-		if out := sh.run("go vet ./..."); out != "" {
+	// what the document writes is Go that builds, at least: what commands print is compared only with
+	// a block that shows it, so what a go vet of the document's own prints is read by no one
+	if ran == 0 || sh.project != "" {
+		vet := "go vet ./..."
+		if sh.project != "" {
+			vet = "cd " + sh.project + " && " + vet
+		}
+		if out := sh.run(vet); out != "" {
 			t.Errorf("%s: go vet:\n%s", path, out)
 		}
 	}

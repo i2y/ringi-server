@@ -33,6 +33,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/apikeys"
 	"github.com/i2y/ringi-server/devlogin"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/oidc/oidctest"
@@ -477,13 +478,13 @@ func TestRegister(t *testing.T) {
 	}
 	args := []string{"-addr", "localhost:9000", "-db", "postgres://db.example.test/ringi", "-files", "files", "-dev-login",
 		"-oidc-issuer", "https://id.example.test", "-oidc-client-id", "ringi", "-oidc-client-secret", "s", "-oidc-redirect-url", "https://r.example.test/login/callback",
-		"-session-keys", "k", "-tls-cert", "c.pem", "-tls-key", "k.pem", "-oidc-roles-claim", "roles", "-oidc-scopes", "groups"}
+		"-session-keys", "k", "-tls-cert", "c.pem", "-tls-key", "k.pem", "-oidc-roles-claim", "roles", "-oidc-scopes", "groups", "-api-keys", "keys"}
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
 	want := Flags{Addr: "localhost:9000", DB: "postgres://db.example.test/ringi", Files: "files", DevLogin: true, Issuer: "https://id.example.test", ClientID: "ringi",
 		ClientSecret: "s", RedirectURL: "https://r.example.test/login/callback", SessionKeys: "k", TLSCert: "c.pem", TLSKey: "k.pem",
-		RolesClaim: "roles", Scopes: "groups"}
+		RolesClaim: "roles", Scopes: "groups", APIKeys: "keys"}
 	if f.Getenv != nil || fmt.Sprintf("%+v", f) != fmt.Sprintf("%+v", want) {
 		t.Errorf("the flags parsed: %+v", f)
 	}
@@ -625,14 +626,40 @@ func TestServeRefuses(t *testing.T) {
 	}{
 		{server.Config{Store: memstore.New()}, "serve: the flags say the server's Store (-db): leave them out of the Config"},
 		{server.Config{Files: &servertest.Files{}}, "serve: the flags say the server's Files (-db, -files): leave them out of the Config"},
-		{server.Config{Authenticator: servertest.Header{}}, "serve: the flags say the server's Authenticator (-dev-login, the -oidc-… flags): leave them out of the Config"},
+		{server.Config{Authenticator: servertest.Header{}}, "serve: the flags say the server's Authenticator (-dev-login, the -oidc-… flags, -api-keys): leave them out of the Config"},
 		{server.Config{Store: memstore.New(), Files: &servertest.Files{}, Authenticator: servertest.Header{}},
-			"serve: the flags say the server's Store (-db), Files (-db, -files), Authenticator (-dev-login, the -oidc-… flags): leave them out of the Config"},
+			"serve: the flags say the server's Store (-db), Files (-db, -files), Authenticator (-dev-login, the -oidc-… flags, -api-keys): leave them out of the Config"},
 	} {
 		made := false
 		if err := st.Serve(t.Context(), c.cfg, func(*server.Server) { made = true }); err == nil || err.Error() != c.want || made {
 			t.Errorf("%+v: %v (made %v)", c.cfg, err, made)
 		}
+	}
+}
+
+// TestServeRefusesUnpackaged checks that a store that keeps a ticket of a version no package has
+// stops Serve before the server is given to made or serves, naming the version and its tickets
+// (DESIGN 11): such a ticket could be neither opened nor answered.
+func TestServeRefusesUnpackaged(t *testing.T) {
+	p, err := server.LoadKinds(3, "en", kinds(), os.DirFS(filepath.Join("..", "screens", "testdata", "requests")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := Open(t.Context(), Flags{Addr: freeAddr(t), DevLogin: true, Getenv: env(nil)}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 26, 9, 0, 0, 0, time.UTC)
+	if err := st.Store.Save(t.Context(), &server.Move{Ticket: "old-1", Kind: "purchase", Version: 2, Body: []byte(`{"id":"old-1"}`), Status: "approved",
+		At: at, Person: "e1201", Event: []byte(`{}`), Effects: []byte(`[]`), Org: "old-org", Since: at, People: []string{"e1201"}, Own: []string{"e1201"}}); err != nil {
+		t.Fatal(err)
+	}
+	made := false
+	err = st.Serve(t.Context(), server.Config{Packages: []*server.Package{p}, Gate: server.AllowAll, Organization: org{}}, func(*server.Server) { made = true })
+	var u *server.UnpackagedError
+	want := "the store keeps tickets of versions no package has: purchase v2 (1 approved). A ticket is shown and moved by the code of its own version: put the package of each version back"
+	if !errors.As(err, &u) || err.Error() != want || made {
+		t.Errorf("Serve answers %v (made %v); want %s", err, made, want)
 	}
 }
 
@@ -1009,6 +1036,7 @@ func TestHandleRefuses(t *testing.T) {
 		{[]rt{{"/a2ui/", ok}}, framework("/a2ui/", "/a2ui"), false},
 		{[]rt{{"POST /files", ok}}, framework("POST /files", "/files"), false},
 		{[]rt{{"/files/{id}/thumbnail", ok}}, framework("/files/{id}/thumbnail", "/files"), false},
+		{[]rt{{"GET /openapi.json", ok}}, framework("GET /openapi.json", "/openapi.json"), false},
 		{[]rt{{"GET /tickets/{id}/export", ok}}, framework("GET /tickets/{id}/export", "/tickets"), false},
 		{[]rt{{"/requests/leave/tickets", ok}}, framework("/requests/leave/tickets", "/requests"), false},
 		{[]rt{{"GET /mine", ok}}, framework("GET /mine", "/mine"), false},
@@ -1150,8 +1178,8 @@ func TestFrameworkPaths(t *testing.T) {
 	}
 	paths = append(paths, web.PagesPath, web.PageAssets+"page.css", web.FindPath+"/people", web.FindPath+"/masters/m/rows", web.UploadPath,
 		"/files/{id}", "/tickets/{ticket}/files/{id}", "/a2ui/catalog.json", "/a2ui/functions.js", "/a2ui/requests/{kind}/form",
-		"/a2ui/tickets/{id}/{screen}", "/a2ui/waiting/{kind}", "/a2ui/mine/{kind}", "/a2ui/actions", devlogin.LoginPath, devlogin.LogoutPath,
-		"/login/callback")
+		"/a2ui/tickets/{id}/{screen}", "/a2ui/waiting/{kind}", "/a2ui/mine/{kind}", "/a2ui/actions", web.OpenAPIPath, devlogin.LoginPath,
+		devlogin.LogoutPath, "/login/callback")
 	spaces := reserved(Flags{})
 	in := func(pattern string) bool {
 		segs := segments(pattern)
@@ -1229,5 +1257,174 @@ func TestServeAddressTaken(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("Serve did not stop")
+	}
+}
+
+// TestAPIKeysFile: Check reads the file of -api-keys before anything is read or reached, and stops
+// on one it cannot read, a line apikeys.Parse does not take, and a file that lists no key.
+func TestAPIKeysFile(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	good := write("good", "e1201 "+apikeys.Sum("the key of the test")+"\n")
+	for _, c := range []struct{ what, path, want string }{
+		{"a file of a key", good, ""},
+		{"no file", filepath.Join(dir, "none"), "-api-keys: open " + filepath.Join(dir, "none") + ": no such file or directory"},
+		{"a key in the clear", write("clear", "# the purchasing system\ne1201 the-key-itself\n"), `-api-keys: line 2: the SHA-256 of a key is 64 hexadecimal digits, not "the-key-itself"`},
+		{"no key", write("empty", "# none yet\n"), "-api-keys: " + filepath.Join(dir, "empty") + " lists no key: a line for each key, with the ID of the person it stands for and the SHA-256 of the key"},
+	} {
+		err := Flags{Addr: "127.0.0.1:8080", APIKeys: c.path, Getenv: env(nil)}.Check()
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: %v", c.what, err)
+		case c.want != "" && (err == nil || err.Error() != c.want):
+			t.Errorf("%s: %v; want %s", c.what, err, c.want)
+		}
+	}
+	// Open stops on it before it reaches the database a flag names
+	if _, err := Open(t.Context(), Flags{Addr: "127.0.0.1:8080", DB: "postgres://127.0.0.1:1/ringi", APIKeys: filepath.Join(dir, "none"), Getenv: env(nil)}, quiet); err == nil || !strings.HasPrefix(err.Error(), "-api-keys: ") {
+		t.Errorf("Open with a file of keys it cannot read: %v", err)
+	}
+}
+
+// TestAPIKeys: with the provider's sign-in, a program calls the API, and a route of the project's,
+// with a key of -api-keys and no cookie: the request is the person of the key's line, with its roles;
+// a key no line has, and the key of a person the organization does not have, are answered 401, as a
+// request with neither a key nor a cookie is; what a program sends to change things is not refused
+// as another site's. The server logs how many keys it took, and each key refused without the key.
+func TestAPIKeys(t *testing.T) {
+	p, err := server.LoadKinds(3, "en", kinds(), os.DirFS(filepath.Join("..", "screens", "testdata", "requests")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice, bob, gone := "kA1iCe0f7hE8sYsT3m9qW2eR4tY6uI8oP0", "kB0b2fT4hE6aDm1n3vZ5xC7bN9mQ1wE3rT", "kG0n3pE7r5oN2wH0l3fT9xQ4cV6bN8mZ1"
+	keys := filepath.Join(t.TempDir(), "keys")
+	if err := os.WriteFile(keys, []byte("# the purchasing system\ne1201 "+apikeys.Sum(alice)+"\n"+
+		"# a script of the administration\ne1101 "+apikeys.Sum(bob)+" workflow_admin\n"+
+		"# someone who left\ne9999 "+apikeys.Sum(gone)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	provider := oidctest.New(t, nil)
+	certFile, keyFile := testCertificate(t)
+	addr := freeAddr(t)
+	redirect := "https://" + addr + "/login/callback"
+	provider.Register(redirect)
+	sessionKey := sha256.Sum256([]byte("the key of the test's session cookies"))
+	said := &logged{}
+	st, err := Open(t.Context(), Flags{Addr: addr, Issuer: provider.URL, ClientID: provider.ClientID, ClientSecret: provider.Secret, RedirectURL: redirect,
+		SessionKeys: base64.StdEncoding.EncodeToString(sessionKey[:]), TLSCert: certFile, TLSKey: keyFile, APIKeys: keys,
+		ProviderClient: provider.Client(), Getenv: env(nil)}, slog.New(slog.NewTextHandler(said, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Handle("/whoami", func(*server.Server) (http.Handler, error) { return &whoami{}, nil })
+	serving(t, st, addr, server.Config{Packages: []*server.Package{p}, Gate: server.AllowAll, Organization: mailOrg{}}, nil)
+	client := provider.Client() // it trusts the server's certificate, and keeps no cookie
+	send := func(method, path, key string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, "https://"+addr+path, strings.NewReader(`{"comment":"Looked at it."}`))
+		if key != "" {
+			req.Header.Set("Authorization", "Bearer "+key)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "key-"+method+path)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, path, err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, strings.TrimSpace(string(b))
+	}
+	for _, c := range []struct {
+		what, path, key string
+		code            int
+		body            string
+	}{
+		{"the purchasing system's key", "/whoami", alice, http.StatusOK, "e1201"},
+		{"the administration's key", "/whoami", bob, http.StatusOK, "e1101 workflow_admin"},
+		{"the API, with a key", "/mine", alice, http.StatusOK, ""},
+		{"the API, with no key and no cookie", "/mine", "", http.StatusUnauthorized, `{"error":"no one is signed in"}`},
+		{"the API, with a key no line has", "/mine", alice + "x", http.StatusUnauthorized, `{"error":"no one is signed in"}`},
+		{"the API, with the key of someone who left", "/mine", gone, http.StatusUnauthorized, `{"error":"no one is signed in"}`},
+		{"a route, with a key no line has", "/whoami", "nothing", http.StatusUnauthorized, `{"error":"no one is signed in"}`},
+	} {
+		code, body := send("GET", c.path, c.key)
+		if code != c.code || c.body != "" && body != c.body {
+			t.Errorf("%s: %d %.200s; want %d %s", c.what, code, body, c.code, c.body)
+		}
+	}
+	// a program's comment on a ticket no one has: the server answers it, and the guard does not refuse it
+	if code, body := send("POST", "/tickets/01M89PB269CQ4GTPETPAEMR9QQ/comment", alice); code != http.StatusNotFound {
+		t.Errorf("a program's POST: %d %.200s; want 404", code, body)
+	}
+	for _, line := range []string{`msg="programs may call the API with the keys of -api-keys" keys=3`,
+		`msg="apikeys: a key refused" reason="no line of the file has it" path=/mine`,
+		`msg="apikeys: a key refused" reason="no line of the file has it" path=/whoami`,
+		`msg="apikeys: a key refused" reason="the organization in effect today does not have its person" person=e9999 line=6`} {
+		if !strings.Contains(said.String(), line) {
+			t.Errorf("the log has no %s:\n%s", line, said.String())
+		}
+	}
+	for _, key := range []string{alice, bob, gone} {
+		if strings.Contains(said.String(), key) {
+			t.Errorf("the log has a key:\n%s", said.String())
+		}
+	}
+}
+
+// TestLook: the server serves the pages in the Look of its Stores: page.css has its colours, which
+// the page of -dev-login's sign-in loads too, and the logo is at /pages/assets/logo. A Look that
+// web.Look.Check refuses stops Serve before it makes the server or reaches anything: here, before
+// it reaches a provider that cannot be reached.
+func TestLook(t *testing.T) {
+	p, err := server.LoadKinds(3, "en", kinds(), os.DirFS(filepath.Join("..", "screens", "testdata", "requests")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logo := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#0f766e"/></svg>`
+	addr := freeAddr(t)
+	st, err := Open(t.Context(), Flags{Addr: addr, DevLogin: true, Getenv: env(nil)}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Look = web.Look{Name: "Acme", Logo: []byte(logo), Accent: "#0F766E", AccentDark: "#5eead4"}
+	serving(t, st, addr, server.Config{Packages: []*server.Package{p}, Gate: server.AllowAll, Organization: org{}}, nil)
+	get := func(path string) (*http.Response, string) {
+		t.Helper()
+		resp, err := http.Get("http://" + addr + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp, string(b)
+	}
+	if _, body := get(devlogin.LoginPath); !strings.Contains(body, `href="/pages/assets/page.css"`) {
+		t.Errorf("the page of signing in loads no page.css: %.300s", body)
+	}
+	if _, body := get("/pages/assets/page.css"); !strings.HasSuffix(body, ".ringi { --accent: #0f766e; }\n@media (prefers-color-scheme: dark) {\n  .ringi { --accent: #5eead4; }\n}\n") {
+		t.Errorf("page.css ends with %q", body[max(0, len(body)-200):])
+	}
+	if resp, body := get("/pages/assets/logo"); resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "image/svg+xml" || body != logo {
+		t.Errorf("the logo: %d %s %.100s", resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	}
+
+	refused, err := Open(t.Context(), Flags{Addr: "127.0.0.1:8443", Issuer: "https://127.0.0.1:1", ClientID: "ringi", ClientSecret: "s3cr3t-of-the-provider",
+		RedirectURL: "https://requests.example.test/login/callback", SessionKeys: "M9i2W6b6bS3wA3h1E8m2vJ9s0p4Q7c5X1z8y6u2t4r0=", Getenv: env(nil)}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused.Look = web.Look{Accent: "#f59e0b"}
+	made := false
+	err = refused.Serve(t.Context(), server.Config{Packages: []*server.Package{p}, Gate: server.AllowAll, Organization: org{}}, func(*server.Server) { made = true })
+	if want := "web: Look.Accent #f59e0b reads at 1.94:1 on the pages' tint #f1f4f9, and the links and the buttons need 4.5:1 (WCAG 1.4.3): take a darker colour"; err == nil || err.Error() != want || made {
+		t.Errorf("a look that does not read: %v (made %v); want %s", err, made, want)
 	}
 }

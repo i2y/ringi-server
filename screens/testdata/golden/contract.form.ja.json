@@ -27,6 +27,9 @@
             "submit": false
           },
           "comment": "",
+          "file_names": {
+            "contract.pdf": "the file named contract.pdf"
+          },
           "find": "/a2ui/find",
           "form": {
             "counterparty": "Example Software (fictional)",
@@ -477,6 +480,18 @@
             "label": "契約書",
             "value": {
               "@path": "/form/document"
+            },
+            "name": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "/form/document"
+                },
+                "table": {
+                  "@path": "/file_names"
+                }
+              }
             },
             "upload": {
               "@path": "/upload"

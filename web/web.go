@@ -55,6 +55,10 @@ type Config struct {
 	// SignOut is the path the pages' bar posts to, to sign out (oidc's LogoutPath); "" shows no
 	// button.
 	SignOut string
+
+	// Look is how the pages look for the organization: its logo and name in the bar, and the colour
+	// of the links and the buttons. The zero Look is the framework's.
+	Look Look
 }
 
 // DefaultMaxFile is the largest attachment when Config.MaxFile is 0.
@@ -96,6 +100,11 @@ type Handler struct {
 	log    *slog.Logger
 	types  map[string]bool
 	inline map[string]bool
+	// logo is the organization's logo (Look.Logo) as the pages load it, at PageAssets+"logo"; its
+	// Body is nil for none.
+	logo screens.Asset
+	// api is the description of the whole API (server.Server.OpenAPI), served at /openapi.json.
+	api []byte
 }
 
 // screenSet is the screens of one package, with the kinds it has, and its plain HTML pages.
@@ -119,8 +128,11 @@ func (s *screenSet) catalogPath() string {
 }
 
 // New makes the handler of a server. It loads the screens of each package the server serves, and
-// refuses one whose screens do not load.
+// refuses one whose screens do not load, and a Look that Look.Check refuses.
 func New(srv *server.Server, cfg Config) (*Handler, error) {
+	if err := cfg.Look.Check(); err != nil {
+		return nil, err
+	}
 	if cfg.MaxFile <= 0 {
 		cfg.MaxFile = DefaultMaxFile
 	}
@@ -183,6 +195,12 @@ func New(srv *server.Server, cfg Config) (*Handler, error) {
 				return nil, &CatalogConflict{First: j + 1, Second: i + 1, FirstKinds: kindsOf(h.sets[j]), SecondKinds: kindsOf(ss), ID: ss.CatalogID()}
 			}
 		}
+		if style := cfg.Look.style(); style != "" {
+			var err error
+			if ss.pages, err = ss.pages.WithStyle(style); err != nil {
+				return nil, err
+			}
+		}
 		if ss.Set == h.assets {
 			continue
 		}
@@ -192,6 +210,15 @@ func New(srv *server.Server, cfg Config) (*Handler, error) {
 			return nil, err
 		}
 	}
+	if logo, ok := cfg.Look.logoAsset(); ok {
+		h.logo = logo
+		h.mux.HandleFunc("GET "+PageAssets+"logo", func(w http.ResponseWriter, r *http.Request) { serveAsset(w, r, h.logo) })
+	}
+	api, err := srv.OpenAPI()
+	if err != nil {
+		return nil, fmt.Errorf("the description of the API: %w", err)
+	}
+	h.api = api
 	cop := http.NewCrossOriginProtection()
 	for _, o := range cfg.TrustedOrigins {
 		if err := cop.AddTrustedOrigin(o); err != nil {
@@ -213,14 +240,16 @@ func New(srv *server.Server, cfg Config) (*Handler, error) {
 	h.mux.HandleFunc("GET /a2ui/{files}/{name}", h.packageScreenAsset)
 	h.mux.HandleFunc("GET /a2ui/requests/{kind}/form", h.signedIn(h.newForm))
 	h.mux.HandleFunc("GET /a2ui/tickets/{id}/{screen}", h.signedIn(h.ticketScreen))
-	h.mux.HandleFunc("GET /a2ui/waiting/{kind}", h.signedIn(h.list(false)))
-	h.mux.HandleFunc("GET /a2ui/mine/{kind}", h.signedIn(h.list(true)))
+	h.mux.HandleFunc("GET /a2ui/waiting/{kind}", h.signedIn(h.list(page.ListWaiting)))
+	h.mux.HandleFunc("GET /a2ui/mine/{kind}", h.signedIn(h.list(page.ListMine)))
+	h.mux.HandleFunc("GET /a2ui/requests/{kind}", h.signedIn(h.list(page.ListAll)))
 	h.mux.HandleFunc("POST /a2ui/actions", h.signedIn(h.action))
 	h.mux.HandleFunc("GET "+FindPath+"/{of}", h.signedIn(h.findValues))
 	h.mux.HandleFunc("GET "+FindPath+"/masters/{file}/{master}", h.signedIn(h.findValues))
 	h.mux.HandleFunc("POST "+UploadPath, h.signedIn(h.upload))
 	h.mux.HandleFunc("GET /files/{id}", h.signedIn(h.ownFile))
 	h.mux.HandleFunc("GET /tickets/{ticket}/files/{id}", h.signedIn(h.ticketFile))
+	h.mux.HandleFunc("GET "+OpenAPIPath, h.signedIn(h.openAPI))
 	h.routePages()
 	h.mux.Handle("/", srv)
 	return h, nil

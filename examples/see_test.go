@@ -2,11 +2,14 @@ package examples
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/servertest"
 )
@@ -150,6 +153,130 @@ func TestOwningDepartmentSees(t *testing.T) {
 		w := send(h, "GET", x.path, x.person, nil)
 		if w.Code != http.StatusOK || strings.Contains(w.Body.String(), id) != x.has {
 			t.Errorf("%s as %s: %d, has the ticket %v; want %v", x.path, x.person, w.Code, strings.Contains(w.Body.String(), id), x.has)
+		}
+	}
+}
+
+// TestOwningDepartmentLists: the department that owns a kind lists all its requests (the core's
+// DESIGN 10.5): the examples' gate lets accounting see the tickets of expense for the kind, whoever is
+// on them, so a member of it (e1002), whom no ticket names, reads them all through the API's
+// list_tickets, a page at a time and of one status, on the pages, whose start page links to the list,
+// and on the A2UI screen. A member of another department (e7102), and a requester of the kind
+// (e1201), whom the gate lets see the tickets they are on alone, list none, and their start page has
+// no such part. A query with no kind, a kind the server does not serve, a status no ticket has and a
+// limit out of range are answered 400.
+func TestOwningDepartmentLists(t *testing.T) {
+	clock := servertest.NewClock(monday)
+	_, h := newWeb(t, webSetup{Store: memstore.New(), Clock: clock, Gate: &Gate{}, Files: &servertest.Files{}})
+	var ids []string // the newest first
+	for i, requester := range []string{"e1201", "e1203", "e1201"} {
+		clock.Set(monday.Add(time.Duration(i) * time.Minute))
+		id, sub := submitAPI(t, h, "expense", requester, fmt.Sprintf("l%d", i), travel(fmt.Sprintf("Trip %d (fictional)", i), uploaded(t, h, requester)))
+		if sub.code != http.StatusOK {
+			t.Fatalf("request %d of %s: %d %s", i, requester, sub.code, sub.body)
+		}
+		ids = append([]string{id}, ids...)
+	}
+	list := func(person, query string) ([]string, bool) {
+		t.Helper()
+		w := send(h, "GET", "/tickets?"+query, person, nil)
+		var b struct {
+			Tickets []struct {
+				ID string `json:"id"`
+			} `json:"tickets"`
+			More *bool `json:"more"`
+		}
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &b) != nil || b.More == nil {
+			t.Fatalf("/tickets?%s as %s: %d %s", query, person, w.Code, w.Body.String())
+		}
+		if err := server.CheckOwnAnswer("GET", "/tickets", w.Code, w.Body.Bytes()); err != nil {
+			t.Errorf("/tickets?%s: %v", query, err)
+		}
+		out := []string{}
+		for _, x := range b.Tickets {
+			out = append(out, x.ID)
+		}
+		return out, *b.More
+	}
+	for _, c := range []struct {
+		person, query string
+		want          []string
+		more          bool
+	}{
+		{"e1002", "kind=expense", ids, false},
+		{"e1002", "kind=expense&limit=2", ids[:2], true},
+		{"e1002", "kind=expense&limit=2&before=" + ids[1], ids[2:], false},
+		{"e1002", "kind=expense&status=in_progress", ids, false},
+		{"e1002", "kind=expense&status=approved", []string{}, false},
+		{"e1002", "kind=leave", []string{}, false},
+		{"e7102", "kind=expense", []string{}, false},
+		{"e1201", "kind=expense", []string{}, false},
+	} {
+		if got, more := list(c.person, c.query); !slices.Equal(got, c.want) || more != c.more {
+			t.Errorf("/tickets?%s as %s: %v, more %v; want %v, more %v", c.query, c.person, got, more, c.want, c.more)
+		}
+	}
+	for query, want := range map[string]string{
+		"":                         "kind: the kind of request whose tickets are listed is needed",
+		"kind=lunch":               `kind: no kind of request \"lunch\"`,
+		"kind=expense&status=done": `status: one of in_progress, paused, with_requester, approved, rejected, withdrawn, expired is expected, not \"done\"`,
+		"kind=expense&limit=0":     `limit: a whole number from 1 to 100 is expected, not \"0\"`,
+	} {
+		w := send(h, "GET", "/tickets?"+query, "e1002", nil)
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), want) {
+			t.Errorf("/tickets?%s: %d %s; want 400 %s", query, w.Code, w.Body.String(), want)
+		}
+	}
+	if w := send(h, "POST", "/tickets", "e1002", []byte("{}"), "Content-Type", "application/json"); w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("POST /tickets: %d %s", w.Code, w.Body.String())
+	}
+	if w := send(h, "GET", "/tickets?kind=expense", "", nil); w.Code != http.StatusUnauthorized {
+		t.Errorf("/tickets with no one signed in: %d %s", w.Code, w.Body.String())
+	}
+
+	// the pages: the list, and the start page's link to it
+	for _, x := range []struct {
+		person string
+		sees   bool
+	}{{"e1002", true}, {"e7102", false}, {"e1201", false}} {
+		for lang, words := range map[string][2]string{"en": {"All requests", "Expense request: all requests"}, "ja": {"すべての申請", "経費の申請：すべての申請"}} {
+			home := send(h, "GET", "/pages/?lang="+lang, x.person, nil).Body.String()
+			link := `<a href="/pages/requests/expense?lang=` + lang + `">`
+			if has := strings.Contains(home, `<h2 id="all-title">`+words[0]+`</h2>`) && strings.Contains(home, link); has != x.sees {
+				t.Errorf("the start page of %s in %s links to all the requests of expense: %v; want %v", x.person, lang, has, x.sees)
+			}
+			w := send(h, "GET", "/pages/requests/expense?lang="+lang, x.person, nil)
+			body := w.Body.String()
+			if w.Code != http.StatusOK || !strings.Contains(body, words[1]) {
+				t.Errorf("the page of all the requests of expense as %s in %s: %d %.400s", x.person, lang, w.Code, body)
+			}
+			for _, id := range ids {
+				if strings.Contains(body, `href="/pages/tickets/`+id) != x.sees {
+					t.Errorf("the page of all the requests of expense as %s in %s has %s: %v; want %v", x.person, lang, id, !x.sees, x.sees)
+				}
+			}
+		}
+	}
+	// the A2UI screen of the list
+	for person, want := range map[string][]string{"e1002": ids, "e7102": {}} {
+		w := send(h, "GET", "/a2ui/requests/expense", person, nil)
+		sc, err := readScreen(w.Body.Bytes())
+		if w.Code != http.StatusOK || err != nil {
+			t.Fatalf("the A2UI list of all the requests of expense as %s: %d %v", person, w.Code, err)
+		}
+		var data struct {
+			Tickets []struct {
+				ID string `json:"id"`
+			} `json:"tickets"`
+		}
+		b, _ := json.Marshal(sc.data)
+		json.Unmarshal(b, &data)
+		got := []string{}
+		for _, x := range data.Tickets {
+			got = append(got, x.ID)
+		}
+		if !slices.Equal(got, want) || sc.surface != "expense.list.all" {
+			t.Errorf("the A2UI list of all the requests of expense as %s: %v under %q; want %v under expense.list.all", person, got, sc.surface, want)
 		}
 	}
 }

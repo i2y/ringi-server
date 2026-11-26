@@ -77,6 +77,24 @@ func (h *Handler) adminZone() *time.Location {
 	return time.UTC
 }
 
+// kindZone is the zone a list of a kind's tickets writes their deadlines in: its newest version's
+// (the versions of a kind keep one calendar's zone, as a rule); nil, UTC, for a kind it does not
+// have.
+func (h *Handler) kindZone(kind string) *time.Location {
+	newest := 0
+	for _, s := range h.sets {
+		for _, k := range s.Kinds() {
+			if k.Name == kind && k.Version > newest {
+				newest = k.Version
+			}
+		}
+	}
+	if newest == 0 {
+		return nil
+	}
+	return h.srv.Zone(kind, newest)
+}
+
 // adminTime writes a time of the administration's answers (seconds since 1970) in the pages' zone.
 func (h *Handler) adminTime(at int64) string {
 	return time.Unix(at, 0).In(h.adminZone()).Format("2006-01-02 15:04")

@@ -146,6 +146,15 @@ func (n *namer) FileURLs(ids []string) (map[string]string, error) {
 	return out, nil
 }
 
+func (n *namer) FileNames(ids []string) (map[string]string, error) {
+	n.note("file_names", ids)
+	out := map[string]string{}
+	for _, id := range ids {
+		out[id] = "the file named " + id
+	}
+	return out, nil
+}
+
 // parsed is a filled screen read back: its messages' bodies and its data.
 type parsed struct {
 	create     map[string]json.RawMessage

@@ -29,6 +29,9 @@ type Lookup interface {
 	MasterNames(lang, master string, keys []string) (map[string]string, error)
 	// FileURLs answers the addresses a browser opens the files with these IDs at.
 	FileURLs(ids []string) (map[string]string, error)
+	// FileNames answers the names the files with these IDs were given when they were uploaded, of
+	// those the person may open (as FileURLs answers their addresses).
+	FileNames(ids []string) (map[string]string, error)
 }
 
 // Tables is a Lookup over maps, the same in every language: for tests, and for a server that reads
@@ -37,6 +40,7 @@ type Tables struct {
 	People  map[string]string            // a person's or a team's ID → its name
 	Masters map[string]map[string]string // a master's path → a row's key → its name
 	Files   map[string]string            // a file's ID → its address
+	Names   map[string]string            // a file's ID → its name
 }
 
 // PeopleNames answers the names of t.People among ids.
@@ -52,6 +56,11 @@ func (t Tables) MasterNames(_, master string, keys []string) (map[string]string,
 // FileURLs answers the addresses of t.Files among ids.
 func (t Tables) FileURLs(ids []string) (map[string]string, error) {
 	return among(t.Files, ids), nil
+}
+
+// FileNames answers the names of t.Names among ids.
+func (t Tables) FileNames(ids []string) (map[string]string, error) {
+	return among(t.Names, ids), nil
 }
 
 func among(m map[string]string, keys []string) map[string]string {
@@ -88,8 +97,37 @@ type Card struct {
 	Ticket   json.RawMessage // required
 	Can      []string        // what the viewer may do now (Set.Actions)
 	Names    Lookup
-	Surface  string // by default the ticket's ID
+	Surface  string         // by default the ticket's ID
+	Zone     *time.Location // the zone the deadlines (/due) are written in: the kind's; nil is UTC
+	// Records is the ticket's history, in its order, of which the card shows what an agent answered
+	// in the round the ticket is in (/agent); nil shows none.
+	Records []Record
+	// Works is the work the ticket launched once it ended, in its order (/works); nil shows none.
+	Works []Work
 	Serving
+}
+
+// Work is a piece of work a ticket launched (an `on … launch` line of its kind), as the server
+// knows it (the framework's server.Work).
+type Work struct {
+	// Flow is the name the kind gives its flow.
+	Flow string
+	// State is waiting, retrying, started, done or failed.
+	State string
+	// At is when it was started (started), or when it said what became of it (done, failed); zero
+	// for none.
+	At time.Time
+	// Reason is why it failed, as it said.
+	Reason string
+	// Outputs are what it ended with, as named values of the contract.
+	Outputs []Output
+}
+
+// Output is a value a work ended with: its name and its value of the contract ({"str": {"v": …}},
+// {"num": …}, {"truth": …}, "nothing" or {"rows": …}).
+type Output struct {
+	Name  string
+	Value json.RawMessage
 }
 
 // Serving is what the server puts in a form or a card of its own (ringi's DESIGN 13.2, 13.8): where
@@ -222,7 +260,8 @@ type List struct {
 	// operation with that ticket as `before`.
 	More    bool
 	Names   Lookup
-	Surface string // by default nothing
+	Surface string         // by default nothing
+	Zone    *time.Location // the zone the rows' deadlines (due) are written in: the kind's; nil is UTC
 }
 
 // History is what a ticket's history is filled with.
@@ -311,6 +350,23 @@ func (s *Set) Card(in Card) (Screen, error) {
 	}
 	f.ticketPlace(t)
 	f.overlay("form", t.form, false)
+	if due, ok := f.data["due"].(map[string]any); ok {
+		for key, v := range t.deadlines(in.Zone) {
+			if _, has := due[key]; has {
+				due[key] = v
+			}
+		}
+	}
+	if _, ok := f.data["agent"]; ok {
+		said, err := agentSaid(in.Records)
+		if err != nil {
+			return Screen{}, err
+		}
+		f.data["agent"] = said
+	}
+	if _, ok := f.data["works"]; ok {
+		f.data["works"] = worksOf(in.Works, in.Language, in.Zone)
+	}
 	if _, ok := f.data["route"]; ok {
 		f.data["route"] = clone(t.m["stages"])
 	}
@@ -365,6 +421,7 @@ func (s *Set) list(screen string, in List) (Screen, error) {
 		for _, key := range rowTicketKeys[screen] {
 			row[key] = clone(t.m[key])
 		}
+		row["due"] = t.deadlines(in.Zone)
 		form := map[string]any{}
 		for _, name := range f.sc.rowForm {
 			form[name] = clone(t.form[name])
@@ -681,7 +738,8 @@ func (f *filling) finish(names Lookup, surface string) (Screen, error) {
 	return f.messages(id)
 }
 
-// name fills /people, /masters/<field> and /files with the names of what the screen shows.
+// name fills /people, /masters/<field>, /files and /file_names with the names of what the screen
+// shows.
 func (f *filling) name(names Lookup) error {
 	if _, ok := f.data["people"].(map[string]any); ok {
 		ids := map[string]bool{}
@@ -728,6 +786,19 @@ func (f *filling) name(names Lookup) error {
 				return fmt.Errorf("screens: finding the files: %w", err)
 			}
 			f.data["files"] = table(got, ids)
+		}
+	}
+	if _, ok := f.data["file_names"].(map[string]any); ok {
+		ids := map[string]bool{}
+		for _, at := range f.sc.fileNames {
+			collect(f.data, at, ids)
+		}
+		if len(ids) > 0 {
+			got, err := names.FileNames(sortedKeys(ids))
+			if err != nil {
+				return fmt.Errorf("screens: naming the files: %w", err)
+			}
+			f.data["file_names"] = table(got, ids)
 		}
 	}
 	return nil
@@ -972,6 +1043,186 @@ func readTicket(raw json.RawMessage) (*ticket, error) {
 	}
 	t.form = m["form"].(map[string]any)
 	return t, nil
+}
+
+// worksOf is the lines of a card's /works: each work's flow, state, the time of its state (RFC 3339
+// in zone; null for none), what it ended with as a text in lang ("reference: PAY-1"; null for
+// nothing) and why it failed (null for no reason).
+func worksOf(works []Work, lang string, zone *time.Location) []any {
+	if zone == nil {
+		zone = time.UTC
+	}
+	out := []any{}
+	for _, w := range works {
+		line := map[string]any{"flow": w.Flow, "state": w.State, "at": nil, "outputs": nil, "reason": nil}
+		if !w.At.IsZero() {
+			line["at"] = w.At.In(zone).Format(time.RFC3339)
+		}
+		if text := outputsText(w.Outputs, lang); text != "" {
+			line["outputs"] = text
+		}
+		if w.Reason != "" {
+			line["reason"] = w.Reason
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// outputsText says what a work ended with in lang: each output as its name and its value, a text as
+// it is, a number in digits, true and false as words, nothing as a dash, rows by their count.
+func outputsText(outputs []Output, lang string) string {
+	ja := lang == "ja"
+	sep, colon := ", ", ": "
+	if ja {
+		sep, colon = "、", "："
+	}
+	parts := make([]string, 0, len(outputs))
+	for _, o := range outputs {
+		parts = append(parts, o.Name+colon+valueText(o.Value, ja))
+	}
+	return strings.Join(parts, sep)
+}
+
+// valueText says a value of the contract.
+func valueText(raw json.RawMessage, ja bool) string {
+	var x struct {
+		Str *struct {
+			V string `json:"v"`
+		} `json:"str"`
+		Num *struct {
+			V json.Number `json:"v"`
+		} `json:"num"`
+		Truth *struct {
+			V bool `json:"v"`
+		} `json:"truth"`
+		Rows *struct {
+			V []json.RawMessage `json:"v"`
+		} `json:"rows"`
+	}
+	if json.Unmarshal(raw, &x) != nil {
+		return "—"
+	}
+	switch {
+	case x.Str != nil:
+		return x.Str.V
+	case x.Num != nil:
+		return x.Num.V.String()
+	case x.Truth != nil:
+		return map[bool]map[bool]string{false: {true: "yes", false: "no"}, true: {true: "はい", false: "いいえ"}}[ja][x.Truth.V]
+	case x.Rows != nil:
+		if ja {
+			return strconv.Itoa(len(x.Rows.V)) + " 行"
+		}
+		if len(x.Rows.V) == 1 {
+			return "1 row"
+		}
+		return strconv.Itoa(len(x.Rows.V)) + " rows"
+	}
+	return "—"
+}
+
+// agentSaid is what an agent answered in the round a ticket is in (ringi's DESIGN 13.8, 15.1: a
+// card's /agent): of the lines of its history after the last that submitted it or submitted it
+// again, those that say an agent agreed, had doubts or could not answer, each with its stage, what
+// it says and the agent's reason (its comment), in their order.
+func agentSaid(records []Record) ([]any, error) {
+	out := []any{}
+	for i, r := range records {
+		var rec map[string]any
+		if err := decode(r.History, &rec); err != nil || rec == nil {
+			return nil, fmt.Errorf("%w: record %d is not an object of the history: %v", ErrInput, i, err)
+		}
+		switch rec["did"] {
+		case "submitted", "resubmitted":
+			out = []any{}
+		case "agent ok", "agent doubt", "agent failed":
+			line := map[string]any{}
+			for _, key := range agentKeys {
+				line[key] = clone(rec[key])
+			}
+			out = append(out, line)
+		}
+	}
+	return out, nil
+}
+
+// Deadline is the deadline a ticket runs to now (ringi's DESIGN 13.8): Of is which, "stage" (the
+// due of the stage it waits at, while it is in progress), "resubmit" (by when the requester is to
+// submit it again, while it is with them) or "pause_ends" (when its hold ends, while it is on hold),
+// and At when. A ticket runs to one of them at a time, by its status; one that has ended, to none.
+type Deadline struct {
+	Of string
+	At time.Time
+}
+
+// DeadlineOf answers the deadline a ticket of the API runs to now, as a card's /due and a list's
+// row's due say it; false for none.
+func DeadlineOf(ticket json.RawMessage) (Deadline, bool, error) {
+	t, err := readTicket(ticket)
+	if err != nil {
+		return Deadline{}, false, err
+	}
+	d, ok := t.deadline()
+	return d, ok, nil
+}
+
+// deadline answers the deadline the ticket runs to now (DeadlineOf).
+func (t *ticket) deadline() (Deadline, bool) {
+	at := func(of string, v any) (Deadline, bool) {
+		n, _ := v.(json.Number)
+		s, err := n.Int64()
+		if err != nil {
+			return Deadline{}, false
+		}
+		return Deadline{Of: of, At: time.Unix(s, 0).UTC()}, true
+	}
+	switch t.m["status"] {
+	case "in_progress":
+		// the stage it waits at: the last of the route of its name that is active (a stage sent
+		// back to is in the route again)
+		cur, _ := t.m["stage"].(string)
+		stages, _ := t.m["stages"].([]any)
+		for i := len(stages) - 1; i >= 0; i-- {
+			if st, _ := stages[i].(map[string]any); st["name"] == cur && st["phase"] == "active" {
+				return at("stage", st["due"])
+			}
+		}
+	case "with_requester":
+		return at("resubmit", t.m["resubmit_due"])
+	case "paused":
+		return at("pause_ends", t.m["pause_ends"])
+	}
+	return Deadline{}, false
+}
+
+// deadlines are the deadlines as a card's /due and a list's row's due hold them: each of the three,
+// the one the ticket runs to as a time in zone (nil is UTC) in RFC 3339, the others null; beside each,
+// <name>_day, the day it is the end of when it is at midnight there (EndOfDay), else null.
+func (t *ticket) deadlines(zone *time.Location) map[string]any {
+	if zone == nil {
+		zone = time.UTC
+	}
+	out := map[string]any{"stage": nil, "resubmit": nil, "pause_ends": nil, "stage_day": nil, "resubmit_day": nil, "pause_ends_day": nil}
+	if d, ok := t.deadline(); ok {
+		at := d.At.In(zone)
+		out[d.Of] = at.Format(time.RFC3339)
+		if day, ok := EndOfDay(at); ok {
+			out[d.Of+"_day"] = day
+		}
+	}
+	return out
+}
+
+// EndOfDay answers the day a time is the end of, as ringi says a deadline at the end of a day: for
+// 2026-11-20 00:00 in its zone, 2026-11-19. A screen says it "2026-11-19 at the end of the day", not
+// the next day's 00:00, which reads as if it could be answered that day. False for a time that is not
+// midnight.
+func EndOfDay(at time.Time) (string, bool) {
+	if at.Hour() != 0 || at.Minute() != 0 || at.Second() != 0 || at.Nanosecond() != 0 {
+		return "", false
+	}
+	return at.AddDate(0, 0, -1).Format("2006-01-02"), true
 }
 
 // people is a list of IDs as a place holds it: each once, in the order given.

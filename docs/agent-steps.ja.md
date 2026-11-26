@@ -131,9 +131,11 @@ labels en
 | エージェントの答え | 申請はどうなるか |
 |---|---|
 | `ok` | 次のステップに進む |
-| `doubt` | `else` に書いた人が、そのステップに答える。理由は、申請の履歴で読める |
+| `doubt` | `else` に書いた人が、そのステップに答える。理由は、申請のページのそのステップの下と、申請の履歴に出る |
 | 処理が失敗した | `doubt` と同じ |
 | 期限までに答えない | `when late` に書いたとおりになる。この例では期限切れで終わる |
+
+`else` のあとが一人に決まるときは、`ticket` に `same approver approves once` と書いてあれば、エージェントが疑ったあとのそのステップを、その人のステップとして数えます。その人は疑いを見て答え、あいだにほかの人のステップが来なければ、そのあとの、その人だけに当たるステップは、その承認で済みます。`same approver approves once, at the last stage` なら、そのステップは、その人だけに当たるあとのステップのうち、最後のものを待ちます。エージェントが先に答えるステップを前の承認で済ませることはなく、ほかのステップがそれを待つこともありません。
 
 検査します。`ritsu check` は、`.flow` の `inputs` と `outputs` が申請に合っているかも確かめます。
 
@@ -242,7 +244,7 @@ level=INFO msg=notice notice=waiting to="s1101 s1101@example.com" kind=trip titl
 level=INFO msg=notice notice=waiting to="g1001 g1001@example.com, g1201 g1201@example.com" kind=trip title=出張の申請 title_lang=ja ticket=01M89R0TCPEP3XTSK6TJ6BT9QS stage=check
 ```
 
-総務担当でログインし、申請のページの「履歴を見る」を開くと、エージェントの疑問が読めます。承認すると、営業一課長に進みます。
+総務担当でログインし、申請のページを開くと、ステップの下に、エージェントが疑問を出したことと、その理由が出ています。承認すると、営業一課長に進みます。
 
 ## 本物のモデルにつなぐ
 

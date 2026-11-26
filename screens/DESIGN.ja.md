@@ -66,6 +66,14 @@ func (s *Set) Mine(in List) (Screen, error) // 見る人自身の申請の一覧
 func (s *Set) History(in History) (Screen, error)
 func (s *Set) Offered(in Offered) (Screen, error) // 今は効いている版が無い種類の画面
 
+// DeadlineOf は、チケットが今かかえる期限を、承認カードの /due と一覧の行の due と同じく答える
+// （2.2）。Of は "stage"、"resubmit"、"pause_ends" のどれかで、At はその時刻。無ければ false。
+func DeadlineOf(ticket json.RawMessage) (Deadline, bool, error)
+
+// EndOfDay は、0 時ちょうどの期限が、どの日の終わりかを答える（2.2）。2026-11-20 00:00 なら
+// 2026-11-19。ほかの時刻なら false。
+func EndOfDay(at time.Time) (string, bool)
+
 // Screen は値を入れた画面で、送るメッセージを順に持つ。
 type Screen struct {
 	SurfaceID string
@@ -95,7 +103,27 @@ type Card struct {
 	Can      []string
 	Names    Lookup
 	Surface  string
+	Zone     *time.Location // 期限（/due）を書く時間帯。種類の時間帯。nil なら UTC
+	Records  []Record       // チケットの履歴。承認カードは、そのうちエージェントが答えた行を見せる（/agent）。nil なら見せない
+	Works    []Work         // チケットが終わったときに launch した処理。その順（/works）。nil なら見せない
 	Serving
+}
+
+// Work は、チケットが launch した処理（種類の `on … launch` の行）を、サーバーが知っているとおりに
+// 表す（フレームワークの server.Work）。
+type Work struct {
+	Flow    string    // 種類がその flow に付けた名前
+	State   string    // waiting、retrying、started、done、failed のどれか
+	At      time.Time // 始めた時刻（started）か、どうなったかを伝えてきた時刻（done、failed）。無ければゼロ
+	Reason  string    // 失敗した理由。処理が伝えてきたとおり
+	Outputs []Output  // 終わったときの値
+}
+
+// Output は、処理が終わったときの値の一つ。名前と、契約の値（{"str": {"v": …}}、{"num": …}、
+// {"truth": …}、"nothing"、{"rows": …}）。
+type Output struct {
+	Name  string
+	Value json.RawMessage
 }
 
 // Serving は、サーバーが自分の配る申請書と承認カードに入れる物である（ringi の DESIGN 13.2、13.8）。
@@ -113,6 +141,7 @@ type List struct {
 	More     bool              // Tickets の最後のあとに続きのチケットがある（/more）
 	Names    Lookup
 	Surface  string
+	Zone     *time.Location    // 行の期限（due）を書く時間帯。nil なら UTC
 }
 
 type History struct {
@@ -150,7 +179,7 @@ type Offered struct {
 
 ### 2.1 名前、マスタ、ファイル
 
-画面は、ID とキーを、データの中の表を通して見せる。人とチームの名前は `/people`、マスタの行の名前は `/masters/<フィールド>`、ファイルの URL は `/files` にある。このパッケージは、画面が見せる ID を割り出し、その ID だけを、表ごとに一度、サーバーに尋ねる。
+画面は、ID とキーを、データの中の表を通して見せる。人とチームの名前は `/people`、マスタの行の名前は `/masters/<フィールド>`、ファイルの URL は `/files`、アップロードのときのファイルの名前は `/file_names` にある。このパッケージは、画面が見せる ID を割り出し、その ID だけを、表ごとに一度、サーバーに尋ねる。
 
 ```go
 type Lookup interface {
@@ -161,12 +190,15 @@ type Lookup interface {
 	MasterNames(lang, master string, keys []string) (map[string]string, error)
 	// FileURLs は、これらの ID のファイルをブラウザが開く URL を答える。
 	FileURLs(ids []string) (map[string]string, error)
+	// FileNames は、これらの ID のファイルのうち、その人が開けるファイルの、アップロードのときの
+	// 名前を答える（FileURLs が URL を答えるのと同じファイル）。
+	FileNames(ids []string) (map[string]string, error)
 }
 ```
 
-ID は並べ替えてあり、一つずつで、空の物は無い。尋ねる ID が無ければ、メソッドを呼ばない。答えに無い ID はそのまま見せ（画面の `lookup` は、表に無いコードをそのまま見せる）、エラーは値を入れるのを止める。`Tables` は三つの map の上の `Lookup` で、試験と、名前を先に読んでおくサーバーのための物である。
+ID は並べ替えてあり、一つずつで、空の物は無い。尋ねる ID が無ければ、メソッドを呼ばない。答えに無い ID はそのまま見せ（画面の `lookup` は、表に無いコードをそのまま見せる）、エラーは値を入れるのを止める。`Tables` は四つの map の上の `Lookup` で、試験と、名前を先に読んでおくサーバーのための物である。
 
-画面が見せる ID は、`Set` を読むときに、画面そのものから読み取る。テンプレートが三つの表のどれかで引く値（部品、`List` か `LineItems` の行、レンダラーの中だけで動くボタンの操作に書いた `lookup(value, table)`）、`PersonPicker` の値と、選ぶ範囲の並び（`among`）、`ApprovalRoute` が見せる経路の人（部分ごとの `approvers` と `team`、答えの `by` と `seat`、`sole` の人。部分の `of` はステップか flow の名前で、人ではない）である。マスタの表はフィールドの名前で呼び、フィールドのマスタは種類の説明から読む（`choice from m.vendors` で、`m.vendors` は `company_masters/vendors`）。
+画面が見せる ID は、`Set` を読むときに、画面そのものから読み取る。テンプレートが表のどれかで引く値（部品、`List` か `LineItems` の行、レンダラーの中だけで動くボタンの操作に書いた `lookup(value, table)`）、`PersonPicker` の値と、選ぶ範囲の並び（`among`）、`ApprovalRoute` が見せる経路の人（部分ごとの `approvers` と `team`、答えの `by` と `seat`、`sole` の人。部分の `of` はステップか flow の名前で、人ではない）である。マスタの表はフィールドの名前で呼び、フィールドのマスタは種類の説明から読む（`choice from m.vendors` で、`m.vendors` は `company_masters/vendors`）。
 
 ### 2.2 置き場
 
@@ -181,7 +213,10 @@ ID は並べ替えてあり、一つずつで、空の物は無い。尋ねる I
 | `/submit_for` | 申請書 | `SubmitFor` | 新しい申請ではその ID。もう一度申請するときは空 |
 | `/may_submit` | `submitted by` のある種類の申請書 | `MaySubmit` | その値 |
 | `/ticket` | 申請書、承認カード、履歴 | `Ticket` | テンプレートの `/ticket` にあるキーごとに、チケットの値をそのまま。ritsu のテンプレートでは `id`、申請書と承認カードでは `revision`、申請書では `sent_back_by`、承認カードでは `status`、`stage`、`requester`、`made_by` |
+| `/due` | 承認カード | `Ticket`、`Zone` | チケットが今かかえる期限。どれも `Zone` の時刻の RFC 3339 で、無ければ null。`stage` は、`in_progress` のあいだの、待っているステップ（経路のうちチケットの `stage` の名前のステップで、`active` の最後の物）の `due`。`resubmit` は、`with_requester` のあいだの、チケットの `resubmit_due`。`pause_ends` は、`paused` のあいだの、チケットの `pause_ends`。終わったチケットには期限が無い。それぞれの横の `stage_day`、`resubmit_day`、`pause_ends_day` は、期限が `Zone` の 0 時ちょうどのときの、終わる日（`EndOfDay`）で、ほかは null。承認カードは、そういう期限を ringi と同じく「2026-11-19 の終わり」と言い、翌日の 0:00 とは言わない。翌日の 0:00 では、その日のうちに答えればよいと読めてしまうからである |
 | `/route` | 承認カード | `Ticket` | チケットの `stages` をそのまま |
+| `/agent` | エージェントのステップのある種類の承認カード | `Records` | チケットの今の回にエージェントが答えたこと。履歴のうち、`did` が `submitted` か `resubmitted` の最後の行よりあとの、`did` が `agent ok`、`agent doubt`、`agent failed` の行を、それぞれ `{"stage", "did", "comment"}`（コメントはエージェントの理由）にして、その順に。`Records` が無ければ空 |
+| `/works` | 処理を launch する種類の承認カード | `Works`、`Zone` | チケットが launch したそれぞれの処理がどうなったか。launch した順に、それぞれ `{"flow", "state", "at", "outputs", "reason"}` にする。`state` は `waiting`（まだ始めていない）、`retrying`（始められず、やり直している）、`started`、`done`、`failed` のどれか。`at` はその状態になった時刻で、`Zone` の RFC 3339（待っているあいだと、やり直しているあいだは null）。`outputs` は終わったときの値を画面の言語の文にした物（`reference: PAY-1`、`reference：PAY-1`。数は数字、真偽は語、nothing はダッシュ、rows は行の数。無ければ null）。`reason` は失敗した理由（無ければ null）。`Works` が無ければ空 |
 | `/edit` | 承認者が入れるか直すフィールドのある種類の承認カード | `Ticket` | そのフィールドごとに、チケットの値を、入力の部品が持つ形で（選択は一つだけの配列）。値が無ければ空の値 |
 | `/comment` | 申請書、承認カード | | `""` |
 | `/send_back`、`/hand_over` | 承認カード | | 何も選んでいない、テンプレートの始めのまま |
@@ -193,7 +228,8 @@ ID は並べ替えてあり、一つずつで、空の物は無い。尋ねる I
 | `/people` | 全部 | `Names.PeopleNames` | 画面が見せる ID の名前（2.1） |
 | `/masters/<フィールド>` | 承認カード、二つの一覧 | `Names.MasterNames` | 画面が見せるキーの名前。フィールドのマスタから |
 | `/files` | 承認カード | `Names.FileURLs` | 画面が開くファイル（フォームと明細の行の添付）の URL |
-| `/tickets` | 二つの一覧 | `Tickets` | チケットごとに、承認待ちの一覧では `{"id", "status", "stage", "requester", "form"}`、自分の申請の一覧では `{"id", "status", "stage", "made_by", "form"}`。フォームは、行が読むフィールドだけ |
+| `/file_names` | 承認カード。添付のある種類の申請書 | `Names.FileNames` | 画面が見せるファイル（フォームと明細の行の添付、承認者が付ける添付、もう一度申請するときにチケットが持つファイル）の名前。画面は ID の代わりにこれを見せる |
+| `/tickets` | 二つの一覧 | `Tickets`、`Zone` | チケットごとに、承認待ちの一覧では `{"id", "status", "stage", "requester", "due", "form"}`、自分の申請の一覧では `{"id", "status", "stage", "made_by", "due", "form"}`。`due` は、承認カードの `/due` と同じ期限。フォームは、行が読むフィールドだけ |
 | `/history` | 履歴 | `Records` | 記録ごとに、テンプレートの行が読むキーを持つ行。`at` は記録の時刻で、その時刻の持つオフセットの RFC 3339 |
 | `/from` | offered | `From` | その日付。`""` なら null |
 | `/home` | offered | `Home` | そのアドレス。`""` なら null |
@@ -386,14 +422,17 @@ func (s *Set) Assets() fs.FS                     // 二つを、その名前で
 
 | 試験 | 確かめること |
 |---|---|
-| `TestFillEveryScreen` | ベクタから値を入れた 5,542 の画面。ベクタに出てくるチケット 2,174 枚（行の前と答えのチケット。同じ物は一度）それぞれの承認カード（言語は交互）、差し戻されたチケットごとの、もう一度申請する申請書（568）、履歴を残す答えごとの履歴（2,280）、種類ごとの全チケットの一覧（20）、人ごとの自分の申請の一覧（その人が申請者のチケットと、その人が代わりに申請したチケット。両方の言語で 460）、自分の申請と代わりの申請の新しい申請書（40）。どれもテンプレートと突き合わせ（版 1.0 の三つのメッセージが一つの面を持つ、テンプレートの `createSurface` と部品がそのまま、置き場が始めの形とキーを保つ）、値をチケットと突き合わせ（テンプレートでなく種類の説明から読み直す。一覧の行は、入れたチケットをその順に持ち、承認待ちの一覧では申請者を、自分の申請の一覧では代わりに申請した人を持つ）、`Lookup` の約束（表ごとに一度、並べ替えて、ID は一つずつ）を確かめる。Node で描き（部品 276,484）、名前の見つからない `lookup` が無いこと、null を受け取る書式の関数が無いこと、例外が無いこと、経路が見せる人に名前があることを確かめる |
+| `TestFillEveryScreen` | ベクタから値を入れた 5,542 の画面。ベクタに出てくるチケット 2,174 枚（行の前と答えのチケット。同じ物は一度）それぞれの承認カード（言語は交互）、差し戻されたチケットごとの、もう一度申請する申請書（568）、履歴を残す答えごとの履歴（2,280）、種類ごとの全チケットの一覧（20）、人ごとの自分の申請の一覧（その人が申請者のチケットと、その人が代わりに申請したチケット。両方の言語で 460）、自分の申請と代わりの申請の新しい申請書（40）。どれもテンプレートと突き合わせ（版 1.0 の三つのメッセージが一つの面を持つ、テンプレートの `createSurface` と部品がそのまま、置き場が始めの形とキーを保つ）、値をチケットと突き合わせ（テンプレートでなく種類の説明から読み直す。一覧の行は、入れたチケットをその順に持ち、承認待ちの一覧では申請者を、自分の申請の一覧では代わりに申請した人を持つ。承認カードの `/due` と行の `due` は、チケットから読んだ期限と同じで、三つの期限のどれもが、どこかの承認カード、承認待ちの一覧、自分の申請の一覧に、時刻としても日の終わりとしても出る。日本語の画面は、ベクタの期限が 0 時ちょうどになる東京の時間帯で、ほかは UTC で値を入れる）、`Lookup` の約束（表ごとに一度、並べ替えて、ID は一つずつ）を確かめる。Node で描き（部品 322,840）、名前の見つからない `lookup` が無いこと、null を受け取る書式の関数が無いこと、例外が無いこと、経路が見せる人に名前があることを確かめる |
+| `TestWorks` | `order` を launch する `purchase` の承認カードに、チケットの三つの処理を渡す。種類の時間帯で書いた時刻に済み、終わったときの値を英語と日本語の文にしたもの（文字列、数、真、rows、nothing）。理由の付いた失敗。時刻の無い、待っている処理。処理が無ければ `/works` は空で、何も launch しない `leave` の承認カードには `/works` が無いこと |
+| `TestAgentSaid` | ステップ `decide` がエージェントに尋ねる `expense` の承認カードに、履歴の行を渡す。最後の申請よりあとにエージェントが答えたことだけを見せること（出し直す前は疑問とその理由、出し直したあとは失敗）。ほかの行は見せず、履歴が無ければ何も見せないこと。`leave` の承認カードには `/agent` が無いこと。オブジェクトでない行は、値を入れるのを止めること |
+| `TestDeadlinesInTheirZone` | 承認カードと一覧の行の期限を、渡した時間帯（`Card.Zone`、`List.Zone`）のオフセットで、チケットと同じ時刻として書くこと。時間帯が無ければ UTC で書くこと。期限が 0 時ちょうどになる東京の時間帯では、横に前の日を書き、UTC では書かないこと。0 時、18 時、0 時の 1 秒あとの `EndOfDay` |
 | `TestReplayVectors` | 人がするイベントの行を、その画面で行う。行の前のチケットで値を入れた画面に、イベントの言うこと（フォーム、承認者が直すフィールド、空にしたフィールド、差し戻す先のステップ、足す承認者、コメント）を入れ、Node でボタンを押し、メッセージを操作に、操作とその人を種類が受けるイベントにする。2,990 行のうち 848 行は画面の物でない。時計 626、flow の答え 82、フィールドを今と同じ値に直す 2（画面は何も変えない物として送る）、画面が送らない物を求める 138（その種類の承認カードにボタンの無いイベント 68、フォームに無いフィールド 16、値を入れて同時に空にするフィールド 12、申請者が入れないフィールド 10、版の無いイベント 10（画面は、見せているチケットの版を送る）、承認カードにボタンの無い所に足す承認者 8、承認者が直さないフィールド 6、申請者にだけ戻す承認カードでの、差し戻す先のステップ 6、行が無くてよい明細を空にする物 2）で、種類はどれも断る。残りが 2,230 回の押下になる（申請をやめる操作は、申請書でも押す）。2,052 回は送られ、ベクタと同じ答えになる（同じイベント 1,984、同じことを別の言い方で言ったイベントが同じ答えになる物 68。ベクタが部分を書かずに、待っている一つの部分に任せる所で、画面が部分の名前を送る物 56 と、ベクタがもう空のフィールドを空にする所で、画面は何も空にしない物 12）。送った 2,052 回のうち 310 回は断られる（`person` 114、`stale` 84、`clock` 40、`limit` 30、`form` 20、`state` 12、`submit` 10）。176 回はボタンの検査で止まり、種類もどれも断る（`form` 106、`comment` 56、`stale` 14）。2 回は、画面が隠すフィールド（`shown when` が成り立たない）に値を入れる行で、画面はそのフィールドだけを除いて行のとおりに送り、種類は行をどれも断る（`form`） |
 | `TestEveryButton` | どの種類も持つ 100 の画面の 336 のボタンを、進んでいるチケット、差し戻されたチケット、二つの一覧で値を入れた画面で押す。イベントを送る 324 は、その名前の操作（操作は 40）を、チケットを入れたパスで作り、POST にはキーが付く。ファイルを開く 12 は断る（`ErrButton`）。新しい申請の申請書で押したチケットのボタンも断る（`ErrContext`）。承認カードの操作は種類に通し、`event` で断られる物は無い |
 | `TestOffered` | 種類の画面 `offered` に、両方の言語で、日とホームのアドレスを入れた物とどちらも入れない物。`/from` と `/home` がそれを持つか null であり、Node で描けること。この画面のファイルの無いパッケージと、一つの言語の分が無いパッケージは、画面なしで読め、`Offered` は `ErrKind` になること |
 | `TestRefusalsWhereTheScreensSayThem` | ベクタの `form` と `comment` の断り 230 を、両方の言語で、種類の申請書と承認カードの `/refused` に入れる（`Set.Refused`）。場所を指す 158（うち 12 は明細の行のフィールド、4 は行の中でフォームが計算する値）は、そのフィールドを持つ画面（少なくとも一つ）ではその横に出て、持たない画面では頭に出る。コメントの 56 はコメントの下に、場所を指さない 16 は頭に出る |
 | `TestWaitingParts` | `/add_approver/parts` が、`active` か `stopped` の部分だけを持つこと。進んでいるチケットの部分に、状態を一つずつ入れて確かめる |
 | `TestDriverSees` | ドライバが見るべき物を見ること：表に無い名前、null を受け取る書式、描かれないボタン |
-| `TestLoad`、`TestLoadRefuses`、`TestTicketPlaces` | `Set` の種類、版、言語。壊した十六の一式を、`Load` が、何がおかしいかを言う文とエラーで断ること（`/refused` に値を持って始まる画面、このパッケージが値を入れない `/refused` のキー、自分の申請の一覧の無い一式、申請者を読むその一覧の行を含む）。申請者を名前で見せるようにした承認カードを読め、値と名前が入ること |
+| `TestLoad`、`TestLoadRefuses`、`TestTicketPlaces` | `Set` の種類、版、言語。壊した二十六の一式を、`Load` が、何がおかしいかを言う文とエラーで断ること（`/refused` に値を持って始まる画面、このパッケージが値を入れない `/refused` のキー、自分の申請の一覧の無い一式、申請者を読むその一覧の行、期限か処理かエージェントが答えたことを持って始まる承認カード、持っていない物を読む `/works` か `/agent` の行を含む）。申請者を名前で見せるようにした承認カードを読め、値と名前が入ること |
 | `TestParseAction`、`TestOperation`、`TestOperationKeys` | メッセージの形。操作、エスケープしたパス、本文の null（何も書いていないコメントは null のまま送り、種類が断る）。3 章の断りのそれぞれ。3.1 のキー |
 | `TestReadPlace` | `ReadPlace` が読む場所と読まない場所。それぞれを `Refusal.Place` と `Refusal.Field` がどう読むか |
 | `TestFillRefuses`、`TestWithOldNames`、`TestAssets` | 値を入れるときのエラー。四つの名前。二つのファイル、その型と ETag、ファイルシステムとしての `Assets`（`testing/fstest`） |

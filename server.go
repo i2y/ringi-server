@@ -35,6 +35,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -42,6 +43,7 @@ import (
 	"net/url"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -354,6 +356,49 @@ func (s *Server) kindOf(name string, version int) (*kind, error) {
 		}
 	}
 	return nil, fmt.Errorf("no package has the kind %s at version %d, which a ticket keeps", name, version)
+}
+
+// Unpackaged answers the tickets the store keeps of a version no package of the server has, counted
+// by kind, version and status (DESIGN 11): a ticket is shown and moved by the code of its own
+// version, so none of them could be opened or answered. serve refuses to start while there is any
+// (UnpackagedError); a program that starts the server itself asks it the same before it serves.
+func (s *Server) Unpackaged(ctx context.Context) ([]TicketCount, error) {
+	kept, err := s.cfg.Store.KeptVersions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading the versions the store keeps tickets of: %w", err)
+	}
+	var out []TicketCount
+	for _, c := range kept {
+		if _, err := s.kindOf(c.Kind, c.Version); err != nil {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// UnpackagedError is the refusal to serve while the store keeps tickets of a version no package
+// has (Server.Unpackaged): its error names each version, with how many tickets of each status.
+type UnpackagedError struct {
+	Counts []TicketCount
+}
+
+func (e *UnpackagedError) Error() string {
+	var b strings.Builder
+	b.WriteString("the store keeps tickets of versions no package has: ")
+	for i, c := range e.Counts {
+		at := KindVersion{Kind: c.Kind, Version: c.Version}
+		if i == 0 || at != (KindVersion{Kind: e.Counts[i-1].Kind, Version: e.Counts[i-1].Version}) {
+			if i > 0 {
+				b.WriteString("); ")
+			}
+			fmt.Fprintf(&b, "%s v%d (", c.Kind, c.Version)
+		} else {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%d %s", c.N, c.Status)
+	}
+	b.WriteString("). A ticket is shown and moved by the code of its own version: put the package of each version back")
+	return b.String()
 }
 
 // Current answers the version of a kind a new request takes at a time: its highest version in

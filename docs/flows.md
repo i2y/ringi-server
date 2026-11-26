@@ -14,9 +14,9 @@ version](types.md#change-the-rules-of-a-type-in-use). Japanese: [flows.ja.md](fl
 Temporal is a server that carries out the steps of some work one by one, and keeps a record of each. When a
 program or a computer stops, the work goes on from where it was.
 
-Either way, what becomes of the work does not come back to the server of the requests. The page of a request
-shows neither the number of its order nor a failure. To let the requester know, send them a mail from the work,
-for example.
+Either way, the page of the request shows what became of the work, under "After approval": not started yet,
+started, and then done, with what it ended with (the number of an order, say), or failed, with why. Work on
+Temporal tells the server by itself. A function that asks another system tells it with `WorkEnded`, as in step 3.
 
 ## Ask another system
 
@@ -96,11 +96,15 @@ import (
 	server "github.com/i2y/ringi-server"
 )
 
-// Webhook asks another system for the work after an approval.
-type Webhook struct{ URL string }
+// Webhook asks another system for the work after an approval, and tells the server the number the system
+// answers.
+type Webhook struct {
+	URL    string
+	Server *server.Server // Started gives it
+}
 
 // Launch asks for one piece of work.
-func (w Webhook) Launch(ctx context.Context, l server.Launch) error {
+func (w *Webhook) Launch(ctx context.Context, l server.Launch) error {
 	var args []server.NamedValue
 	if err := json.Unmarshal(l.Args, &args); err != nil {
 		return err
@@ -127,11 +131,19 @@ func (w Webhook) Launch(ctx context.Context, l server.Launch) error {
 	if err != nil {
 		return err // the server calls again later
 	}
-	res.Body.Close()
+	defer res.Body.Close()
 	if res.StatusCode >= 300 {
 		return fmt.Errorf("the system answered %s", res.Status)
 	}
-	return nil
+	// the number of the order the system answers, which the page of the request shows
+	var answer struct {
+		Number string `json:"number"`
+	}
+	if json.NewDecoder(res.Body).Decode(&answer) != nil || answer.Number == "" || w.Server == nil {
+		return nil
+	}
+	_, err = w.Server.WorkEnded(ctx, l.Key, server.WorkEnd{Outputs: []server.NamedValue{server.NamedText("number", answer.Number)}})
+	return err
 }
 ```
 
@@ -142,22 +154,39 @@ func (w Webhook) Launch(ctx context.Context, l server.Launch) error {
 | `Key` | The number of this message. It is the same when the message is sent again |
 | `Kind`, `Ticket` | The request type, and the ID of the request |
 
-Add `Flows` to `Parts` in `approvals.go`.
+`WorkEnded` tells the server what became of the work: `Outputs` are what it ended with (`NamedText`,
+`NamedNumber` and `NamedTruth` make them), and `Failed` and `Reason` say that it failed, and why. A system that
+finishes the work later can give the key back to a route of your own, which calls `WorkEnded`
+(`server.ParseEffectKey` reads the key from its text). [Call the API from a program](api.md#call-it-from-a-program)
+says how a program signs in to such a route.
+
+Add `Flows` to `Parts` in `approvals.go`, and give it the server in `Started`.
 
 ```go title="approvals.go" hl_lines="3"
 		Organization: Organization(),
 		Notifier:     &LogNotifier{Log: log, Lang: "en"},
-		Flows:        Webhook{URL: "http://127.0.0.1:9000"},
+		Flows:        &Webhook{URL: "http://127.0.0.1:9000"},
 	}, nil
+```
+
+```go title="approvals.go" hl_lines="5 6 7"
+func Started(cfg server.Config, srv *server.Server) {
+	if n, ok := cfg.Notifier.(*LogNotifier); ok {
+		n.Server = srv
+	}
+	if w, ok := cfg.Flows.(*Webhook); ok {
+		w.Server = srv
+	}
+}
 ```
 
 ### 4. Try it
 
-In place of the system for orders, write a program that only prints what it is asked.
+In place of the system for orders, write a program that prints what it is asked, and answers a number.
 
 ```go title="cmd/orders/main.go"
-// orders is a server that only prints what it is asked: it stands in for the system for orders, on your own
-// computer.
+// orders is a server that prints what it is asked, and answers the number of an order: it stands in for the
+// system for orders, on your own computer.
 package main
 
 import (
@@ -165,12 +194,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sync/atomic"
 )
 
 func main() {
+	var orders atomic.Int64
 	log.Fatal(http.ListenAndServe("127.0.0.1:9000", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		fmt.Printf("%s %s\nIdempotency-Key: %s\n%s\n", r.Method, r.URL.Path, r.Header.Get("Idempotency-Key"), body)
+		fmt.Fprintf(w, `{"number":"ORD-%d"}`, 1000+orders.Add(1))
 	})))
 }
 ```
@@ -192,6 +224,13 @@ as the head of Sales. The terminal of `orders` prints what it is asked.
 POST /order
 Idempotency-Key: 01M89PB269CQ4GTPETPAEMR9QQ/1/15
 {"amount":120000,"purpose":"A laptop for the new member","request_id":"01M89PB269CQ4GTPETPAEMR9QQ"}
+```
+
+The page of the request says under "After approval" that `order` is done, with `number: ORD-1001`. The log of
+the server of the requests says it too.
+
+```
+level=INFO msg="work ended" key=01M89PB269CQ4GTPETPAEMR9QQ/1/15 flow=order failed=false
 ```
 
 When `Launch` returns an error, the server calls it again, further and further apart, until it succeeds. The same
@@ -242,7 +281,9 @@ level=INFO msg=paid request=01M89KP9C3A4YDKERR3S1Y8VY0 requester=s1201 amount=48
 level=INFO msg=told request=01M89KP9C3A4YDKERR3S1Y8VY0 text="Request 01M89KP9C3A4YDKERR3S1Y8VY0 was paid: PAY-01M89KP9C3A4YDKERR3S1Y8VY0"
 ```
 
-Nothing is paid. These functions only write to the log, and you put your own company's work in their place.
+The page of the request says under "After approval" that `pay` is done, with the reference of the payment
+(`reference: PAY-…`). Nothing is paid. These functions only write to the log, and you put your own company's work
+in their place.
 
 ### The three files of the work
 
@@ -436,10 +477,10 @@ When you add more kinds of work, add the worker of each to `Workers` in `flows.g
 | What happens | What becomes of it |
 |---|---|
 | The worker is not running | The work is kept on Temporal, and starts when the worker does. The request has been approved |
-| Temporal is not running | The server of the requests tries again, further and further apart, until it can start the work. The request has been approved. When the server of the requests starts, Temporal has to be running |
+| Temporal is not running | The server of the requests tries again, further and further apart, until it can start the work. The request has been approved, and its page says the work could not be started and is tried again. When the server of the requests starts, Temporal has to be running |
 | The server of the requests stopped right after it started the work | Started again, it starts the work with the same key. Temporal runs the work of one key only once |
 | A step failed | It is tried again as `retry` of the `.flow` file says |
-| It failed every time it was tried | The work ends as failed. The request stays approved, and the server of the requests is not told |
+| It failed every time it was tried | The work ends as failed. The request stays approved, and its page says the work failed, with the message of the error |
 
 Work that failed to the end can be found on Temporal's own pages, or with this command.
 
@@ -447,11 +488,12 @@ Work that failed to the end can be found on Temporal's own pages, or with this c
 temporal workflow list --query 'ExecutionStatus="Failed"'
 ```
 
-When the cause is put right, it can be run again from the first step. With `-w`, give the `WorkflowId` the
-command above prints.
+When the cause is put right, it can be run again from the first step. Run again the run that started the work
+and tells the server what became of it: its `WorkflowId` is the one the command above prints, with `/launch`
+after it. The page of the request then says what became of the work this time.
 
 ```sh
-temporal workflow reset -w '01M89KP9C3A4YDKERR3S1Y8VY0/1/9' --type FirstWorkflowTask --reason 'The accounts system is back'
+temporal workflow reset -w '01M89KP9C3A4YDKERR3S1Y8VY0/1/9/launch' --type FirstWorkflowTask --reason 'The accounts system is back'
 ```
 
 The function of a step may be called again when its call was cut off without knowing whether it succeeded.

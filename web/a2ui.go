@@ -16,6 +16,7 @@ import (
 
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/screens"
+	"github.com/i2y/ringi-server/screens/page"
 )
 
 // asset serves a file of the newest package's screens.
@@ -270,7 +271,15 @@ func (h *Handler) fill(ctx context.Context, p server.Person, t *shown, screen, l
 			return screens.Screen{}, err
 		}
 		if screen == "card" {
-			return t.set.Card(screens.Card{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Surface: surface, Serving: h.serving(refused)})
+			records, err := recordsOf(t)
+			if err != nil {
+				return screens.Screen{}, err
+			}
+			works, err := h.works(ctx, p, t.id)
+			if err != nil {
+				return screens.Screen{}, err
+			}
+			return t.set.Card(screens.Card{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Surface: surface, Zone: h.srv.Zone(t.kind, t.version), Records: records, Works: works, Serving: h.serving(refused)})
 		}
 		return t.set.Form(screens.Form{Kind: t.kind, Language: lang, Ticket: t.ticket, Can: can, Names: names, Surface: surface, Serving: h.serving(refused)})
 	}
@@ -279,6 +288,23 @@ func (h *Handler) fill(ctx context.Context, p server.Person, t *shown, screen, l
 		return screens.Screen{}, err
 	}
 	return t.set.History(screens.History{Kind: t.kind, Language: lang, Ticket: t.ticket, Records: records, Names: names, Surface: surface})
+}
+
+// works answers the work a ticket launched as the screens read it (Server.Works).
+func (h *Handler) works(ctx context.Context, p server.Person, ticket string) ([]screens.Work, error) {
+	ws, err := h.srv.Works(ctx, p, ticket)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]screens.Work, 0, len(ws))
+	for _, w := range ws {
+		sw := screens.Work{Flow: w.Flow, State: w.State, At: w.At, Reason: w.Reason}
+		for _, o := range w.Outputs {
+			sw.Outputs = append(sw.Outputs, screens.Output{Name: o.Name, Value: o.Value})
+		}
+		out = append(out, sw)
+	}
+	return out, nil
 }
 
 // recordsOf answers a ticket's history as the screens read it: each line, when it was kept.
@@ -335,11 +361,12 @@ func (h *Handler) ticketScreen(w http.ResponseWriter, r *http.Request, p server.
 	}
 }
 
-// list serves a list of the kind's tickets: those that wait for the person (list_waiting), or
-// their own requests (list_mine), each in its screen, the newest first, a page of ?limit= of them
-// (1 to 100, 50 when it is not given; 400 otherwise) after ?before= (the last ticket of the page
-// before), read from the store a page at a time (listPage).
-func (h *Handler) list(mine bool) func(http.ResponseWriter, *http.Request, server.Person) {
+// list serves a list of the kind's tickets: those that wait for the person (list_waiting), their
+// own requests (list_mine), or all the requests of the kind they see for the kind (list_tickets),
+// each in its screen, the newest first, a page of ?limit= of them (1 to 100, 50 when it is not given;
+// 400 otherwise) after ?before= (the last ticket of the page before), read from the store a page at
+// a time (listPage). of is page.ListWaiting, page.ListMine or page.ListAll.
+func (h *Handler) list(of string) func(http.ResponseWriter, *http.Request, server.Person) {
 	return func(w http.ResponseWriter, r *http.Request, p server.Person) {
 		kind := r.PathValue("kind")
 		set := h.newestOf(kind)
@@ -362,7 +389,7 @@ func (h *Handler) list(mine bool) func(http.ResponseWriter, *http.Request, serve
 			}
 			limit = n
 		}
-		sc, err := h.listPage(r.Context(), p, set, kind, lang, mine, r.URL.Query().Get("before"), limit)
+		sc, err := h.listPage(r.Context(), p, set, kind, lang, of, r.URL.Query().Get("before"), limit)
 		if err == nil {
 			err = writeScreen(w, r, set, sc)
 		}
@@ -372,18 +399,24 @@ func (h *Handler) list(mine bool) func(http.ResponseWriter, *http.Request, serve
 	}
 }
 
-// listPage fills a page of a list of the kind's tickets for the person (list_waiting; list_mine
-// when mine), the newest first: limit of them after before (the last ticket of the page before; ""
-// for the first), and whether the list holds more after them (/more), which it knows by reading one
-// ticket more than the page holds.
-func (h *Handler) listPage(ctx context.Context, p server.Person, set *screenSet, kind, lang string, mine bool, before string, limit int) (screens.Screen, error) {
+// listPage fills a page of a list of the kind's tickets for the person (list_waiting, list_mine or
+// list_tickets, as of says), the newest first: limit of them after before (the last ticket of the
+// page before; "" for the first), and whether the list holds more after them (/more), which it knows
+// by reading one ticket more than the page holds. The list of all requests (page.ListAll) is the
+// screen `list` under the surface "all" (<kind>.list.all), so that its button of the next page reads
+// on in it (action).
+func (h *Handler) listPage(ctx context.Context, p server.Person, set *screenSet, kind, lang, of, before string, limit int) (screens.Screen, error) {
 	var tickets []json.RawMessage
 	var err error
-	fill := set.List
-	if mine {
+	fill, surface := set.List, ""
+	switch of {
+	case page.ListMine:
 		fill = set.Mine
 		tickets, err = h.srv.Mine(ctx, p, server.MineQuery{Kind: kind, Before: before, Limit: limit + 1})
-	} else {
+	case page.ListAll:
+		surface = allSurface
+		tickets, err = h.srv.Tickets(ctx, p, server.TicketsQuery{Kind: kind, Before: before, Limit: limit + 1})
+	default:
 		tickets, err = h.srv.Waiting(ctx, p, server.WaitingQuery{Kind: kind, Before: before, Limit: limit + 1})
 	}
 	if err != nil {
@@ -396,8 +429,11 @@ func (h *Handler) listPage(ctx context.Context, p server.Person, set *screenSet,
 	if tickets == nil {
 		tickets = []json.RawMessage{}
 	}
-	return fill(screens.List{Kind: kind, Language: lang, Tickets: tickets, More: more, Names: h.Lookup(ctx, p, "")})
+	return fill(screens.List{Kind: kind, Language: lang, Tickets: tickets, More: more, Names: h.Lookup(ctx, p, ""), Zone: h.kindZone(kind), Surface: surface})
 }
+
+// allSurface is the surface the list of all the requests of a kind is shown under (listPage).
+const allSurface = "all"
 
 // actionReply is what an action answers.
 type actionReply struct {
@@ -497,12 +533,20 @@ func (h *Handler) action(w http.ResponseWriter, r *http.Request, p server.Person
 	if op.Method == http.MethodGet && (op.ID == "list_waiting" || op.ID == "list_mine") {
 		// A list's next page: the page after the last ticket of the page shown, in place of it, of
 		// the list's kind (list_mine sends it; list_waiting lists every kind's, and the screen is of
-		// one), as many as a list's first page shows when it is not given a limit.
+		// one), as many as a list's first page shows when it is not given a limit. The screen `list`
+		// under the surface "all" is the list of all the requests of the kind (listPage).
 		if k := op.Query.Get("kind"); k != "" && k != kind {
 			invalid("kind: the list is of " + kind + ", not " + k)
 			return
 		}
-		sc, err := h.listPage(ctx, p, set, kind, lang, op.ID == "list_mine", op.Query.Get("before"), server.DefaultPage)
+		of := page.ListWaiting
+		switch {
+		case op.ID == "list_mine":
+			of = page.ListMine
+		case screen == "list" && surface == allSurface:
+			of = page.ListAll
+		}
+		sc, err := h.listPage(ctx, p, set, kind, lang, of, op.Query.Get("before"), server.DefaultPage)
 		if err != nil {
 			h.fail(w, "the list of "+kind, err)
 			return

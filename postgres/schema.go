@@ -221,6 +221,24 @@ update {s}.moves m set kind = t.kind, version = t.version from {s}.tickets t whe
 alter table {s}.uploads add column key text not null default '';
 create unique index uploads_key on {s}.uploads (by_person, key) where key <> '' and state in ('open', 'held');
 `,
+	// 11: what the work a launch started said became of it (Store.KeepOutcome); null until it says.
+	`
+alter table {s}.todo add column outcome json;
+alter table {s}.todo add column outcome_at timestamptz;
+`,
+	// 12: when each ticket was made (the time of its first move), which orders the tickets of a kind
+	// (Store.Tickets). The times of the tickets made before it are filled by step 13.
+	`
+alter table {s}.tickets add column made timestamptz;
+`,
+	// 13 rewrites rows (DESIGN 4.3): each ticket made before step 12 is given the time of its first
+	// move, and the tickets of a kind are indexed by it.
+	`
+update {s}.tickets t set made = coalesce((select m.at from {s}.moves m where m.ticket = t.id and m.number = 1), t.updated)
+where t.made is null;
+alter table {s}.tickets alter column made set not null;
+create index tickets_list on {s}.tickets (kind, made desc, id collate "C" desc);
+`,
 }
 
 // peopleOf is the people of the ticket t, sorted as Go sorts strings.
@@ -236,7 +254,7 @@ var queries = map[string]string{
 	"begun": `select digest, ticket, attempt, at from {s}.begun where person = $1 and key = $2`,
 	"renew": `insert into {s}.begun (person, key, digest, ticket, attempt, at) values ($1, $2, $3, $4, $5, $6)
 	          on conflict (person, key) do update set digest = excluded.digest, ticket = excluded.ticket, attempt = excluded.attempt, at = excluded.at`,
-	"new":    `insert into {s}.tickets (id, kind, version, status, number, body, updated, waiting_since) values ($1, $2, $3, $4, 1, $5::json, $6, $7) on conflict (id) do nothing`,
+	"new":    `insert into {s}.tickets (id, kind, version, status, number, body, updated, waiting_since, made) values ($1, $2, $3, $4, 1, $5::json, $6, $7, $6) on conflict (id) do nothing`,
 	"update": `update {s}.tickets set body = $2::json, status = $3, number = number + 1, updated = $4, waiting_since = $6 where id = $1 and number = $5`,
 	// A move is kept with its ticket's kind and version, which the ticket keeps from its first move.
 	"move": `insert into {s}.moves (ticket, number, at, person, key, event, effects, organization, kind, version, via)
@@ -283,6 +301,14 @@ var queries = map[string]string{
 	                (select b.since, b.ticket collate "C" from {s}.people b where b.person = $1 and b.ticket = $3 and b.own))
 	         order by p.since desc, p.ticket collate "C" desc
 	         limit $4`,
+	// The tickets of some versions of a kind are read by the index tickets_list.
+	"tickets": `select t.id, t.kind, t.version, t.status, t.number, t.body::text, t.updated, ` + peopleOf + `, t.waiting_since
+	            from {s}.tickets t
+	            where t.kind = $1 and t.version = any($2::integer[]) and ($5 = '' or t.status = $5)
+	              and ($3 = '' or (t.made, t.id collate "C") <
+	                   (select b.made, b.id collate "C" from {s}.tickets b where b.id = $3 and b.kind = $1 and b.version = any($2::integer[])))
+	            order by t.made desc, t.id collate "C" desc
+	            limit $4`,
 	// The person's own are read by the index people_mine and counted by their tickets' kinds and
 	// statuses: a row comes back for each pair, with how many of those back with their requester were
 	// sent back, and no ticket's JSON.
@@ -303,9 +329,10 @@ var queries = map[string]string{
 	                   where done_at is null and try_at <= $1 and (lease_until is null or lease_until <= $1)
 	                   order by seq limit $3 for update skip locked) d
 	             where t.id = d.id
-	             returning t.seq, t.id, t.ticket, t.what, t.body::text, t.created, t.try_at, t.tries, t.last_error, t.done_at`,
-	"todo_item":  `select seq, id, ticket, what, body::text, created, try_at, tries, last_error, done_at from {s}.todo where id = $1`,
-	"todo_list":  `select seq, id, ticket, what, body::text, created, try_at, tries, last_error, done_at from {s}.todo where ticket = $1 order by seq`,
+	             returning t.seq, t.id, t.ticket, t.what, t.body::text, t.created, t.try_at, t.tries, t.last_error, t.done_at, t.outcome::text, t.outcome_at`,
+	"todo_item":  `select seq, id, ticket, what, body::text, created, try_at, tries, last_error, done_at, outcome::text, outcome_at from {s}.todo where id = $1`,
+	"todo_list":  `select seq, id, ticket, what, body::text, created, try_at, tries, last_error, done_at, outcome::text, outcome_at from {s}.todo where ticket = $1 order by seq`,
+	"outcome":    `update {s}.todo set outcome = $2::json, outcome_at = $3 where id = $1`,
 	"done":       `update {s}.todo set done_at = $2, lease_until = null where id = $1`,
 	"retry":      `update {s}.todo set tries = tries + 1, try_at = $2, last_error = $3, lease_until = null where id = $1`,
 	"save_org":   `insert into {s}.organizations (id, data, at) values ($1, $2::json, $3) on conflict (id) do update set seq = default, at = excluded.at`,

@@ -437,7 +437,7 @@ func (w words) adminField(f string) string {
 	}
 	return f
 }
-func (w words) AdminImport() string   { return w.t("Import", "取り込む") }
+func (w words) AdminImport() string { return w.t("Import", "取り込む") }
 func (w words) AdminLocksOut() string {
 	return w.t("After this import, the organization in effect today does not let you import the organization's data: you could not check or import data again, nor undo this import yourself.",
 		"取り込むと、今日の組織では、あなたは組織のデータを取り込めなくなります。自分でデータを確かめ直すことも、この取り込みを元に戻すこともできなくなります。")

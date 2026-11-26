@@ -44,6 +44,7 @@
             "comment": false
           },
           "upload": null,
+          "file_names": {},
           "find": null
         }
       }
@@ -639,6 +640,18 @@
             "label": "見積書",
             "value": {
               "@path": "/form/quote"
+            },
+            "name": {
+              "@call": "lookup",
+              "catalogId": "https://forms.example.test/a2ui/catalog.json",
+              "args": {
+                "value": {
+                  "@path": "/form/quote"
+                },
+                "table": {
+                  "@path": "/file_names"
+                }
+              }
             },
             "upload": {
               "@path": "/upload"

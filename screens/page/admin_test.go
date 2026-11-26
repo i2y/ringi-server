@@ -164,7 +164,7 @@ func TestAdminPages(t *testing.T) {
 
 		// a draft: its difference, and the import; a draft of the latest's own data has no button
 		d := &AdminDraft{ID: "d1", Digest: "x1", Source: "upload", At: "2026-11-16 10:00", Action: "/pages/admin/organization/drafts/d1",
-			Days:    []AdminDay{{Day: "2026-04-01", When: "now", Change: "changed", People: AdminCount{Added: 1, Changed: 2}, Added: []AdminPerson{{ID: "e9", Name: evil}},
+			Days: []AdminDay{{Day: "2026-04-01", When: "now", Change: "changed", People: AdminCount{Added: 1, Changed: 2}, Added: []AdminPerson{{ID: "e9", Name: evil}},
 				Changed: []AdminPerson{{ID: "e1", Name: "Alice", Fields: []string{"email"}}, {ID: "e2"}}}},
 			Proxies: AdminCount{Removed: 1}}
 		pg, err = p.AdminPage(Admin{Language: lang, What: AdminDraftPage, Now: now, Draft: d})

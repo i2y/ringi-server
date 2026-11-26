@@ -1235,6 +1235,10 @@ func TestScreensOverHTTP(t *testing.T) {
 		if r.Threw != "" {
 			t.Errorf("%s: node: %s", whats[i].what, r.Threw)
 		}
+		// the vectors' tickets name files no store keeps (contract.pdf): the server names the files
+		// a person may open alone, and a screen shows a file it has no name of by its ID (the names
+		// of files kept: TestFileNamesOnThePages)
+		r.Missing = slices.DeleteFunc(r.Missing, func(m []any) bool { return len(m) > 0 && m[0] == "/file_names" })
 		if len(r.Missing) > 0 {
 			missing++
 			if missing <= 10 {

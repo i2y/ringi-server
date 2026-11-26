@@ -336,9 +336,12 @@ type schema struct {
 	props    map[string]*schema
 	required []string
 	closed   bool
-	items    *schema
-	oneOf    []*schema
-	date     bool
+	// extra is what a key past properties holds, where additionalProperties is a schema (a map of
+	// the framework's own answers: the counts of a draft); nil where it is true or false.
+	extra *schema
+	items *schema
+	oneOf []*schema
+	date  bool
 	// min and max are a number's range (minimum, maximum), as written; "" for none.
 	min, max string
 	ref      string
@@ -391,8 +394,10 @@ func (a *api) compile(raw json.RawMessage, where string) (*schema, error) {
 			}
 		case "additionalProperties":
 			var b bool
-			if err = json.Unmarshal(v, &b); err == nil {
+			if json.Unmarshal(v, &b) == nil {
 				s.closed = !b
+			} else {
+				s.extra, err = a.compile(v, where+"{}")
 			}
 		case "items":
 			s.items, err = a.compile(v, where+"[]")
@@ -487,6 +492,9 @@ func (s *schema) resolveAll(seen map[*schema]bool) error {
 		if err := o.resolveAll(seen); err != nil {
 			return err
 		}
+	}
+	if err := s.extra.resolveAll(seen); err != nil {
+		return err
 	}
 	return s.items.resolveAll(seen)
 }
@@ -589,6 +597,9 @@ func (s *schema) check(v any, path string, ranged bool) error {
 		sort.Strings(keys)
 		for _, k := range keys {
 			p, ok := s.props[k]
+			if !ok && s.extra != nil {
+				p, ok = s.extra, true
+			}
 			if !ok {
 				if s.closed {
 					return shapeErr(path, "%q is not one of its fields", k)

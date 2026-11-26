@@ -20,8 +20,9 @@ API の操作は、いつも、だれか一人の操作です。サーバーが�
 | `-dev-login` のサーバー | 試用のログインのページで選んだ人（クッキー） |
 | 会社のログインを使うサーバー | ログインした人（ブラウザのクッキー） |
 | 自分で組み立てたサーバー | 自分で書いた方法で見つけた人 |
+| どれでも、`-api-keys` を付けたとき | プログラムがヘッダー `Authorization` に付けた鍵の人。鍵の無いリクエストは、上のとおりに見つける |
 
-会社のログインを使うサーバーの API は、人がログインしないプログラムからは、そのままでは呼べません。プログラムに使わせるには、サーバーを自分で組み立てて、プログラムのトークンを受け付けます（[プログラムのトークンを受け付ける](embedding.ja.md#2-プログラムのトークンを受け付ける)）。
+プログラムには、ログインする人がいません。サーバーを `-api-keys` を付けて起動し、プログラムに鍵を渡します（[プログラムから呼ぶ](#プログラムから呼ぶ)）。
 
 ここからは、一つ目の方法で試します。プロジェクトのディレクトリで、フラグなしで起動します。
 
@@ -134,6 +135,7 @@ curl -s -w ' %{http_code}\n' localhost:8080/tickets/$TICKET -H 'X-Person: s1202'
 |---|---|
 | 申請できる種類を並べる | `GET /requests` |
 | 自分を待っている申請、自分の申請を並べる | `GET /waiting`、`GET /mine` |
+| 受け持つ申請の種類の、すべての申請を並べる | `GET /tickets?kind={kind}` |
 | 申請と履歴を読む | `GET /tickets/{id}` |
 | 申請する、再申請する | `POST /requests/{kind}/tickets`、`POST /requests/{kind}/tickets/{id}/resubmit` |
 | 承認者が入力する項目を書く | `POST /requests/{kind}/tickets/{id}/edit` |
@@ -148,6 +150,27 @@ curl -s -w ' %{http_code}\n' localhost:8080/tickets/$TICKET -H 'X-Person: s1202'
 | ファイルを添付する | `POST /files`（[ページと画面の README](../web/README.ja.md#curl-で試す)に例がある） |
 
 本文に書くものは `requests/openapi.json` にあります。どの申請の種類も使わない操作は、そこにはありません。だれがどれをできるかは、ページと同じです。
+
+サーバーは、API の全体を `GET /openapi.json` で、サインインしている人に見せます。サーバーが持つすべての申請の種類の操作（いちばん新しい版の物）と、フレームワークが自分で足す操作（ファイルの添付、[種類のすべての申請の一覧](#受け持つ種類のすべての申請を並べる)、[管理](#管理する)）が入っています。サーバーを呼ぶプログラムは、ここから読めます。
+
+```sh
+curl -s localhost:8080/openapi.json -H 'X-Person: s1201' | jq -r '.paths | keys[] | select(test("^/admin|/files|^/tickets$"))'
+```
+
+```
+/admin/kinds
+/admin/kinds/{kind}/versions/{version}
+/admin/organization
+/admin/organization/drafts
+/admin/organization/drafts/{id}
+/admin/organization/imports
+/admin/records
+/admin/records.csv
+/files
+/files/{id}
+/tickets
+/tickets/{ticket}/files/{id}
+```
 
 ## 応答
 
@@ -167,12 +190,12 @@ curl -s -w ' %{http_code}\n' localhost:8080/tickets/$TICKET -H 'X-Person: s1202'
 
 ## 一覧の続きを読む
 
-`GET /waiting` と `GET /mine` は、新しい順に返します。`limit` を付けなければ、一度に 50 件までです。
+`GET /waiting`、`GET /mine`、`GET /tickets` は、新しい順に返します。`limit` を付けなければ、一度に 50 件までです。
 
 | 引数 | 意味 |
 |---|---|
-| `kind` | 申請の種類を一つに絞る |
-| `status` | 状態を一つに絞る（`/mine` だけ） |
+| `kind` | 申請の種類を一つに絞る（`/tickets` には要る） |
+| `status` | 状態を一つに絞る（`/mine` と `/tickets`） |
 | `limit` | 一度に返す件数（1〜100） |
 | `before` | この番号の申請より古いものを返す |
 
@@ -185,6 +208,22 @@ curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: s1201' | jq -c '{shown: [.ti
 ```
 {"shown":[["01M89M0RBPS2H5M8HF082BPSN9","purchase","in_progress"]],"more":false}
 ```
+
+## 受け持つ種類のすべての申請を並べる
+
+`GET /tickets?kind=` は、ある申請の種類の申請を、だれが出した物でもすべて並べます。並べてもらえるのは、決まり（gate）がまとめて見ることを許す人です。チュートリアルのプロジェクトでは、その種類を受け持つ部の人で、購買の申請は総務部が受け持ちます（`owner general_affairs`）。
+
+```sh
+curl -s 'localhost:8080/tickets?kind=purchase' -H 'X-Person: g1201' | jq -c '{shown: [.tickets[] | [.id, .requester, .status]], more}'
+curl -s 'localhost:8080/tickets?kind=purchase' -H 'X-Person: s1202' | jq -c '{shown: [.tickets[] | [.id, .requester, .status]], more}'
+```
+
+```
+{"shown":[["01M89M0RBPS2H5M8HF082BPSN9","s1201","in_progress"]],"more":false}
+{"shown":[],"more":false}
+```
+
+営業担当 2（s1202）には、空の一覧が返ります。自分の申請と、自分が承認を頼まれた申請は見られますが、ほかの申請は見られません。だれがすべてを見られるかは、gate に書いてあります（[だれが何をできるかを決める](permissions.ja.md)）。この操作はフレームワークが自分で足す物なので、`GET /openapi.json` にあり、`requests/openapi.json` にはありません。
 
 ## フォームの途中の値を計算させる
 
@@ -271,3 +310,49 @@ curl -s -w ' %{http_code}\n' -X POST localhost:8080/requests/purchase/tickets -H
 ```
 
 進行中の申請は、そのまま最後まで進みます。このサーバーは何もかもメモリに置いているので、起動し直すと元に戻ります。
+
+## プログラムから呼ぶ
+
+プログラムには、ログインする人がいません。また、会社のログインを使うサーバーは `X-Person` を受け付けません。そこで、プログラムごとに鍵を渡します。鍵をヘッダー `Authorization` に付けたリクエストは、その鍵の人の操作になり、役割は鍵の行に書いたものになります。サーバーが持つのは鍵の SHA-256 だけで、`-api-keys` に渡すファイルに書きます。
+
+鍵を作ります。一行目に出るのが鍵で、プログラムに渡します。二行目はその SHA-256 で、サーバーに渡します。
+
+```sh
+KEY=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')
+echo "$KEY"
+printf %s "$KEY" | shasum -a 256 | cut -d ' ' -f 1
+```
+
+Linux では、`shasum -a 256` の代わりに `sha256sum` も使えます。
+
+ファイルには、鍵ごとに一行ずつ、鍵の人の ID、鍵の SHA-256、役割があればコンマで区切った役割を、空白で区切って書きます。`#` で始まる語から行の終わりまでは、コメントです。この鍵は、営業担当 1 の物にします。
+
+```sh
+printf 's1201 %s # 購買のシステム\n' "$(printf %s "$KEY" | shasum -a 256 | cut -d ' ' -f 1)" > api-keys.txt
+```
+
+このファイルを付けて、サーバーを起動します。鍵は、人がどの方法でログインするサーバーでも同じように使えます。ここでは、このページのほかの所と同じく、`X-Person` も受け付けます。
+
+```sh
+go run ./cmd/server -api-keys api-keys.txt
+```
+
+```
+level=INFO msg="programs may call the API with the keys of -api-keys" keys=1
+```
+
+プログラムは、鍵を付けて送ります。ファイルに無い鍵には、401 を返します。
+
+```sh
+curl -s -X POST localhost:8080/requests/purchase/tickets -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-4' \
+  -d '{"form": {"amount": 120000, "purpose": "新しいメンバーのノートパソコン"}}' | jq -c '.ticket | {requester, status, stage}'
+curl -s -w ' %{http_code}\n' localhost:8080/mine -H 'Authorization: Bearer not-a-key'
+```
+
+```
+{"requester":"s1201","status":"in_progress","stage":"manager"}
+{"error":"no one is signed in"} 401
+```
+
+鍵がその人の物として通るのは、その日の組織のデータにその人がいるあいだだけです。組織を離れた人の鍵にも、401 を返します。プログラムができるのは、鍵の人ができることだけです。プログラムに専用の人を持たせるなら、[社員の代わりに申請する](#社員の代わりに申請する)ときと同じく、組織のデータに足します。サーバーは、ファイルを起動のときに読みます。鍵を替えるときは、新しい鍵の行を足して起動し直し、プログラムが新しい鍵を使うようになったら、古い行を消して、もう一度起動し直します。

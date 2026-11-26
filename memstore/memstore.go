@@ -343,6 +343,48 @@ func (s *Store) Mine(_ context.Context, person string, q server.MineQuery) ([]se
 	return out, nil
 }
 
+// Tickets reads the tickets of some versions of a kind, the newest first: by when they were made (the
+// time of their first move), then by ID.
+func (s *Store) Tickets(_ context.Context, q server.TicketsQuery) ([]server.TicketRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	type made struct {
+		id string
+		at time.Time
+	}
+	of := func(t *server.TicketRecord) bool { return t.Kind == q.Kind && slices.Contains(q.Versions, t.Version) }
+	madeAt := func(t *server.TicketRecord) time.Time {
+		if ms := s.moves[t.ID]; len(ms) > 0 {
+			return ms[0].At
+		}
+		return t.Updated
+	}
+	var all []made
+	for id, t := range s.tickets {
+		if of(t) && (q.Status == "" || t.Status == q.Status) {
+			all = append(all, made{id, madeAt(t)})
+		}
+	}
+	newer := func(a, b made) bool { return a.at.After(b.at) || a.at.Equal(b.at) && a.id > b.id }
+	sort.Slice(all, func(i, j int) bool { return newer(all[i], all[j]) })
+	if q.Before != "" {
+		t := s.tickets[q.Before]
+		if t == nil || !of(t) {
+			return nil, nil
+		}
+		before := made{q.Before, madeAt(t)}
+		all = slices.DeleteFunc(all, func(m made) bool { return !newer(before, m) })
+	}
+	if q.Limit > 0 && len(all) > q.Limit {
+		all = all[:q.Limit]
+	}
+	out := make([]server.TicketRecord, len(all))
+	for i, m := range all {
+		out[i] = s.record(s.tickets[m.id])
+	}
+	return out, nil
+}
+
 // CountMine counts a person's own tickets, by kind and by state.
 func (s *Store) CountMine(_ context.Context, person string) (map[string]server.MineCount, error) {
 	s.mu.Lock()
@@ -472,7 +514,7 @@ func (s *Store) DueToDo(_ context.Context, now time.Time, lease time.Duration, l
 		}
 		it.lease = until
 		td := it.ToDo
-		td.Body = clone(td.Body)
+		td.Body, td.Outcome = clone(td.Body), clone(td.Outcome)
 		out = append(out, td)
 		if len(out) == limit {
 			break
@@ -490,7 +532,7 @@ func (s *Store) ToDoItem(_ context.Context, id string) (server.ToDo, error) {
 		return server.ToDo{}, server.ErrNotFound
 	}
 	td := it.ToDo
-	td.Body = clone(td.Body)
+	td.Body, td.Outcome = clone(td.Body), clone(td.Outcome)
 	return td, nil
 }
 
@@ -510,12 +552,24 @@ func (s *Store) ToDoList(_ context.Context, ticket string) ([]server.ToDo, error
 }
 
 // DoneToDo marks one done.
-func (s *Store) DoneToDo(_ context.Context, id string, _ time.Time) error {
+func (s *Store) DoneToDo(_ context.Context, id string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if it, ok := s.todo[id]; ok {
-		it.Done, it.lease = true, time.Time{}
+		it.Done, it.DoneAt, it.lease = true, us(at), time.Time{}
 	}
+	return nil
+}
+
+// KeepOutcome keeps what the work of one said became of it, in place of what it said before.
+func (s *Store) KeepOutcome(_ context.Context, id string, at time.Time, outcome json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok := s.todo[id]
+	if !ok {
+		return server.ErrNotFound
+	}
+	it.Outcome, it.OutcomeAt = clone(outcome), us(at)
 	return nil
 }
 
@@ -545,7 +599,7 @@ func (s *Store) keepToDo(td server.ToDo) {
 	}
 	td.Body = clone(td.Body)
 	td.Created, td.TryAt = us(td.Created), us(td.TryAt)
-	td.Tries, td.LastError, td.Done = 0, "", false
+	td.Tries, td.LastError, td.Done, td.DoneAt, td.Outcome, td.OutcomeAt = 0, "", false, time.Time{}, nil, time.Time{}
 	s.todo[td.ID] = &item{ToDo: td}
 	s.order = append(s.order, td.ID)
 }

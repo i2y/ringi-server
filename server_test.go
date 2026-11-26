@@ -707,7 +707,7 @@ func TestOrganization(t *testing.T) {
 }
 
 // TestPeople checks the people of the version of the organization in effect today, and that there
-// are none before its first version.
+// are none before its first version; InOrganization says the same of each person.
 func TestPeople(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
@@ -715,9 +715,20 @@ func TestPeople(t *testing.T) {
 	if err != nil || len(ps) != 4 || ps[0] != (server.OrgPerson{ID: "ann", Name: "Ann", Email: "ann@example.test"}) {
 		t.Errorf("People: %+v %v", ps, err)
 	}
+	for _, p := range ps {
+		if in, err := w.srv.InOrganization(ctx, p.ID); err != nil || !in {
+			t.Errorf("InOrganization(%s): %v %v", p.ID, in, err)
+		}
+	}
+	if in, err := w.srv.InOrganization(ctx, "nobody"); err != nil || in {
+		t.Errorf("InOrganization of someone the data does not have: %v %v", in, err)
+	}
 	w.clock.Set(time.Date(2025, 12, 31, 12, 0, 0, 0, time.UTC))
 	if _, err := w.srv.People(ctx); !errors.Is(err, server.ErrNotFound) {
 		t.Errorf("People before the first version: %v", err)
+	}
+	if in, err := w.srv.InOrganization(ctx, "ann"); err != nil || in {
+		t.Errorf("InOrganization before the first version: %v %v", in, err)
 	}
 }
 

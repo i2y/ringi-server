@@ -16,7 +16,8 @@ How to watch a running server, and how to find out what is wrong. Japanese:
 | No notice comes | [When a notice does not arrive](#when-a-notice-does-not-arrive) |
 | It is past its deadline, and does not end | See whether the server is running, and whether the log has the line `a timer was refused` |
 | It says "The request could not be dealt with." | This happens when a request type was changed without raising its version, with requests of it in progress. Put the names of the stages back, or [raise the version](types.md#change-the-rules-of-a-type-in-use) and give the server both |
-| It says "The server failed" | Look at the line `an operation failed` of the log. When the code of an old version was taken out, its `err` has `no package has the kind …` |
+| It says "The server failed" | Look at the line `an operation failed` of the log |
+| The server does not start, saying `the store keeps tickets of versions no package has` | The code of an old version that still has requests was taken out. Put the code of the versions it names back ([Take out the code of an old version](maintenance.md#take-out-the-code-of-an-old-version)) |
 
 [Why something is refused](refusals.md) says what the other words on the pages mean.
 
@@ -46,9 +47,11 @@ The log is text on the standard error, a line for each thing. Watch these lines.
 | `msg="a thing to do failed; it is tried again"` | Something to do after an answer failed. `what` says what it is (the next table), `tries` how many times it was tried, and `err` why. It is tried again after 2 seconds, 4 seconds, 8 seconds and so on (up to 10 minutes apart), until it succeeds |
 | `msg="a timer failed; it is tried again when its lease ends"` | A deadline or a reminder could not be dealt with. It is tried again after 30 seconds |
 | `msg="a timer was refused; it is tried again later"` | A deadline or a reminder did not fit the rules of the request, most often because of the organization's data of that day |
+| `msg="work ended" … failed=true` | The work after an approval failed. `key` and `flow` say which, and the page of the request says why. Work on Temporal can be run again once its cause is put right ([When something fails](flows.md#when-something-fails)) |
 | `msg="an operation failed"` | Someone was answered 500. `operation`, `ticket` and `person` say which operation, and `err` why |
 | `msg="oidc: a sign-in refused"` | Someone signed in to your organization, and could not be told to be one person of the organization's data. `reason` says why ([What a person who signs in sees](sign-in.md#what-a-person-who-signs-in-sees)) |
 | `msg="oidc: a sign-in failed"` | A failure between the server and the sign-in service. `step` says where |
+| `msg="apikeys: a key refused"` | A program sent a key the server does not take, and was answered 401. `reason` says why: `no line of the file has it` is a key cut short, or one whose line was taken out; `the organization in effect today does not have its person` is a key of someone not in the organization's data of that day, such as someone who left (`person` and `line` say whose) ([Call it from a program](api.md#call-it-from-a-program)) |
 | `msg="reading the starts of the versions"` | The database did not answer |
 | `msg="the server stopped"` | It did not start, or it stopped. `err` says why |
 
@@ -57,7 +60,7 @@ These are the values of `what`. The `what` of the SQL below is the same.
 | `what` | What it does |
 |---|---|
 | `notify` | Sends a notice |
-| `launch` | Starts the work after an approval |
+| `launch` | Starts the work after an approval. Once it is started, the page of the request says how it goes, under "After approval" |
 | `ask_agent`, `ask_note` | Has an agent check a request, and write a summary |
 | `release` | Gives back an amount of a budget or the like that was held. Only when the books are in another database |
 | `audit` | Sends the record of an operation to another place |
@@ -107,8 +110,11 @@ The last line of the log says why. These are the common ones.
 | `the environment has RINGI_SESSION_KEYS, a setting of signing in through the provider, and … checks no one` | Give the flags `-oidc-…`, or take that environment variable out |
 | `-session-keys: oidc: key 1 has 33 bytes, not 32` | Make the key again with `head -c 32 /dev/urandom \| base64` |
 | `the -oidc-… settings: oidc: the provider's discovery document: …` | The issuer is not written as the sign-in service writes it, or the server does not reach the sign-in service |
+| `-api-keys: line 2: the SHA-256 of a key is 64 hexadecimal digits, not …` | The line has the key itself, or a SHA-256 cut short. Write the SHA-256 of the key (`printf %s "$KEY" \| shasum -a 256`) |
+| `-api-keys: … lists no key: …` | The file has only comments. Write a line for each key, or leave out `-api-keys` |
+| `web: Look.Accent … reads at …:1 on the pages' …` | The colour of the pages' look does not read on them. Take a darker colour, or a lighter one for `AccentDark` ([Change how the pages look](screens.md#change-how-the-pages-look)) |
 | `-db: postgres: the database cannot be reached: …` | Look at the connection string, the password and the network |
 | `-db: postgres: the tables in the schema ringi: ERROR: permission denied for database …` | The user of the database may not make a schema. `grant create on database` gives the right |
-| `-db: postgres: the tables in the schema ringi: they are at version 11, newer than this code's 10: …` | A server of a newer version brought the tables up to date. Run that version, or restore the backup made before it |
+| `-db: postgres: the tables in the schema ringi: they are at version 14, newer than this code's 13: …` | A server of a newer version brought the tables up to date. Run that version, or restore the backup made before it |
 | `the package keeps contract …, and this framework reads …: …` | ritsu and ringi-server do not go together. Use a pair of [the table of versions](../README.md#versions), and run `go generate ./...` |
 | The name and a line of a file of `org/` | The organization's data does not pass its checks. `ritsu check project` says the same before you start it |

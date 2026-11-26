@@ -40,6 +40,8 @@ type Config struct {
 	Require  func(http.Handler) http.Handler // wraps each route of the pages
 	LoginURL func(returnTo string) string    // the link of the notice that no one is signed in
 	SignOut  string                          // the path the bar's button posts to, to sign out
+
+	Look Look // the organization's logo and name in the bar, and its colour (section 9.5)
 }
 ```
 
@@ -58,8 +60,10 @@ post, to `MaxBody` and `MaxFile` for each of at most 10 files (section 9.3).
 | GET | `/pages/tickets/{id}/history` | the ticket's history |
 | GET | `/pages/waiting/{kind}` | the tickets of the kind that wait for the person, 50 a page (`?before=`) |
 | GET | `/pages/mine/{kind}` | the person's own requests of the kind, 50 a page (`?before=`) |
+| GET | `/pages/requests/{kind}` | all the requests of the kind, to a person the gate lets see them for the kind, 50 a page (`?before=`; the core's DESIGN 10.5) |
 | GET, POST | `/pages/admin/…` | the administration's pages (the core's DESIGN 13.7; section 9.1) |
-| GET | `/pages/assets/{name}` | the pages' files: `page.css`, `page.js`, and ritsu's `functions.js` |
+| GET | `/pages/assets/{name}` | the pages' files: `page.css` (with the look's colours at its end, section 9.5), `page.js`, and ritsu's `functions.js` |
+| GET | `/pages/assets/logo` | the organization's logo (`Config.Look`, section 9.5); 404 with none |
 | GET | `/pages/assets/{files}/{name}` | the same files of a package other than the newest (section 2.3) |
 | any | `/pages/…`, anything else | the notice "Not found" (404) |
 | GET | `/a2ui/catalog.json` | ritsu's catalog |
@@ -71,11 +75,13 @@ post, to `MaxBody` and `MaxFile` for each of at most 10 files (section 9.3).
 | GET | `/a2ui/tickets/{id}/history` | the ticket's history |
 | GET | `/a2ui/waiting/{kind}` | the list of the tickets of the kind that wait for the person, a page at a time (`?limit=`, `?before=`; section 2.1) |
 | GET | `/a2ui/mine/{kind}` | the list of the person's own requests of the kind, a page at a time (`?limit=`, `?before=`; section 2.1) |
+| GET | `/a2ui/requests/{kind}` | the list of all the requests of the kind, to a person the gate lets see them for the kind, a page at a time (`?limit=`, `?before=`; section 2.1) |
 | POST | `/a2ui/actions` | a button's action: runs its operation, answers the screen after it |
 | GET | `/a2ui/find/people`, `/a2ui/find/teams`, `/a2ui/find/masters/{file}/{master}` | the values a picker finds by the words of `?q=` (under the screens' `/find`, section 5.1) |
 | POST | `/files` | keeps an attachment the person uploads (the screens' `/upload`, section 6.2) |
 | GET | `/files/{id}` | an attachment, to the person who uploaded it |
 | GET | `/tickets/{ticket}/files/{id}` | an attachment a ticket holds, to the people who may see the ticket |
+| GET | `/openapi.json` | the description of the whole API, to a person signed in (`server.Server.OpenAPI`, the core's DESIGN 13.6) |
 | any | anything else | the server's API (`/requests`, `/tickets/{id}`, `/waiting`, …) |
 
 A screen's language is `?lang=` (`en`, `ja`); without it, the first language of `Accept-Language`
@@ -100,6 +106,7 @@ A renderer that reads the names before A2UI 1.0 (ringi's DESIGN 13.5) asks with 
 | history | `History`: the ticket and its lines with the times the server kept them |
 | list of what waits | `List` (the screen `list`): the tickets of the kind that wait for the person (`Server.Waiting`, as `list_waiting` answers them), the kind's newest screens |
 | list of one's own | `Mine` (the screen `mine`): the person's own requests of the kind (`Server.Mine`, as `list_mine` answers them), the kind's newest screens |
+| list of all requests | `List` (the screen `list`) under the surface `all` (`<kind>.list.all`): the requests of the kind the person sees for the kind (`Server.Tickets`, as `list_tickets` answers them; the core's DESIGN 10.5), the kind's newest screens |
 | offered | `Offered` (the screen `offered`): a kind with no version in effect that the person may make a request of from a later version's start (`Server.Offered`); `/from` the day, `/home` the start page with the language kept (`keepLang(r, PagesPath)`) |
 
 A ticket's screens are filled with the screens of the version the ticket keeps. A ticket the person
@@ -126,21 +133,23 @@ of ringi's DESIGN 13.8), each in the places the screen's template has:
 
 The card's `/ticket` is filled from the API's ticket, key by key, `requester` and `made_by` among
 them, and the card names them from `/people` as it names the approvers. A row of the list of what
-waits holds the ticket's `id`, `status`, `stage`, `requester` and `form`; a row of the list of one's
-own, `made_by` in place of `requester`.
+waits holds the ticket's `id`, `status`, `stage`, `requester` and `form`, and so does a row of the list
+of all requests; a row of the list of one's own, `made_by` in place of `requester`.
 
-The two lists are read a page at a time, the newest first: at most `?limit=` tickets, from 1 to 100
-(`server.MaxPage`), 50 when it is not given (`server.DefaultPage`), else 400 in the API's words
+The three lists are read a page at a time, the newest first: at most `?limit=` tickets, from 1 to
+100 (`server.MaxPage`), 50 when it is not given (`server.DefaultPage`), else 400 in the API's words
 (`limit: a whole number from 1 to 100 is expected, not "0"`); after `?before=`, the last ticket of
-the page before (a ticket that does not wait for the person, or is not their own, gives an empty
-page). The tickets that wait are ordered by when they began to wait (the stage that waits started,
-or the ticket came back to its requester), one's own requests by when they were made, and tickets of
+the page before (a ticket that is not in the list gives an empty page). The tickets that wait are
+ordered by when they began to wait (the stage that waits started, or the ticket came back to its
+requester), one's own requests and all the requests of a kind by when they were made, and tickets of
 the same time in the order of their IDs, from the highest. They are read from the store a page at a
-time (`server.WaitingQuery`, `server.MineQuery`), one ticket more than the page to know whether more
-follow it: a list's `/more` is `true` then, and `false` on the last page, though it is as full as its
-limit. The list's button `more` (shown when `/more` is true) sends the list's operation
-(`list_waiting`, or `list_mine` with the list's kind) with the last ticket of the page as `before`
-(section 2.2).
+time (`server.WaitingQuery`, `server.MineQuery`, `server.TicketsQuery`), one ticket more than the page
+to know whether more follow it: a list's `/more` is `true` then, and `false` on the last page,
+though it is as full as its limit. The list's button `more` (shown when `/more` is true) sends the
+list's operation (`list_waiting`, or `list_mine` with the list's kind) with the last ticket of the
+page as `before` (section 2.2). The list of all requests is the screen `list`, so its button sends
+`list_waiting` too; the handler tells the list by its surface, `all`, and answers the next page of
+all the requests.
 
 ### 2.2 Actions
 
@@ -166,7 +175,8 @@ The answer is a JSON object, with the HTTP status of the API's answer:
   surface, filled again; after a button of a form, under the ticket's own surface (its ID: the new
   ticket's after a new request). A list's line (`get_ticket`) sends the ticket's card, and deletes
   nothing. A list's button `more` (`list_waiting`, `list_mine`) deletes the list's surface and sends
-  the next page under the same surface: the tickets after `before`, 50 at most, with its `/more`. A
+  the next page under the same surface: the tickets after `before`, 50 at most, with its `/more`; of
+  all the requests of the kind under the surface `all` (section 2.1). A
   `kind` other than the list's is 400 (`kind: the list is of expense, not leave`).
 - **refused** (409): `refused` is the API's kind of refusal, and `text` the API's text in the
   screen's language (`text_ja` for `ja` when the API gives one, else `text`; ringi's DESIGN 12.4).
@@ -365,9 +375,10 @@ the pages. It is made for a person and a ticket (`Handler.Lookup`):
   master's name field, the column the kinds' descriptions name a row by (`name_field`, ringi's
   DESIGN 12.2; `MasterLayout.NameField`), the same in every language. A master with none names no
   row, and the screen shows the keys as they are.
-- **Files**: the address the handler serves the file at. A file the ticket holds:
+- **Files**: the address the handler serves the file at, and the name it was uploaded by
+  (`Files.Stat`), which the screens show in place of its ID. A file the ticket holds:
   `/tickets/{ticket}/files/{id}`; a file the person uploaded that no ticket of theirs holds yet:
-  `/files/{id}`. Any other ID gets no address, and the screen shows it as it is.
+  `/files/{id}`. Any other ID gets no address and no name, and the screen shows it as it is.
 
 The pages also offer what a field chooses from (`page.Picks`): the people and the teams of the
 version in effect today (`Server.People`, `Server.Teams`), and the rows of each master the kind's
@@ -518,7 +529,7 @@ browser there (303) after the same checks.
 ```go
 store, err := postgres.New(ctx, pool, "ringi")
 srv, err := server.New(server.Config{…, Store: store, Files: store.Files(), Authenticator: web.ProxyHeader{Secret: secret}})
-h, err := web.New(srv, web.Config{MaxFile: 20 << 20})
+h, err := web.New(srv, web.Config{MaxFile: 20 << 20, Look: web.Look{Name: "Acme", Logo: logo, Accent: "#0f766e"}})
 ```
 
 `Handler.Handle(pattern, handler)` adds a route (a `ServeMux` pattern) behind the guards: the
@@ -541,6 +552,7 @@ routes of a sign-in are added this way (section 3.1).
 | `Server.CountWaiting` | how many tickets wait for a person, by kind: the tickets `Server.Waiting` answers with no query, counted (the core's DESIGN 10.2), for the start page |
 | `Server.Mine`, `server.MineQuery` | a person's own requests (`list_mine`, the core's DESIGN 10.4), the newest first, a page at a time as `Server.Waiting`, of one status when asked (`Status`), for the lists of one's own and the start page |
 | `Server.CountMine`, `server.MineCount` | how many requests of their own a person has, by kind and by state: the tickets `Server.Mine` answers with no query, counted (the core's DESIGN 10.4), for the start page |
+| `Server.Tickets`, `server.TicketsQuery`, `Server.KindsSeen` | all the requests of a kind, to a person the gate lets see them for the kind (`list_tickets`, the core's DESIGN 10.5), the newest first, a page at a time as `Server.Waiting`, of one status when asked; and the kinds whose requests a person sees so, for the start page |
 | `server.DefaultPage`, `server.MaxPage` | a list's page: 50 tickets when its size is not asked, 100 at most (section 2.1) |
 | `Server.TicketFiles` | the files a ticket holds (its form now, and its history), to a person who may see it |
 | `Server.Upload`, `Server.UploadOnce` | keeps an upload as the person's, recorded as one no ticket holds yet; `*server.TooManyUploads` past the person's limit (section 6.2); `UploadOnce` keeps it once for a key (section 9.3) |
@@ -563,12 +575,12 @@ their posts as the person.
 
 | Page | Filled with |
 |---|---|
-| start page | `page.Home`: the kinds of the tickets that wait for the person, with how many (`Server.CountWaiting`: the tickets `list_waiting` answers, counted); the kinds they may make a request of (`Server.Submitting`); the kinds they have made requests of, with how many are in each state (`Server.CountMine`). Each kind by its title in the language of its pages the entry leads to (the page's when the kind has screens in it), its label in that language, else its title as written; a title in another language than the page's is marked with it (`Pages.TitleIn`, `Entry.Lang`). Under a kind that waits, the newest five of its tickets (`Server.Waiting`); under a kind of the person's own, five of them: the ones back with the person first, then the newest (`Server.Mine`). Each is a link to its card, with its stage and a short line of its values as the version it is of says them, and names the requester of one that waits; of the person's own, who made it for them, or whom they made it for; never the person themselves |
+| start page | `page.Home`: the kinds of the tickets that wait for the person, with how many (`Server.CountWaiting`: the tickets `list_waiting` answers, counted); the kinds they may make a request of (`Server.Submitting`); the kinds they have made requests of, with how many are in each state (`Server.CountMine`). Each kind by its title in the language of its pages the entry leads to (the page's when the kind has screens in it), its label in that language, else its title as written; a title in another language than the page's is marked with it (`Pages.TitleIn`, `Entry.Lang`). Under a kind that waits, the newest five of its tickets (`Server.Waiting`); under a kind of the person's own, five of them: the ones back with the person first, then the newest (`Server.Mine`). Each is a link to its card, with its stage and a short line of its values as the version it is of says them, and names the requester of one that waits; of the person's own, who made it for them, or whom they made it for; never the person themselves. Last, "All requests": the kinds whose requests the person sees for the kind (`Server.KindsSeen`), each a link to its list; left out when there is none, and when the gate fails to answer, which the log says |
 | new request's form | as the screen's (section 2.1), with the pickers (section 5), the page's address to post to, the time it is shown, and a link back to the start page |
 | card | as the screen's, with the pickers, the zone of its times (`Server.Zone`), a link to the history and a link back to the start page; to one of the requester's side who may make a request that is back with its requester again, the notice of it with a link to the form |
 | form of a ticket | as the screen's, with the pickers and a link back to the card |
 | history | as the screen's, with a link back to the card and the zone of its times (`Server.Zone`), the card's: the examples' `TestCardAndHistorySayOneTime` finds an approval at one time on both, in both languages |
-| lists | `page.List` of the tickets that wait for the person (`Server.Waiting`), or of their own requests (`Server.Mine`), the newest first, 50 a page, with a link to the next page only when more follow (the handler reads one ticket more than the page to know; `?before=` the page's last ticket, section 2.1); each line a link to the ticket's card, with the columns of the A2UI list (one's own requests name who made a request for its requester, `made_by`, where the others name the requester) and those of the values the form works out; and a link back to the start page |
+| lists | `page.List` of the tickets that wait for the person (`Server.Waiting`), of their own requests (`Server.Mine`), or of all the requests of a kind they see for the kind (`Server.Tickets`; its heading says so, `page.ListAll`), the newest first, 50 a page, with a link to the next page only when more follow (the handler reads one ticket more than the page to know; `?before=` the page's last ticket, section 2.1); each line a link to the ticket's card, with the columns of the A2UI list (one's own requests name who made a request for its requester, `made_by`, where the others name the requester) and those of the values the form works out; and a link back to the start page |
 | the administration's | `Pages.AdminPage` of one of five (`page.Admin.What`: the parts, the kinds, the organization, a draft, the record), filled with the answers of the administration's operations (`Server.Do`, `Via: "pages"`): the core's DESIGN 13.7 says what each shows and what its post does. A problem a person can make with a form is said in the page's language (`page.AdminSays`) before the operation is sent. The start page links to them when `Server.Administers` says so, and each but the first links back to the first |
 
 A page of a ticket the person may not see is the notice "Not found" (404), as in the API. A new
@@ -679,6 +691,25 @@ the same function, so that one header chooses one language in all of them.
 Each page has a bar at its top (`page.Bar`, which the handler puts in the page's `Bar`, before the
 screen's `<main>`): the way back to the start page, the name of the person signed in (in the page's
 language), the page in its other languages, and a button to sign out (`Config.SignOut`).
+
+`Config.Look` is the organization's look. Its logo and name take the place of "Home" at the start of
+the bar (`page.Bar`'s `Logo` and `Name`): the logo at `/pages/assets/logo`, named "Home" in the
+page's language when there is no name, and empty to a screen reader beside the name. Its colours are
+rules at the end of `page.css` (`page.Pages.WithStyle`), the newest package's and the others', so
+that every page that loads `page.css` has them, the page of `devlogin`'s sign-in among them: the
+accent of the light pages, and after it the accent of the dark pages, given (`AccentDark`) or made
+of `Accent`, mixed with white in steps of 5 % until it reads on the dark pages. The shadows of the
+accent follow it (`color-mix` in `page.css`). The pages' policy already takes a style sheet and an
+image of the server's own (`img-src 'self'`), so no inline style is added; an SVG logo opened by
+itself is under the package's own policy (`default-src 'none'`), so a script in it does not run.
+`New` refuses a look that `Look.Check` refuses, and `serve` asks it before it makes or reaches
+anything: a name of more than 60 characters, with a control or format character, or with a space at
+its ends; a logo of more than 256 KiB, or of no image of SVG, PNG, JPEG, GIF or WebP, told by its
+first bytes; a colour not of the form `#rrggbb`, or one that reads at less than 4.5:1 (WCAG 1.4.3)
+on the paper or the tint of the pages it is for, as the text of a link must. An accent that reads on
+the light pages' tint reads on their paper and under a button's white text too, and one that reads
+on the dark pages' tint does under their dark text, so a look sets the accent alone.
+`TestLookReadsOnTheSheet` holds the paper and the tint it reads colours on to `page.css`.
 
 A notice is a page in place of the one asked for (`page.Notice`), with the bar, in the page's
 language:

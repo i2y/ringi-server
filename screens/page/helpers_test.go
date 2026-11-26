@@ -216,6 +216,14 @@ func (namer) FileURLs(ids []string) (map[string]string, error) {
 	return out, nil
 }
 
+func (namer) FileNames(ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		out[id] = "the file named " + id
+	}
+	return out, nil
+}
+
 // ── HTML, read back ──
 
 // node is an element of a page read back as XML (the pages are well-formed XML), or a text.

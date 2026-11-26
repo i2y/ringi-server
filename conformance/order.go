@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -261,7 +262,11 @@ func apiPages(t *testing.T, srv *server.Server, path, person string, want []stri
 			if before != "" {
 				q.Set("before", before)
 			}
-			r := httptest.NewRequest(http.MethodGet, path+"?"+q.Encode(), nil)
+			sep := "?"
+			if strings.Contains(path, "?") {
+				sep = "&"
+			}
+			r := httptest.NewRequest(http.MethodGet, path+sep+q.Encode(), nil)
 			r.Header.Set("X-Person", person)
 			w := httptest.NewRecorder()
 			srv.ServeHTTP(w, r)

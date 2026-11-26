@@ -36,6 +36,11 @@
 //     reaches the provider with the client of Flags.ProviderClient, when the project's command sets
 //     one.
 //
+// Whichever of the three, -api-keys names a file of keys for programs that use the API as a person
+// of the organization, such as another system that makes requests (package apikeys): a request that
+// sends one (Authorization: Bearer <key>) is the person of its line while the organization in effect
+// today has them, a key no line has is no one (401), and a request with no key is the sign-in's.
+//
 // The two that check no one do not run with the settings of a server that serves people: the
 // provider's (the -oidc-… flags, or RINGI_OIDC_CLIENT_SECRET or RINGI_SESSION_KEYS in the
 // environment) or a certificate (-tls-cert). Open stops before it reads or reaches anything, saying
@@ -60,6 +65,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/apikeys"
 	"github.com/i2y/ringi-server/devlogin"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/oidc"
@@ -83,6 +89,7 @@ type Flags struct {
 	Scopes       string // -oidc-scopes
 	TLSCert      string // -tls-cert
 	TLSKey       string // -tls-key
+	APIKeys      string // -api-keys
 	// Getenv reads the environment; os.Getenv when nil.
 	Getenv func(string) string
 	// ProviderClient makes the server's calls to the provider of the -oidc-… flags: its discovery
@@ -109,6 +116,7 @@ func (f *Flags) Register(fs *flag.FlagSet) {
 	fs.StringVar(&f.SessionKeys, "session-keys", "", "the keys of the session cookies, base64 of 32 bytes each, the newest first (or the environment variable RINGI_SESSION_KEYS)")
 	fs.StringVar(&f.TLSCert, "tls-cert", "", "a certificate to serve https with (with -tls-key)")
 	fs.StringVar(&f.TLSKey, "tls-key", "", "the certificate's private key")
+	fs.StringVar(&f.APIKeys, "api-keys", "", "a file of the keys programs call the API with (Authorization: Bearer <key>): a line for each, with the ID of the person it stands for, the SHA-256 of the key in hexadecimal, and their roles if they have any, separated by commas")
 }
 
 // getenv reads a variable of the environment.
@@ -139,13 +147,19 @@ func (f Flags) secretAndKeys() (secret, keys string) {
 
 // Check checks the flags and the environment before anything is read or reached, and says what is
 // wrong: -tls-cert without -tls-key; -db with -files, as -db keeps the attachments in the database;
-// two ways of signing in; a way that checks no one where it may
-// be reached from another computer or with the settings of a server that serves people (the
-// provider's, a certificate); the provider's settings given in part, or wrong in a way that can be
-// told without reaching the provider (oidc.Config.Check).
+// a file of -api-keys that cannot be read, has a line apikeys.Parse does not take, or lists no key;
+// two ways of signing in; a way that checks no one where it may be reached from another computer or
+// with the settings of a server that serves people (the provider's, a certificate); the provider's
+// settings given in part, or wrong in a way that can be told without reaching the provider
+// (oidc.Config.Check).
 func (f Flags) Check() error {
 	if (f.TLSCert == "") != (f.TLSKey == "") {
 		return errors.New("-tls-cert and -tls-key go together")
+	}
+	if f.APIKeys != "" {
+		if _, err := f.keys(); err != nil {
+			return err
+		}
 	}
 	if f.DB != "" && f.Files != "" {
 		return errors.New(`-db and -files are both given, and with -db the attachments are kept in the database: give one of them. To keep the attachments somewhere else than PostgreSQL, make the server in Go and give the Files of server.Config (the framework's DESIGN.md, "The parts you swap")`)
@@ -194,6 +208,18 @@ func (f Flags) Check() error {
 	return nil
 }
 
+// keys reads the file of -api-keys: an error with no key in it.
+func (f Flags) keys() ([]apikeys.Key, error) {
+	keys, err := apikeys.ReadFile(f.APIKeys)
+	if err != nil {
+		return nil, fmt.Errorf("-api-keys: %w", err)
+	}
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("-api-keys: %s lists no key: a line for each key, with the ID of the person it stands for and the SHA-256 of the key", f.APIKeys)
+	}
+	return keys, nil
+}
+
 // providerConfig answers the provider's settings the flags and the environment give.
 func (f Flags) providerConfig() (oidc.Config, error) {
 	secret, keys := f.secretAndKeys()
@@ -221,6 +247,10 @@ type Stores struct {
 	// Pool is the PostgreSQL of -db, for what else of the project is kept there (the books of the
 	// examples); nil without -db.
 	Pool *pgxpool.Pool
+	// Look is how the pages look for the organization (web.Look): its logo and name in their bar,
+	// and the colour of their links and buttons. Set it before Serve, which refuses one that
+	// web.Look.Check refuses before it makes or reaches anything. The zero Look is the framework's.
+	Look web.Look
 
 	flags  Flags
 	log    *slog.Logger
@@ -295,8 +325,9 @@ func (s *Stores) Close() {
 //
 // A route may not take a path of the framework's: / itself, and the paths under /pages, /a2ui and
 // /files (the pages, the screens and the attachments), /requests, /waiting, /mine, /tickets,
-// /organization, /masters and /find (the API), /admin (the administration's API), and /login and
-// /logout (signing in), with the provider's callback (the path of -oidc-redirect-url). Serve stops
+// /organization, /masters and /find (the API), /admin (the administration's API), /openapi.json
+// (the description of the API), and /login and /logout (signing in), with the provider's callback
+// (the path of -oidc-redirect-url). Serve stops
 // before it makes or reaches anything, saying why, on a pattern that is empty, does not read as a
 // pattern of http.ServeMux, takes a request on one of those paths, or conflicts with one added
 // before (some request matches both, and neither is more specific), and on a nil handler; it stops
@@ -320,14 +351,14 @@ func Person(r *http.Request) (server.Person, error) {
 }
 
 // framework are the paths a route of the project's may not take, each as its segments: the path and
-// every path under it. The pages, the screens and the attachments are package web's (PagesPath,
-// "/a2ui/…", UploadPath, "/files/{id}"; "/tickets/{ticket}/files/{id}" is under the API's
+// every path under it. The pages, the screens, the attachments and the API's description are package
+// web's (PagesPath, "/a2ui/…", UploadPath, "/files/{id}", OpenAPIPath; "/tickets/{ticket}/files/{id}" is under the API's
 // /tickets); the API's operations are the server's, of the shapes its openapi.json may have (the
 // lists, a ticket and its events, the organization, the masters, the finds, the kinds' submits),
 // and the administration's (/admin/…); and /login and /logout are signing in, whichever way the
 // flags say. The provider's callback is added from the flags (reserved).
 var framework = [][]string{
-	{"pages"}, {"a2ui"}, {"files"},
+	{"pages"}, {"a2ui"}, {"files"}, {"openapi.json"},
 	{"requests"}, {"waiting"}, {"mine"}, {"tickets"}, {"organization"}, {"masters"}, {"find"}, {"admin"},
 	{strings.TrimPrefix(devlogin.LoginPath, "/")}, {strings.TrimPrefix(devlogin.LogoutPath, "/")},
 }
@@ -523,10 +554,10 @@ const (
 
 // Serve makes the server of cfg with the Store, the Files and the Authenticator the flags say, and
 // cfg's Logger (else the one Open was given). It refuses a cfg that sets Store, Files or
-// Authenticator: the flags say them; and the routes Handle added that it does not take (Handle says
-// which), before it makes or reaches anything. It gives the server to made, when made is not nil,
+// Authenticator: the flags say them; the routes Handle added that it does not take (Handle says
+// which); and a Look that web.Look.Check refuses, before it makes or reaches anything. It gives the server to made, when made is not nil,
 // once it is made and before anything is served; imports the organization; puts the pages in front
-// (web), with the sign-in the flags say (the header X-Person, -dev-login, or the provider's) mounted
+// (web), in the Look, with the sign-in the flags say (the header X-Person, -dev-login, or the provider's) mounted
 // behind the same guards; makes the handlers of the routes Handle added, and puts them behind the
 // guards too; runs the timers and the things to do (Server.Run); and serves HTTP, or https with
 // -tls-cert, until ctx is done, then shuts down within 10 seconds: what is still being answered
@@ -542,12 +573,15 @@ func (s *Stores) Serve(ctx context.Context, cfg server.Config, made func(*server
 		set = append(set, "Files (-db, -files)")
 	}
 	if cfg.Authenticator != nil {
-		set = append(set, "Authenticator (-dev-login, the -oidc-… flags)")
+		set = append(set, "Authenticator (-dev-login, the -oidc-… flags, -api-keys)")
 	}
 	if len(set) > 0 {
 		return fmt.Errorf("serve: the flags say the server's %s: leave them out of the Config", strings.Join(set, ", "))
 	}
 	if err := s.checkRoutes(); err != nil {
+		return err
+	}
+	if err := s.Look.Check(); err != nil {
 		return err
 	}
 	if cfg.Logger == nil {
@@ -563,6 +597,12 @@ func (s *Stores) Serve(ctx context.Context, cfg server.Config, made func(*server
 	if err != nil {
 		return err
 	}
+	// a ticket of a version no package has could be neither opened nor answered (DESIGN 11)
+	if gone, err := srv.Unpackaged(ctx); err != nil {
+		return err
+	} else if len(gone) > 0 {
+		return &server.UnpackagedError{Counts: gone}
+	}
 	in.srv = srv
 	if made != nil {
 		made(srv)
@@ -571,7 +611,7 @@ func (s *Stores) Serve(ctx context.Context, cfg server.Config, made func(*server
 		return err
 	}
 	wc := in.web
-	wc.Logger = log
+	wc.Logger, wc.Look = log, s.Look
 	h, err := web.New(srv, wc)
 	if err != nil {
 		return err
@@ -685,6 +725,19 @@ func signInOf(ctx context.Context, f Flags, pg *postgres.Store, log *slog.Logger
 		s.auth = devlogin.Header{}
 		s.mount = func(*web.Handler) {}
 		log.Info("the header X-Person says who sends each request; a browser has none (try -dev-login)")
+	}
+	if f.APIKeys != "" {
+		keys, err := f.keys()
+		if err != nil {
+			return nil, err
+		}
+		in, err := apikeys.New(apikeys.Config{Keys: keys, Next: s.auth, Logger: log,
+			Known: func(ctx context.Context, person string) (bool, error) { return s.srv.InOrganization(ctx, person) }})
+		if err != nil {
+			return nil, err
+		}
+		s.auth = in
+		log.Info("programs may call the API with the keys of -api-keys", "keys", len(keys))
 	}
 	return s, nil
 }

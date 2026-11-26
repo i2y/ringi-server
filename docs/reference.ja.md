@@ -20,6 +20,7 @@
 | `-oidc-scopes` | `openid`、`email`、`profile` のほかに求めるスコープ。空白で区切る |
 | `-session-keys` | ログインのクッキーの鍵。32 バイトの乱数の base64 を、新しい順にコンマで区切る。環境変数 `RINGI_SESSION_KEYS` で渡すほうがよい |
 | `-tls-cert`、`-tls-key` | https の証明書とその鍵 |
+| `-api-keys` | プログラムが API を呼ぶときの鍵のファイル。鍵ごとに一行で、鍵の人の ID、鍵の SHA-256、役割があればコンマで区切った役割を書く（[プログラムから呼ぶ](api.ja.md#プログラムから呼ぶ)）。起動のときに読む |
 
 `--temporal` で作ったサーバーには、Temporal のアドレスを渡す `-temporal`（指定しなければ `localhost:7233`）もあります。
 
@@ -45,6 +46,19 @@ PostgreSQL のパスワードは、環境変数 `PGPASSWORD` か `.pgpass` フ�
 | `BooksApart` | 帳簿が、申請と別のデータベースにある | `false` |
 | `Logger` | サーバーのログ | `slog.Default()` |
 
+## ページの見た目
+
+サーバーのページの見た目です。`cmd/server/main.go` で、置き場の `Look` に渡します（`web.Look`、[ページの見た目を変える](screens.ja.md#ページの見た目を変える)）。空のままなら、フレームワークの見た目になります。
+
+| 項目 | 意味 | 受け付けるもの |
+|---|---|---|
+| `Name` | ページの上に出す名前。ホームへのリンクになる。無ければ、ロゴも無いときに帯が「ホーム」と書く | 60 文字まで。改行を含まず、両端に空白が無い |
+| `Logo` | 名前の前に出す画像。高さ 28 ピクセルで見せる。`/pages/assets/logo` で出す | SVG、PNG、JPEG、GIF、WebP のどれかで、256 KiB まで |
+| `Accent` | リンク、ボタン、申請がいるステップの色。`#rrggbb` で書く | ページの背景の `#ffffff` と `#f1f4f9` のどちらとも 4.5:1 以上 |
+| `AccentDark` | 同じ色の、暗い配色にしたブラウザのための物。無ければ、サーバーが `Accent` から作る | 暗いページの背景の `#151b26` と `#1d2534` のどちらとも 4.5:1 以上 |
+
+これを満たさない見た目では、サーバーは起動せず、理由を言います。
+
 ## そのほかの上限
 
 | もの | 上限 | 変える場所 |
@@ -65,8 +79,9 @@ PostgreSQL のパスワードは、環境変数 `PGPASSWORD` か `.pgpass` フ�
 | `/pages/` | 申請、承認、管理のページ |
 | `/pages/admin/` | 管理のページ。役割を持つ人だけ |
 | `/login`、`/login/callback`、`/logout` | 会社のログイン |
-| `/requests/…`<br>`/tickets/{id}`<br>`/waiting`<br>`/mine`<br>`/find/…`<br>`/organization`<br>`/masters/…`<br>`/admin/…`<br>`/files` | API（[プログラムから API を呼ぶ](api.ja.md)） |
+| `/requests/…`<br>`/tickets`<br>`/tickets/{id}`<br>`/waiting`<br>`/mine`<br>`/find/…`<br>`/organization`<br>`/masters/…`<br>`/admin/…`<br>`/files` | API（[プログラムから API を呼ぶ](api.ja.md)） |
 | `/a2ui/…` | A2UI の画面（[自分の画面を作る](screens.ja.md#a2ui-の画面を使う)） |
+| `/pages/assets/page.css`、`/pages/assets/logo` | ページのスタイルシート（最後に見た目の色が付く）と、ロゴ（[ページの見た目](#ページの見た目)）。ログインなしで返す |
 | `/a2ui/functions.js` | ログインなしで 200 を返す。動いているかの確認に使える |
 | `/mcp` | エージェントのツール。足したサーバーだけ（[エージェントに申請と承認をさせる](agents.ja.md)） |
 

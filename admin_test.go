@@ -143,7 +143,12 @@ func (a *admins) server(clock *servertest.Clock, change ...func(*server.Config))
 // do sends a request of the administration's API as a person with roles, and answers its status
 // and body.
 func (a *admins) do(method, path, person, roles, key string, body any) (int, []byte, http.Header) {
-	return send(a.srv, method, path, person, roles, key, "application/json", body)
+	a.t.Helper()
+	code, b, h := send(a.srv, method, path, person, roles, key, "application/json", body)
+	if err := server.CheckOwnAnswer(method, path, code, b); err != nil {
+		a.t.Errorf("%s %s answered %d, which framework.openapi.json does not describe: %v\n%s", method, path, code, err, b)
+	}
+	return code, b, h
 }
 
 func send(h http.Handler, method, path, person, roles, key, contentType string, body any) (int, []byte, http.Header) {

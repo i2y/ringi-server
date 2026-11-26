@@ -55,9 +55,22 @@
 {{- if .Parts}}
 <ul>{{range .Parts}}<li><span class="way">{{template "text" .Way}}</span> <span class="state"{{if .StateKey}} data-state="{{.StateKey}}"{{end}}>{{.State}}</span>{{if .Approvers}} <span class="who">{{.Approvers}}</span>{{end}}{{if .Answers}}<ul class="answers">{{range .Answers}}<li>{{.}}</li>{{end}}</ul>{{end}}</li>{{end}}</ul>
 {{- end}}
+{{- if .Agent}}
+<ul class="agent">{{range .Agent}}<li><span class="said">{{.Said}}</span>{{if .Reason}} <span class="reason">{{.Reason}}</span>{{end}}</li>{{end}}</ul>
+{{- end}}
 </li>
 {{- end}}
 </ol>
+</section>
+{{- end}}
+{{- if .Works}}
+<section class="works" aria-labelledby="works-title">
+<h2 id="works-title">{{.W.Works}}</h2>
+<ul>
+{{- range .Works}}
+<li><span class="flow">{{.Flow}}</span> <span class="state" data-state="{{.StateKey}}">{{.State}}</span>{{if .At}} <time>{{.At}}</time>{{end}}{{if .Outputs}}<p class="outputs">{{.Outputs}}</p>{{end}}{{if .Reason}}<p class="reason">{{.Reason}}</p>{{end}}</li>
+{{- end}}
+</ul>
 </section>
 {{- end}}
 {{- with .List}}
@@ -107,6 +120,12 @@
 <p class="empty">{{$.W.NoneYet}}</p>
 {{- end}}
 </section>
+{{- if .All}}
+<section class="entries all" aria-labelledby="all-title">
+<h2 id="all-title">{{$.W.AllRequests}}</h2>
+<ul>{{range .All}}<li><a href="{{.URL}}"{{if .Lang}} lang="{{.Lang}}"{{end}}>{{.Title}}</a>{{if .Name}} <span class="kind-name">({{.Name}})</span>{{end}}</li>{{end}}</ul>
+</section>
+{{- end}}
 {{- if .Admin}}
 <p class="link admin"><a href="{{.Admin}}">{{$.W.AdminLink}}</a></p>
 {{- end}}
@@ -172,16 +191,16 @@
 {{end}}
 
 {{define "bar"}}<nav class="ringi bar" lang="{{.Language}}">
-{{- if .Home}}<a class="home" href="{{.Home}}">{{.W.HomeLink}}</a>{{end}}
+{{- if .Home}}<a class="home{{if or .Logo .Name}} brand{{end}}" href="{{.Home}}">{{if .Logo}}<img class="logo" src="{{.Logo}}" alt="{{if not .Name}}{{.W.HomeLink}}{{end}}" />{{end}}{{if .Name}}<span class="name">{{.Name}}</span>{{else if not .Logo}}{{.W.HomeLink}}{{end}}</a>{{end}}
 {{- if .Person}}<span class="person">{{.W.SignedInAs .Person}}</span>{{end}}
 {{- if .Languages}}<span class="languages">{{range .Languages}}<a href="{{.URL}}" lang="{{.Lang}}" hreflang="{{.Lang}}">{{.Text}}</a>{{end}}</span>{{end}}
 {{- if .SignOut}}<form class="sign-out" method="post" action="{{.SignOut}}">{{if .Token}}<input type="hidden" name="_csrf" value="{{.Token}}" />{{end}}<button type="submit" class="plain">{{.W.SignOut}}</button></form>{{end -}}
 </nav>
 {{end}}
 
-{{define "text"}}{{if .Lang}}<span lang="{{.Lang}}">{{.Text}}</span>{{else if .Row}}<span class="row-n">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}
+{{define "text"}}{{if .URL}}<a href="{{.URL}}">{{.Text}}</a>{{else if .Lang}}<span lang="{{.Lang}}">{{.Text}}</span>{{else if .Row}}<span class="row-n">{{.Text}}</span>{{else}}{{.Text}}{{end}}{{end}}
 
-{{define "entry-tickets"}}{{if .Tickets}}<ul class="entry-tickets">{{range .Tickets}}<li><a href="{{.URL}}">{{.ID}}</a> <span class="status" data-status="{{.Status}}">{{.State}}</span>{{if .Stage.Text}} <span class="stage">{{template "text" .Stage}}</span>{{end}}{{if .Who}} <span class="who">{{.Who}}</span>{{end}}{{if .Info}} <span class="info">{{.Info}}</span>{{end}}</li>{{end}}</ul>{{end}}{{end}}
+{{define "entry-tickets"}}{{if .Tickets}}<ul class="entry-tickets">{{range .Tickets}}<li><a href="{{.URL}}">{{.ID}}</a> <span class="status" data-status="{{.Status}}">{{.State}}</span>{{if .Stage.Text}} <span class="stage">{{template "text" .Stage}}</span>{{end}}{{if .Who}} <span class="who">{{.Who}}</span>{{end}}{{if .Info}} <span class="info">{{.Info}}</span>{{end}}{{if .Due}} <span class="due">{{.Due}}</span>{{end}}</li>{{end}}</ul>{{end}}{{end}}
 
 {{define "phrase"}}{{range .}}{{template "text" .}}{{end}}{{end}}
 
@@ -252,7 +271,7 @@
 <select id="{{$in.ID}}" name="{{$in.Name}}"{{template "aria" $in}}>{{range $in.Options}}<option value="{{.Value}}"{{if .Label.Lang}} lang="{{.Label.Lang}}"{{end}}{{if .Selected}} selected="selected"{{end}}>{{.Label.Text}}</option>{{end}}</select>
 {{- else if eq $in.Kind "file"}}
 {{- if $in.Kept}}
-<p class="kept">{{$v.W.Attached}} {{if $in.KeptURL}}<a href="{{$in.KeptURL}}">{{$in.Kept}}</a>{{else}}<span>{{$in.Kept}}</span>{{end}}</p>
+<p class="kept">{{$v.W.Attached}} <span>{{$in.KeptName}}</span></p>
 <input type="hidden" name="a.{{$in.Path}}" value="{{$in.Kept}}"{{template "off" $in}} />
 <p class="remove"><input type="checkbox" id="rm-{{$in.ID}}" name="d.{{$in.Path}}" value="1"{{if $in.Remove}} checked="checked"{{end}}{{template "off" $in}} /> <label for="rm-{{$in.ID}}">{{$v.W.RemoveFile}}</label></p>
 {{- end}}

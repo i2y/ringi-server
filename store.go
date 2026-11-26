@@ -63,6 +63,10 @@ type Store interface {
 	// first: by the time of the move that first named them, then by ID, from the highest. q narrows
 	// them (MineQuery).
 	Mine(ctx context.Context, person string, q MineQuery) ([]TicketRecord, error)
+	// Tickets reads the tickets of some versions of a kind, the newest first: by when they were made
+	// (the time of their first move), then by ID, from the highest. q names the kind and the versions,
+	// narrows them and pages through them (TicketsQuery).
+	Tickets(ctx context.Context, q TicketsQuery) ([]TicketRecord, error)
 	// Lock takes the ticket's lock, for books in another database: it waits until no one else
 	// holds it, and holds it until unlock is called. The context it answers carries the lock: the
 	// framework reads the ticket and saves its move with it, so a store may keep the lock on a
@@ -88,6 +92,9 @@ type Store interface {
 	DoneToDo(ctx context.Context, id string, at time.Time) error
 	// RetryToDo gives up the lease of one that failed, to be tried again at try.
 	RetryToDo(ctx context.Context, id string, try time.Time, why string) error
+	// KeepOutcome keeps what the work of a thing to do (a launch) said became of it, said at at, in
+	// place of what it said before (Server.WorkEnded): ErrNotFound when no thing to do has the ID.
+	KeepOutcome(ctx context.Context, id string, at time.Time, outcome json.RawMessage) error
 	// KeepToDo keeps a thing to do that no move holds: the void of a hold the books took for a try
 	// that was not saved, which the books did not answer when the server asked (DESIGN 3.2), not
 	// tried yet and not done. One kept before with the same ID is left as it is.
@@ -148,6 +155,10 @@ type Store interface {
 	// has any once: the versions whose lines the person may read (DESIGN 13.4). No other ticket is
 	// counted.
 	CountTickets(ctx context.Context, versions []KindVersion) ([]TicketCount, error)
+	// KeptVersions counts the tickets of every version the store keeps any of, by kind, version
+	// and status, in the order CountTickets answers them: what the server compares with the
+	// versions its packages have when it starts (Server.Unpackaged).
+	KeptVersions(ctx context.Context) ([]TicketCount, error)
 	// Imports answers the times of the imports that added a snapshot (Record.Added) at or after
 	// since, the oldest first.
 	Imports(ctx context.Context, since time.Time) ([]time.Time, error)
@@ -418,6 +429,22 @@ type MineQuery struct {
 	Limit int
 }
 
+// TicketsQuery names the tickets Store.Tickets reads, of some versions of a kind, and narrows them as
+// MineQuery does a person's own. Server.Tickets takes it too, and decides the versions itself.
+type TicketsQuery struct {
+	// Kind is the kind of request whose tickets are read.
+	Kind string
+	// Versions keeps the tickets of these versions of the kind; none keeps none.
+	Versions []int
+	// Status keeps the tickets of one status ("approved", those approved); "" keeps all.
+	Status string
+	// Before keeps the tickets older than this one (the last of the page before); "" starts from the
+	// newest. A ticket that is not of the kind and of one of the versions keeps none.
+	Before string
+	// Limit keeps at most this many; 0 keeps all.
+	Limit int
+}
+
 // WaitingQuery narrows the tickets Store.Waiting reads, as MineQuery does a person's own.
 type WaitingQuery struct {
 	// Kind keeps the tickets of one kind of request; "" keeps all.
@@ -549,6 +576,12 @@ type ToDo struct {
 	Tries     int
 	LastError string
 	Done      bool
+	// DoneAt is when it was done (DoneToDo); zero while it is not.
+	DoneAt time.Time
+	// Outcome is what the work a launch started said became of it (Server.WorkEnded), as the
+	// server wrote it, and OutcomeAt when it said so (KeepOutcome); nil and zero until it says.
+	Outcome   json.RawMessage
+	OutcomeAt time.Time
 }
 
 // Begun is an operation the server began, which it keeps with the operation's key until the key's

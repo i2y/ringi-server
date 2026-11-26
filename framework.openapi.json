@@ -1,0 +1,1791 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ringi-server: the framework's own operations",
+    "version": "1"
+  },
+  "x-ringi-server": "The operations of the framework, which no package's openapi.json has: the administration's, the attachments', and the list of a kind's requests. The server serves them merged with its packages' at GET /openapi.json",
+  "paths": {
+    "/admin/kinds": {
+      "get": {
+        "operationId": "admin_list_kinds",
+        "tags": [
+          "administration"
+        ],
+        "summary": "The kinds with a version the person may switch",
+        "responses": {
+          "200": {
+            "description": "The kinds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.kinds"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          }
+        }
+      }
+    },
+    "/admin/kinds/{kind}/versions/{version}": {
+      "post": {
+        "operationId": "admin_switch_kind",
+        "tags": [
+          "administration"
+        ],
+        "summary": "Decide when a version starts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/admin.kind"
+          },
+          {
+            "$ref": "#/components/parameters/admin.version"
+          },
+          {
+            "$ref": "#/components/parameters/framework.key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/admin.switch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Switched: the record (null when nothing changed) and the kind",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.switched"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "409": {
+            "$ref": "#/components/responses/framework.refused"
+          }
+        }
+      }
+    },
+    "/admin/organization": {
+      "get": {
+        "operationId": "admin_get_organization",
+        "tags": [
+          "administration"
+        ],
+        "summary": "The latest snapshot of the organization in short",
+        "responses": {
+          "200": {
+            "description": "The organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.organization"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          }
+        }
+      }
+    },
+    "/admin/organization/drafts": {
+      "post": {
+        "operationId": "admin_check_organization",
+        "tags": [
+          "administration"
+        ],
+        "summary": "Read the organization's data from the source or an upload, check it, and keep it as a draft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/framework.key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/admin.check"
+              }
+            },
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The draft and its difference from the latest snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.draft"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "description": "A body that does not read, or data that does not pass its checks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/framework.problems"
+                    },
+                    {
+                      "$ref": "#/components/schemas/framework.error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "429": {
+            "$ref": "#/components/responses/framework.too_many"
+          }
+        }
+      }
+    },
+    "/admin/organization/drafts/{id}": {
+      "get": {
+        "operationId": "admin_get_draft",
+        "tags": [
+          "administration"
+        ],
+        "summary": "A draft of the person's, with its difference from the latest snapshot now",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/admin.draft"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.draft"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          }
+        }
+      }
+    },
+    "/admin/organization/imports": {
+      "post": {
+        "operationId": "admin_import_organization",
+        "tags": [
+          "administration"
+        ],
+        "summary": "Import a draft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/framework.key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/admin.import"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Imported: the record (null when nothing changed) and the organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.imported"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "409": {
+            "$ref": "#/components/responses/framework.refused"
+          },
+          "429": {
+            "$ref": "#/components/responses/framework.too_many"
+          }
+        }
+      }
+    },
+    "/admin/records": {
+      "get": {
+        "operationId": "admin_list_records",
+        "tags": [
+          "administration"
+        ],
+        "summary": "A page of the record, the newest first",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "the first day, YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "the last day, YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "a kind of request",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "what",
+            "in": "query",
+            "required": false,
+            "description": "move, kind or organization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "required": false,
+            "description": "who did it",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": false,
+            "description": "a ticket",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "the ID of the line the page goes on after",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "how many lines: 1 to 100 (50 if not given)",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lines, and whether more follow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/admin.records"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          }
+        }
+      }
+    },
+    "/admin/records.csv": {
+      "get": {
+        "operationId": "admin_records_csv",
+        "tags": [
+          "administration"
+        ],
+        "summary": "The same lines as CSV; Link names the next part",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "the first day, YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "the last day, YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "a kind of request",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "what",
+            "in": "query",
+            "required": false,
+            "description": "move, kind or organization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "required": false,
+            "description": "who did it",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": false,
+            "description": "a ticket",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "the ID of the line the page goes on after",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lines as CSV",
+            "headers": {
+              "Link": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          }
+        }
+      }
+    },
+    "/files": {
+      "post": {
+        "operationId": "upload_file",
+        "tags": [
+          "files"
+        ],
+        "summary": "Keep a file to attach to a request",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The file kept",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/file.kept"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          },
+          "403": {
+            "$ref": "#/components/responses/framework.cross_site"
+          },
+          "413": {
+            "$ref": "#/components/responses/framework.too_large"
+          },
+          "415": {
+            "$ref": "#/components/responses/framework.media_type"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          },
+          "429": {
+            "$ref": "#/components/responses/framework.too_many"
+          }
+        }
+      }
+    },
+    "/files/{id}": {
+      "get": {
+        "operationId": "get_own_file",
+        "tags": [
+          "files"
+        ],
+        "summary": "A file the person kept, before a request holds it",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/file.id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          }
+        }
+      }
+    },
+    "/tickets": {
+      "get": {
+        "operationId": "list_tickets",
+        "tags": [
+          "tickets"
+        ],
+        "summary": "The requests of a kind the person sees for the kind: the tickets of the versions of the kind whose tickets the gate lets them see whoever is on them (see, asked of the version with no ticket), each one they may see, the newest first, by when they were made, and the larger ID first (the later one) where that is the same. A person the gate lets see none of them gets an empty list",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "description": "The kind of request, by its name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Keeps the tickets of one status; all when it is left out",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "in_progress",
+                "paused",
+                "with_requester",
+                "approved",
+                "rejected",
+                "withdrawn",
+                "expired"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "How many tickets: 1 to 100 (50 if not given)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "The ID of the last ticket of the page before: the page goes on after it",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tickets, in that order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/tickets.page"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/framework.bad"
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          }
+        }
+      }
+    },
+    "/tickets/{ticket}/files/{id}": {
+      "get": {
+        "operationId": "get_ticket_file",
+        "tags": [
+          "files"
+        ],
+        "summary": "A file a ticket holds, to a person who may see the ticket",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/file.ticket"
+          },
+          {
+            "$ref": "#/components/parameters/file.id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/framework.unsigned"
+          },
+          "500": {
+            "$ref": "#/components/responses/framework.failed"
+          },
+          "404": {
+            "$ref": "#/components/responses/framework.not_found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "framework.error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "description": "An operation not carried out, and why"
+      },
+      "framework.refused": {
+        "type": "object",
+        "required": [
+          "refused",
+          "text",
+          "text_ja",
+          "at"
+        ],
+        "properties": {
+          "refused": {
+            "type": "string",
+            "enum": [
+              "stale",
+              "owner",
+              "locks_out"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "text_ja": {
+            "type": "string"
+          },
+          "at": {
+            "type": "null"
+          }
+        },
+        "additionalProperties": false,
+        "description": "An operation refused by the state: what changed since it was asked, in English and in Japanese"
+      },
+      "framework.problems": {
+        "type": "object",
+        "required": [
+          "error",
+          "problems",
+          "more",
+          "stopped"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "at",
+                "text",
+                "text_ja"
+              ],
+              "properties": {
+                "at": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "text_ja": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "more": {
+            "type": "integer"
+          },
+          "stopped": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The organization's data that does not pass its checks: the first 100 problems, each at its file and line, how many more there are, and whether the checks stopped at 1,000"
+      },
+      "admin.record_brief": {
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "person",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "integer"
+          },
+          "person": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.start": {
+        "type": "object",
+        "required": [
+          "how",
+          "at",
+          "day",
+          "number",
+          "record"
+        ],
+        "properties": {
+          "how": {
+            "type": "string",
+            "enum": [
+              "description",
+              "now",
+              "day",
+              "never"
+            ]
+          },
+          "at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "day": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "number": {
+            "type": "integer"
+          },
+          "record": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/admin.record_brief"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "When a version starts: as its description says, from a time, from a day, or never; at and day are null where it has none. number counts the switches"
+      },
+      "admin.version": {
+        "type": "object",
+        "required": [
+          "version",
+          "owner",
+          "effective_from",
+          "usable",
+          "may_switch",
+          "may_read",
+          "start",
+          "tickets"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effective_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usable": {
+            "type": "object",
+            "required": [
+              "from",
+              "through"
+            ],
+            "properties": {
+              "from": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "through": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "may_switch": {
+            "type": "boolean"
+          },
+          "may_read": {
+            "type": "boolean"
+          },
+          "start": {
+            "$ref": "#/components/schemas/admin.start"
+          },
+          "tickets": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "open",
+                  "all"
+                ],
+                "properties": {
+                  "open": {
+                    "type": "integer"
+                  },
+                  "all": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.kind": {
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "owner",
+          "current",
+          "versions"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "current": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/admin.version"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.kinds": {
+        "type": "object",
+        "required": [
+          "kinds"
+        ],
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/admin.kind"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.switch": {
+        "type": "object",
+        "required": [
+          "start",
+          "number"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "now, never, description, or a day written YYYY-MM-DD"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.line": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "at",
+              "what",
+              "ticket",
+              "kind",
+              "version",
+              "number",
+              "person",
+              "via",
+              "event",
+              "history",
+              "body",
+              "organization"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "integer"
+              },
+              "what": {
+                "type": "string",
+                "enum": [
+                  "move"
+                ]
+              },
+              "ticket": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "number": {
+                "type": "integer"
+              },
+              "person": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "via": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "event": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "history": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "body": {},
+              "organization": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "at",
+              "what",
+              "kind",
+              "version",
+              "person",
+              "via",
+              "before",
+              "after",
+              "reason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "integer"
+              },
+              "what": {
+                "type": "string",
+                "enum": [
+                  "kind",
+                  "organization"
+                ]
+              },
+              "kind": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "version": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "person": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "via": {
+                "type": "string"
+              },
+              "before": {},
+              "after": {},
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        ],
+        "description": "A line of the record: a move of a ticket, with the lines of history it made; or a record of a switch or an import, with what it changed"
+      },
+      "admin.switched": {
+        "type": "object",
+        "required": [
+          "record",
+          "kind"
+        ],
+        "properties": {
+          "record": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/admin.line"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/admin.kind"
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.organization": {
+        "type": "object",
+        "required": [
+          "latest",
+          "source"
+        ],
+        "properties": {
+          "latest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "at",
+                  "record",
+                  "versions"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "at": {
+                    "type": "integer"
+                  },
+                  "record": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/admin.line"
+                      }
+                    ]
+                  },
+                  "versions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "day",
+                        "when",
+                        "people",
+                        "teams"
+                      ],
+                      "properties": {
+                        "day": {
+                          "type": "string"
+                        },
+                        "when": {
+                          "type": "string",
+                          "enum": [
+                            "past",
+                            "now",
+                            "later"
+                          ]
+                        },
+                        "people": {
+                          "type": "integer"
+                        },
+                        "teams": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "source": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The latest snapshot of the organization in short, and whether the server has a source to read it from"
+      },
+      "admin.part": {
+        "type": "object",
+        "required": [
+          "added",
+          "removed",
+          "changed"
+        ],
+        "properties": {
+          "added": {
+            "type": "array",
+            "items": {}
+          },
+          "removed": {
+            "type": "array",
+            "items": {}
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "key",
+                "before",
+                "after"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "before": {},
+                "after": {}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.draft": {
+        "type": "object",
+        "required": [
+          "draft",
+          "latest",
+          "digest",
+          "source",
+          "at",
+          "same",
+          "locks_out",
+          "days",
+          "proxies",
+          "masters",
+          "counts"
+        ],
+        "properties": {
+          "draft": {
+            "type": "string"
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "digest": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "config",
+              "upload"
+            ]
+          },
+          "at": {
+            "type": "integer"
+          },
+          "same": {
+            "type": "boolean"
+          },
+          "locks_out": {
+            "type": "boolean"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "day",
+                "when",
+                "change",
+                "people",
+                "teams",
+                "members"
+              ],
+              "properties": {
+                "day": {
+                  "type": "string"
+                },
+                "when": {
+                  "type": "string",
+                  "enum": [
+                    "past",
+                    "now",
+                    "later"
+                  ]
+                },
+                "change": {
+                  "type": "string"
+                },
+                "people": {
+                  "$ref": "#/components/schemas/admin.part"
+                },
+                "teams": {
+                  "$ref": "#/components/schemas/admin.part"
+                },
+                "members": {
+                  "$ref": "#/components/schemas/admin.part"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "proxies": {
+            "$ref": "#/components/schemas/admin.part"
+          },
+          "masters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "master",
+                "added",
+                "removed",
+                "changed"
+              ],
+              "properties": {
+                "master": {
+                  "type": "string"
+                },
+                "added": {
+                  "type": "array",
+                  "items": {}
+                },
+                "removed": {
+                  "type": "array",
+                  "items": {}
+                },
+                "changed": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "key",
+                      "before",
+                      "after"
+                    ],
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "before": {},
+                      "after": {}
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "added",
+                "removed",
+                "changed"
+              ],
+              "properties": {
+                "added": {
+                  "type": "integer"
+                },
+                "removed": {
+                  "type": "integer"
+                },
+                "changed": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false,
+        "description": "The organization's data checked and kept as the person's draft, and its difference from the latest snapshot"
+      },
+      "admin.check": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "config"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "Read the data from the server's source"
+      },
+      "admin.import": {
+        "type": "object",
+        "required": [
+          "draft",
+          "digest"
+        ],
+        "properties": {
+          "draft": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locks_out": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.imported": {
+        "type": "object",
+        "required": [
+          "record",
+          "organization"
+        ],
+        "properties": {
+          "record": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/admin.line"
+              }
+            ]
+          },
+          "organization": {
+            "$ref": "#/components/schemas/admin.organization"
+          }
+        },
+        "additionalProperties": false
+      },
+      "admin.records": {
+        "type": "object",
+        "required": [
+          "lines",
+          "more"
+        ],
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/admin.line"
+            }
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "tickets.page": {
+        "type": "object",
+        "required": [
+          "tickets",
+          "more"
+        ],
+        "properties": {
+          "tickets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A ticket, as the schema ticket of the packages' openapi.json describes it: as get_ticket and list_mine answer it"
+            }
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Whether the list holds tickets after the last of the page: the next page is read with that ticket's ID as before"
+          }
+        },
+        "additionalProperties": false
+      },
+      "file.kept": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "content_type",
+          "size",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "description": "A file kept: its ID, which a form's field holds, its name and type as given, its size in bytes, and where to read it"
+      }
+    },
+    "responses": {
+      "framework.bad": {
+        "description": "The body, the query or the key does not read",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        }
+      },
+      "framework.unsigned": {
+        "description": "No one is signed in",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        }
+      },
+      "framework.cross_site": {
+        "description": "A browser sent it with a page of another site open",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        }
+      },
+      "framework.not_found": {
+        "description": "No such thing, or the person may not see it or do it",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        }
+      },
+      "framework.too_large": {
+        "description": "The body is larger than the server takes",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        }
+      },
+      "framework.media_type": {
+        "description": "The body is not of a type the operation takes",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        }
+      },
+      "framework.too_many": {
+        "description": "Too many at once, or too many in a day: try again after Retry-After",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "framework.failed": {
+        "description": "The server failed (it logs why)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.error"
+            }
+          }
+        }
+      },
+      "framework.refused": {
+        "description": "Refused by the state: what changed since it was asked",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/framework.refused"
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "framework.key": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "1 to 255 bytes of visible ASCII: the same key answers the same, and does nothing again",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "admin.kind": {
+        "name": "kind",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "admin.version": {
+        "name": "version",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "admin.draft": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "file.id": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "file.ticket": {
+        "name": "ticket",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

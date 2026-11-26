@@ -15,7 +15,8 @@
 | 通知が来ない | [通知が届かないとき](#通知が届かないとき) |
 | 期限を過ぎたのに終わらない | サーバーが動いているか、`a timer was refused` の行がないかを見る |
 | 「この申請を処理できませんでした」と出る | 進行中の申請があるのに、版を上げずに申請の種類を変えたときに起きる。ステップの名前を元に戻すか、[版を上げて](types.ja.md#使われている申請の決まりを変える)両方の版を渡す |
-| 「サーバーのエラー」と出る | ログの `an operation failed` の行を見る。古い版のコードを外したときは、`err` に `no package has the kind …` とある |
+| 「サーバーのエラー」と出る | ログの `an operation failed` の行を見る |
+| サーバーが `the store keeps tickets of versions no package has` と言って起動しない | 申請の残る古い版のコードを外した。言われた版のコードを戻す（[古い版のコードを外す](maintenance.ja.md#古い版のコードを外す)） |
 
 ページに出るほかの文の意味は、[受け付けない理由](refusals.ja.md)にあります。
 
@@ -40,9 +41,11 @@
 | `msg="a thing to do failed; it is tried again"` | 応答のあとで行うことが失敗した。`what` が何か（次の表）、`tries` が何回目か、`err` が理由。2 秒後、4 秒後、8 秒後と間隔を延ばしながら（最長 10 分）、成功するまでやり直す |
 | `msg="a timer failed; it is tried again when its lease ends"` | 期限や催促を処理できなかった。30 秒後にもう一度試す |
 | `msg="a timer was refused; it is tried again later"` | 期限や催促が、申請の決まりに合わなかった。多くは、その日の組織のデータが原因 |
+| `msg="work ended" … failed=true` | 承認のあとの処理が失敗した。`key` と `flow` がどの処理か。理由は申請のページに出る。Temporal で動かす処理は、原因を直してからもう一度動かせる（[失敗したとき](flows.ja.md#失敗したとき)） |
 | `msg="an operation failed"` | だれかに 500 を返した。`operation`、`ticket`、`person` が何の操作か、`err` が理由 |
 | `msg="oidc: a sign-in refused"` | 会社のログインは済んだが、組織のデータの一人に決められなかった。`reason` が理由（[ログインした人に見えること](sign-in.ja.md#ログインした人に見えること)） |
 | `msg="oidc: a sign-in failed"` | サーバーとログインのサービスのあいだの失敗。`step` がどこか |
+| `msg="apikeys: a key refused"` | プログラムが通らない鍵を送り、401 を返した。`reason` が理由。`no line of the file has it` は、途中で切れた鍵か、行を消した鍵。`the organization in effect today does not have its person` は、その日の組織のデータにいない人の鍵で、組織を離れた人などである（`person` と `line` がだれの鍵か）（[プログラムから呼ぶ](api.ja.md#プログラムから呼ぶ)） |
 | `msg="reading the starts of the versions"` | データベースが応答しなかった |
 | `msg="the server stopped"` | 起動しなかった、または止まった。`err` が理由 |
 
@@ -51,7 +54,7 @@
 | `what` | 行うこと |
 |---|---|
 | `notify` | 通知を送る |
-| `launch` | 承認のあとの処理を始める |
+| `launch` | 承認のあとの処理を始める。始めたあとの進み具合は、申請のページの「承認のあとの処理」に出る |
 | `ask_agent`、`ask_note` | エージェントに確かめさせる、要約を書かせる |
 | `release` | 押さえた予算などを戻す。帳簿を別のデータベースに置いているときだけ |
 | `audit` | 操作の記録を、別の場所に送る |
@@ -99,8 +102,11 @@ from pg_stat_user_tables where schemaname = 'ringi' order by pg_total_relation_s
 | `the environment has RINGI_SESSION_KEYS, a setting of signing in through the provider, and … checks no one` | `-oidc-…` のフラグを渡すか、その環境変数を外す |
 | `-session-keys: oidc: key 1 has 33 bytes, not 32` | 鍵を `head -c 32 /dev/urandom \| base64` で作り直す |
 | `the -oidc-… settings: oidc: the provider's discovery document: …` | issuer の書き方がログインのサービスと違う。または、サーバーからログインのサービスに届かない |
+| `-api-keys: line 2: the SHA-256 of a key is 64 hexadecimal digits, not …` | 行に、鍵そのものか、途中で切れた SHA-256 が書いてある。鍵の SHA-256 を書く（`printf %s "$KEY" \| shasum -a 256`） |
+| `-api-keys: … lists no key: …` | ファイルにコメントしかない。鍵ごとに一行書くか、`-api-keys` を外す |
+| `web: Look.Accent … reads at …:1 on the pages' …` | ページの見た目の色が、ページの上で読めない。もっと濃い色にする。`AccentDark` なら、もっと明るい色にする（[ページの見た目を変える](screens.ja.md#ページの見た目を変える)） |
 | `-db: postgres: the database cannot be reached: …` | 接続文字列、パスワード、ネットワークを確かめる |
 | `-db: postgres: the tables in the schema ringi: ERROR: permission denied for database …` | データベースのユーザーがスキーマを作れない。`grant create on database` をする |
-| `-db: postgres: the tables in the schema ringi: they are at version 11, newer than this code's 10: …` | 新しい版のサーバーが表を新しくした。その版を動かすか、その前のバックアップを復元する |
+| `-db: postgres: the tables in the schema ringi: they are at version 14, newer than this code's 13: …` | 新しい版のサーバーが表を新しくした。その版を動かすか、その前のバックアップを復元する |
 | `the package keeps contract …, and this framework reads …: …` | ritsu と ringi-server の組み合わせが合わない。[版の表](../README.ja.md#版)の組にして、`go generate ./...` を実行する |
 | `org/` のファイル名と行 | 組織のデータが検査を通らない。`ritsu check project` で、起動する前に同じことが分かる |

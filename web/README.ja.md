@@ -36,12 +36,13 @@ signIn.Mount(h) // ログインのルート。同じ検査の後ろに置く
 | ルート | 返すもの |
 |---|---|
 | `GET /` | `/pages/` へのリダイレクト |
-| `GET /pages/` | ホーム。自分を待っているもの、出せる申請、自分の申請と、それぞれの件数 |
+| `GET /pages/` | ホーム。自分を待っているもの、出せる申請、自分の申請と、それぞれの件数。すべての申請を見られる種類（その種類を受け持つ部） |
 | `GET`、`POST /pages/requests/{kind}/new` | 新しい申請のフォームと、その送信 |
 | `GET`、`POST /pages/tickets/{id}` | 申請と、その人ができる操作のボタン。その送信 |
 | `GET`、`POST /pages/tickets/{id}/form` | 差し戻された申請を再申請するフォームと、その送信 |
 | `GET /pages/tickets/{id}/history` | 申請の履歴 |
 | `GET /pages/waiting/{kind}`、`/pages/mine/{kind}` | その種類の申請のうち自分を待っているもの、その種類の自分の申請。新しい順に 1 ページ 50 件 |
+| `GET /pages/requests/{kind}` | その種類のすべての申請。gate がまとめて見ることを許す人に。新しい順に 1 ページ 50 件 |
 | `GET /pages/assets/{name}` | ページのスタイルシートとスクリプト、ritsu の関数 |
 
 ### A2UI の画面
@@ -50,7 +51,7 @@ signIn.Mount(h) // ログインのルート。同じ検査の後ろに置く
 |---|---|
 | `GET /a2ui/requests/{kind}/form` | 新しい申請のフォーム |
 | `GET /a2ui/tickets/{id}/card`、`…/form`、`…/history` | 申請の画面 |
-| `GET /a2ui/waiting/{kind}`、`/a2ui/mine/{kind}` | ページと同じ一覧。`?before=` の次から `?limit=` 件（指定がなければ 50 件、最大 100 件） |
+| `GET /a2ui/waiting/{kind}`、`/a2ui/mine/{kind}`、`/a2ui/requests/{kind}` | ページと同じ一覧。`?before=` の次から `?limit=` 件（指定がなければ 50 件、最大 100 件） |
 | `POST /a2ui/actions` | ボタンの操作を行い、そのあとの画面を返す |
 | `GET /a2ui/find/people`、`/a2ui/find/teams`、`/a2ui/find/masters/{file}/{master}` | 値を選ぶフィールドのために、名前か ID の一部で探した値（[設計](DESIGN.ja.md)の 5.1） |
 | `GET /a2ui/catalog.json`、`/a2ui/functions.js` | ritsu のカタログと関数 |

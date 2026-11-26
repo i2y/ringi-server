@@ -161,7 +161,8 @@ ID.
 - The approvers, and their proxies. Those of the stages that are past, and one who sent it back, too
 - Those it was circulated to
 - Those the gate lets see it. By the gate you start with, the people of the department that keeps the
-  request type
+  request type, who also have the list of all its requests ([Call the API from a
+  program](api.md#list-all-the-requests-of-a-request-type))
 
 ## The organization's data
 

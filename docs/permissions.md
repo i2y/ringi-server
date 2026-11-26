@@ -137,12 +137,19 @@ To use a new value of a person or a request in a rule, such as where they work, 
 | Hand a place over | `hand_over` |
 | Comment | `comment` |
 | See a request one is neither the requester nor an approver of | `see` |
+| List all the requests of a request type, whoever made them | `see`, of a request that names no one (below) |
 | Switch the version of a request type | `change_request_type` |
 | Read the record of requests | `read_audit` |
 | Import the organization's data | `import_organization` |
 | Read the record of the organization's data | `read_organization_audit` |
 
 The buttons of the pages come up after the same questions: a button that may not be pressed is not there.
+
+To list all the requests of a request type (`GET /tickets?kind=`, and "All requests" on the start page), the server
+asks `see` of the request type, as of a request that names no one: `resource.owner` is the team that keeps the
+request type, and the request has no requester, requesters or approvers. A rule that reads the owner alone, as
+`the_owning_department_sees` does, permits it, and a rule that reads the requester or the approvers does not. Then
+each request of the list is asked about as always, so a `forbid` of some of the requests keeps them out of the list.
 
 Even when the gate permits it, a request may not take an operation, such as approving one that has ended. Then
 the answer is [why it is refused](refusals.md).

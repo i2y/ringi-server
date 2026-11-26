@@ -40,7 +40,7 @@ func sentBackBy(t testing.TB, raw json.RawMessage, by string) json.RawMessage {
 // TestHomeTicketsAndNames makes the start page where its entries list a few of their tickets: each
 // a link to the ticket's page with its state as a badge (one back with its requester says whether it
 // was sent back, or is to be resubmitted, taken back), its stage in the words it is given (marked with
-// their language where it is not the page's), who the line names and its short line. An entry of the
+// their language where it is not the page's), who the line names, its short line and its deadline. An entry of the
 // person's own says how many are in each state, as it is given them, however few it lists; and where
 // a section holds two entries of one title, each tells the kinds apart by name, while one of a title
 // of its own shows no name.
@@ -54,7 +54,7 @@ func TestHomeTicketsAndNames(t *testing.T) {
 		pg, err := p.Home(Home{
 			Language: lang,
 			Waiting: []Entry{{Title: "Expense request", Name: "expense", Count: 2, URL: "/waiting/expense", Tickets: []EntryTicket{
-				{ID: "T-9", URL: "/tickets/T-9", Status: "in_progress", Stage: stage, StageLang: in, Who: "Sales staff 1", Info: "1,200,000円・2026-11-16"},
+				{ID: "T-9", URL: "/tickets/T-9", Status: "in_progress", Stage: stage, StageLang: in, Who: "Sales staff 1", Info: "1,200,000円・2026-11-16", Due: "Due 2026-11-30 18:00"},
 				{ID: "T-8", URL: "/tickets/T-8", Status: "with_requester", Who: "Sales staff 2"},
 			}}},
 			New: []Entry{
@@ -98,7 +98,7 @@ func TestHomeTicketsAndNames(t *testing.T) {
 		}
 		// the stage as the kind writes it, who the line names, and its short line
 		got := text(sublists[0])
-		for _, want := range []string{stage, "Sales staff 1", "1,200,000円・2026-11-16"} {
+		for _, want := range []string{stage, "Sales staff 1", "1,200,000円・2026-11-16", "Due 2026-11-30 18:00"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("home %s: a waiting ticket does not show %q: %s", lang, want, got)
 			}
@@ -242,7 +242,7 @@ func TestListComputedStageAndWho(t *testing.T) {
 			if len(rows) != 4 {
 				t.Fatalf("list %s %s: %d rows", of, lang, len(rows))
 			}
-			shown, _ := p.shown(amountField, amount, lang, nil, nil, nil)
+			shown, _ := p.shown(amountField, amount, lang, nil, nil, fileTables{})
 			var stages, whos, states, badges []string
 			for i, r := range rows {
 				tds := r.all(func(n *node) bool { return n.Name == "td" })

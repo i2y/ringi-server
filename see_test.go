@@ -3,9 +3,13 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	server "github.com/i2y/ringi-server"
 )
@@ -151,5 +155,133 @@ func TestTheGateSees(t *testing.T) {
 	}
 	if n := w.moves(t, tk.ID); n != 2 {
 		t.Errorf("the ticket has %d moves, not 2", n)
+	}
+}
+
+// clerkOrg is tripOrg with cal, one of the office's staff whom no trip names.
+type clerkOrg struct{}
+
+func (clerkOrg) Read(ctx context.Context, l server.OrgLayout) (*server.OrgData, error) {
+	d, err := tripOrg{}.Read(ctx, l)
+	if err != nil {
+		return nil, err
+	}
+	staffed(d, "cal")
+	return d, nil
+}
+
+// kindGate lets cal see the trips for the kind (`see` asked with no ticket), and of each trip, those
+// bob did not ask for; it lets everyone do everything else. It keeps the questions of `see` asked with
+// no ticket, and fails while failing is set.
+type kindGate struct {
+	mu      sync.Mutex
+	asked   []server.Question
+	failing bool
+}
+
+func (g *kindGate) Allow(_ context.Context, q server.Question) (bool, error) {
+	if q.Action != "see" {
+		return true, nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.failing {
+		return false, errors.New("the gate is down")
+	}
+	if q.Ticket == "" {
+		g.asked = append(g.asked, q)
+	}
+	return q.Person.ID == "cal" && q.Requester != "bob", nil
+}
+
+// TestTicketsOfAKind checks the list of the requests of a kind (DESIGN 10.5). The gate is asked `see`
+// of each version of the kind as of a ticket that names no one (no ticket, requester, requesters,
+// approvers or stage), with the version's owner and the organization of the day. A person it allows
+// (cal) is answered the kind's tickets the newest first, each one they may see: the gate, asked of
+// each ticket, keeps bob's from cal, and the server reads on past them to fill a page, through
+// Server.Tickets and the API's list_tickets. A person it does not allow for the kind (boss, whom every
+// trip waits for) is answered none, and the kind is not among their KindsSeen. A gate that fails is
+// an error of Tickets and of KindsSeen, and the API's failure (500).
+func TestTicketsOfAKind(t *testing.T) {
+	g := &kindGate{}
+	w := newWorld(t, func(c *server.Config) { c.Gate, c.Organization = g, clerkOrg{} })
+	var ids []string // the newest first
+	for i, who := range []string{"ann", "bob", "bob", "ann"} {
+		w.clock.Set(start.Add(time.Duration(i) * time.Minute))
+		code, b := w.call("POST", "/requests/trip/tickets", who, fmt.Sprintf("k%d", i), map[string]any{"form": map[string]any{"amount": 3 + i, "to": "Kobe"}})
+		if code != 200 {
+			t.Fatalf("the trip of %s: %d %s", who, code, b)
+		}
+		var r struct{ Ticket ticket }
+		json.Unmarshal(b, &r)
+		ids = append([]string{r.Ticket.ID}, ids...)
+	}
+	ctx := context.Background()
+	idsOf := func(bodies []json.RawMessage) []string {
+		out := []string{}
+		for _, b := range bodies {
+			var x struct {
+				ID string `json:"id"`
+			}
+			json.Unmarshal(b, &x)
+			out = append(out, x.ID)
+		}
+		return out
+	}
+	cal, boss := server.Person{ID: "cal"}, server.Person{ID: "boss"}
+	anns := []string{ids[0], ids[3]}
+	for _, c := range []struct {
+		who  server.Person
+		q    server.TicketsQuery
+		want []string
+	}{
+		{cal, server.TicketsQuery{Kind: "trip"}, anns},
+		{cal, server.TicketsQuery{Kind: "trip", Limit: 1}, anns[:1]},
+		{cal, server.TicketsQuery{Kind: "trip", Limit: 1, Before: ids[0]}, anns[1:]},
+		{cal, server.TicketsQuery{Kind: "trip", Before: ids[1]}, anns[1:]},
+		{cal, server.TicketsQuery{Kind: "trip", Status: "approved"}, []string{}},
+		{boss, server.TicketsQuery{Kind: "trip"}, []string{}},
+	} {
+		got, err := w.srv.Tickets(ctx, c.who, c.q)
+		if err != nil || !slices.Equal(idsOf(got), c.want) {
+			t.Errorf("Tickets of %s (%+v): %v %v; want %v", c.who.ID, c.q, idsOf(got), err, c.want)
+		}
+	}
+	g.mu.Lock()
+	q := g.asked[0]
+	g.mu.Unlock()
+	if q.Kind != "trip" || q.Version != 1 || q.Owner != "office" || q.Ticket != "" || q.Requester != "" || q.Requesters != nil || q.Approvers != nil || q.Stage != "" || q.Org == nil || !q.Now.Equal(w.clock.Now()) {
+		t.Errorf("see was asked of the kind as %+v", q)
+	}
+	for _, c := range []struct {
+		query string
+		want  []string
+		more  bool
+	}{{"kind=trip", anns, false}, {"kind=trip&limit=1", anns[:1], true}, {"kind=trip&limit=1&before=" + ids[0], anns[1:], false}} {
+		code, b := w.call("GET", "/tickets?"+c.query, "cal", "", nil)
+		var page struct {
+			Tickets []json.RawMessage `json:"tickets"`
+			More    bool              `json:"more"`
+		}
+		if code != 200 || json.Unmarshal(b, &page) != nil || !slices.Equal(idsOf(page.Tickets), c.want) || page.More != c.more {
+			t.Errorf("/tickets?%s as cal: %d %s; want %v, more %v", c.query, code, b, c.want, c.more)
+		}
+	}
+	for who, want := range map[string][]string{"cal": {"trip"}, "boss": nil} {
+		if got, err := w.srv.KindsSeen(ctx, server.Person{ID: who}); err != nil || !slices.Equal(got, want) {
+			t.Errorf("KindsSeen of %s: %v %v; want %v", who, got, err, want)
+		}
+	}
+	g.mu.Lock()
+	g.failing = true
+	g.mu.Unlock()
+	if _, err := w.srv.Tickets(ctx, cal, server.TicketsQuery{Kind: "trip"}); err == nil || !strings.Contains(err.Error(), "the gate is down") {
+		t.Errorf("Tickets with a gate that fails: %v", err)
+	}
+	if _, err := w.srv.KindsSeen(ctx, cal); err == nil || !strings.Contains(err.Error(), "the gate is down") {
+		t.Errorf("KindsSeen with a gate that fails: %v", err)
+	}
+	if code, b := w.call("GET", "/tickets?kind=trip", "cal", "", nil); code != 500 {
+		t.Errorf("/tickets with a gate that fails: %d %s", code, b)
 	}
 }

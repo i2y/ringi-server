@@ -14,8 +14,9 @@ all it takes. Japanese: [sign-in.ja.md](sign-in.ja.md).
 `-dev-login` and `X-Person` check no one. So they work only on an address of your own computer, and a request
 that a proxy forwarded is not taken.
 
-When a proxy in front of the server signs people in, or when programs are to come with tokens, you put the
-server together yourself ([Embed it in a program of your own](embedding.md)).
+Programs have no one to sign in. They come with keys of their own, whichever way people sign in ([Call it from a
+program](api.md#call-it-from-a-program)). When a proxy in front of the server signs people in, you put the server
+together yourself ([Embed it in a program of your own](embedding.md)).
 
 ## 1. Register it with the sign-in service
 

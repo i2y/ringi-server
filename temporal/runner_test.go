@@ -13,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	sdktemporal "go.temporal.io/sdk/temporal"
@@ -68,6 +70,10 @@ type fakeServer struct {
 	taken    map[server.EffectKey][]server.Answer
 	calls    map[server.EffectKey]int
 	called   chan server.EffectKey
+	// notLaunched are keys nothing was launched by; ended is what the work of each key said became
+	// of it, each time it said it (the framework keeps the last)
+	notLaunched map[server.EffectKey]bool
+	ended       map[server.EffectKey][]server.WorkEnd
 }
 
 func newFakeServer() *fakeServer {
@@ -75,7 +81,26 @@ func newFakeServer() *fakeServer {
 		notAsked: map[server.EffectKey]bool{}, refuse: map[server.EffectKey]string{}, fail: map[server.EffectKey]int{},
 		hold: map[server.EffectKey]chan struct{}{}, kept: map[server.EffectKey]server.Reply{},
 		taken: map[server.EffectKey][]server.Answer{}, calls: map[server.EffectKey]int{}, called: make(chan server.EffectKey, 100),
+		notLaunched: map[server.EffectKey]bool{}, ended: map[server.EffectKey][]server.WorkEnd{},
 	}
+}
+
+// WorkEnded keeps what the work of a key said became of it, as the framework does.
+func (s *fakeServer) WorkEnded(_ context.Context, k server.EffectKey, e server.WorkEnd) (server.Reply, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.notLaunched[k] {
+		return server.Reply{Outcome: server.NotFound, Problem: "nothing was launched by the key " + k.String()}, nil
+	}
+	s.ended[k] = append(s.ended[k], e)
+	return server.Reply{Outcome: server.OK, Body: []byte(`{}`)}, nil
+}
+
+// told answers what the work of a key said became of it, each time it said it.
+func (s *fakeServer) told(k server.EffectKey) []server.WorkEnd {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.ended[k])
 }
 
 func (s *fakeServer) Answered(ctx context.Context, k server.EffectKey, a server.Answer) (server.Reply, error) {
@@ -131,13 +156,14 @@ type rig struct {
 	srv    *fakeServer
 	mu     sync.Mutex
 	paid   map[string]int
+	down   map[string]int // the payments of a request that fail before it is paid
 }
 
 // newRig makes a rig, with the worker of the asking runs when ask is set.
 func newRig(t *testing.T, cfg Config, ask bool) *rig {
 	t.Helper()
 	needServer(t)
-	r := &rig{t: t, name: strings.ReplaceAll(t.Name(), "/", "-"), srv: newFakeServer(), paid: map[string]int{}}
+	r := &rig{t: t, name: strings.ReplaceAll(t.Name(), "/", "-"), srv: newFakeServer(), paid: map[string]int{}, down: map[string]int{}}
 	flows := "flows-" + r.name
 	if cfg.TaskQueue == "" {
 		cfg.TaskQueue = "ask-" + r.name
@@ -179,6 +205,10 @@ func (r *rig) start(w worker.Worker) {
 func (r *rig) pay(_ context.Context, request string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.down[request] > 0 {
+		r.down[request]--
+		return "", sdktemporal.NewNonRetryableApplicationError("the accounts system is down", "Test.Down", nil)
+	}
 	r.paid[request]++
 	return "P-" + request, nil
 }
@@ -285,8 +315,10 @@ func TestUnknownFlow(t *testing.T) {
 	}
 }
 
+// TestLaunchStartsOnce: a launch started twice, and again after its run ended, runs the flow once,
+// and the server is told once what it ended with.
 func TestLaunchStartsOnce(t *testing.T) {
-	r := newRig(t, Config{}, false)
+	r := newRig(t, Config{}, true)
 	ctx := context.Background()
 	l := server.Launch{Key: r.key(12), Kind: "expense", Ticket: r.name, Flow: "pay", Args: json.RawMessage(named("do", str("pay"), "request_id", str(r.name)))}
 	for range 2 {
@@ -294,12 +326,17 @@ func TestLaunchStartsOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	r.launched(l.Key)
 	var out map[string]any
 	if err := dev.c.GetWorkflow(ctx, l.Key.String(), "").Get(ctx, &out); err != nil {
 		t.Fatal(err)
 	}
 	if out["reference"] != "P-"+r.name {
 		t.Errorf("the flow ended with %v", out)
+	}
+	want := []server.WorkEnd{{Outputs: []server.NamedValue{server.NamedText("reference", "P-"+r.name)}}}
+	if got := r.srv.told(l.Key); !sameEnds(got, want) {
+		t.Errorf("the server was told %s; want %s", ends(got), ends(want))
 	}
 	first, err := dev.c.DescribeWorkflowExecution(ctx, l.Key.String(), "")
 	if err != nil {
@@ -319,6 +356,105 @@ func TestLaunchStartsOnce(t *testing.T) {
 	if n := r.payments(r.name); n != 1 {
 		t.Errorf("the request was paid %d times; want once", n)
 	}
+	if got := r.srv.told(l.Key); len(got) != 1 {
+		t.Errorf("the server was told %d times; want once", len(got))
+	}
+}
+
+// TestLaunchFails: a flow that fails to the end is told to the server as failed, with the message of
+// the error it failed with; reset, its launching run runs the flow again under the same ID, and the
+// server is told that it was done in the end.
+func TestLaunchFails(t *testing.T) {
+	r := newRig(t, Config{}, true)
+	ctx := context.Background()
+	r.mu.Lock()
+	r.down[r.name] = 1
+	r.mu.Unlock()
+	l := server.Launch{Key: r.key(12), Kind: "expense", Ticket: r.name, Flow: "pay", Args: json.RawMessage(named("do", str("pay"), "request_id", str(r.name)))}
+	if err := r.runner.Launch(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	r.launched(l.Key)
+	failed := server.WorkEnd{Failed: true, Reason: "the accounts system is down"}
+	if got := r.srv.told(l.Key); !sameEnds(got, []server.WorkEnd{failed}) {
+		t.Fatalf("the server was told %s; want that it failed", ends(got))
+	}
+	// reset to its first task, as `temporal workflow reset --type FirstWorkflowTask` does
+	h := dev.c.GetWorkflowHistory(ctx, LaunchID(l.Key), "", false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	var task int64
+	for task == 0 && h.HasNext() {
+		e, err := h.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e.GetEventType() == enumspb.EVENT_TYPE_WORKFLOW_TASK_COMPLETED {
+			task = e.GetEventId()
+		}
+	}
+	if _, err := dev.c.ResetWorkflowExecution(ctx, &workflowservice.ResetWorkflowExecutionRequest{
+		Namespace: "default", WorkflowExecution: &commonpb.WorkflowExecution{WorkflowId: LaunchID(l.Key)},
+		Reason: "the accounts system is back", WorkflowTaskFinishEventId: task, RequestId: r.name + "-reset",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the server to be told again", func() bool { return len(r.srv.told(l.Key)) == 2 })
+	done := server.WorkEnd{Outputs: []server.NamedValue{server.NamedText("reference", "P-"+r.name)}}
+	if got := r.srv.told(l.Key); !sameEnds(got, []server.WorkEnd{failed, done}) {
+		t.Errorf("the server was told %s; want that it failed, then that it was done", ends(got))
+	}
+	if n := r.payments(r.name); n != 1 {
+		t.Errorf("the request was paid %d times; want once", n)
+	}
+}
+
+// TestLaunchNotLaunched: a launching run whose key the server launched nothing by ends failed, once:
+// telling the server again would not change its answer.
+func TestLaunchNotLaunched(t *testing.T) {
+	r := newRig(t, Config{}, true)
+	ctx := context.Background()
+	l := server.Launch{Key: r.key(12), Kind: "expense", Ticket: r.name, Flow: "pay", Args: json.RawMessage(named("do", str("pay"), "request_id", str(r.name)))}
+	r.srv.mu.Lock()
+	r.srv.notLaunched[l.Key] = true
+	r.srv.mu.Unlock()
+	if err := r.runner.Launch(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	wait, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	err := dev.c.GetWorkflow(wait, LaunchID(l.Key), "").Get(wait, nil)
+	var app *sdktemporal.ApplicationError
+	if !errors.As(err, &app) || app.Type() != "requests.not_found" {
+		t.Errorf("the launching run ended with %v; want the server's not_found", err)
+	}
+}
+
+// launched waits for the launching run of a key to end, with no error.
+func (r *rig) launched(k server.EffectKey) {
+	r.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if err := dev.c.GetWorkflow(ctx, LaunchID(k), "").Get(ctx, nil); err != nil {
+		r.t.Fatalf("the launching run of %s: %v", k, err)
+	}
+}
+
+func sameEnds(a, b []server.WorkEnd) bool {
+	return slices.EqualFunc(a, b, func(x, y server.WorkEnd) bool {
+		return x.Failed == y.Failed && x.Reason == y.Reason && showOutputs(x.Outputs) == showOutputs(y.Outputs)
+	})
+}
+
+func showOutputs(vs []server.NamedValue) string {
+	b, _ := json.Marshal(vs)
+	return string(b)
+}
+
+func ends(es []server.WorkEnd) string {
+	var b strings.Builder
+	for _, e := range es {
+		fmt.Fprintf(&b, "{failed %v, reason %q, outputs %s} ", e.Failed, e.Reason, showOutputs(e.Outputs))
+	}
+	return b.String()
 }
 
 func TestAskAgent(t *testing.T) {
@@ -520,8 +656,11 @@ func TestRun(t *testing.T) {
 	if err := runner.Launch(ctx, l); err != nil {
 		t.Fatal(err)
 	}
-	if err := dev.c.GetWorkflow(ctx, l.Key.String(), "").Get(ctx, nil); err != nil {
+	if err := dev.c.GetWorkflow(ctx, LaunchID(l.Key), "").Get(ctx, nil); err != nil {
 		t.Fatal(err)
+	}
+	if got := r.srv.told(l.Key); len(got) != 1 || got[0].Failed {
+		t.Errorf("the server was told %s; want that the payment was done", ends(got))
 	}
 	k := r.key(4)
 	if err := runner.Ask(ctx, server.Ask{Key: k, Kind: "expense", Ticket: r.name, Flow: "check", Stage: "precheck", Args: json.RawMessage(named("do", str("doubt")))}); err != nil {

@@ -356,6 +356,23 @@ func (s *Store) Mine(ctx context.Context, person string, q server.MineQuery) ([]
 	return collectTickets(rows)
 }
 
+// Tickets reads the tickets of some versions of a kind, the newest first.
+func (s *Store) Tickets(ctx context.Context, q server.TicketsQuery) ([]server.TicketRecord, error) {
+	var limit any
+	if q.Limit > 0 {
+		limit = q.Limit
+	}
+	versions := q.Versions
+	if versions == nil {
+		versions = []int{}
+	}
+	rows, err := s.q(ctx).Query(ctx, s.sql["tickets"], q.Kind, versions, q.Before, limit, q.Status)
+	if err != nil {
+		return nil, err
+	}
+	return collectTickets(rows)
+}
+
 // CountMine counts a person's own tickets, by kind and by state.
 func (s *Store) CountMine(ctx context.Context, person string) (map[string]server.MineCount, error) {
 	rows, err := s.q(ctx).Query(ctx, s.sql["count_mine"], person)
@@ -491,10 +508,16 @@ func scanToDo(rows pgx.Rows) ([]server.ToDo, error) {
 	}
 	rs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (row, error) {
 		var x row
-		var done *time.Time
-		err := r.Scan(&x.seq, &x.ID, &x.Ticket, &x.What, &x.Body, &x.Created, &x.TryAt, &x.Tries, &x.LastError, &done)
+		var done, said *time.Time
+		var outcome *string
+		err := r.Scan(&x.seq, &x.ID, &x.Ticket, &x.What, &x.Body, &x.Created, &x.TryAt, &x.Tries, &x.LastError, &done, &outcome, &said)
 		x.Created, x.TryAt = x.Created.UTC(), x.TryAt.UTC()
-		x.Done = done != nil
+		if x.Done = done != nil; x.Done {
+			x.DoneAt = done.UTC()
+		}
+		if outcome != nil && said != nil {
+			x.Outcome, x.OutcomeAt = json.RawMessage(*outcome), said.UTC()
+		}
 		return x, err
 	})
 	sort.Slice(rs, func(i, j int) bool { return rs[i].seq < rs[j].seq })
@@ -543,6 +566,18 @@ func (s *Store) ToDoList(ctx context.Context, ticket string) ([]server.ToDo, err
 func (s *Store) DoneToDo(ctx context.Context, id string, at time.Time) error {
 	_, err := s.q(ctx).Exec(ctx, s.sql["done"], id, at)
 	return err
+}
+
+// KeepOutcome keeps what the work of one said became of it, in place of what it said before.
+func (s *Store) KeepOutcome(ctx context.Context, id string, at time.Time, outcome json.RawMessage) error {
+	tag, err := s.q(ctx).Exec(ctx, s.sql["outcome"], id, string(outcome), at)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return server.ErrNotFound
+	}
+	return nil
 }
 
 // RetryToDo gives one up to be tried again.

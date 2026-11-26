@@ -119,8 +119,8 @@ files in this order. If no one uses the project yet, you need not raise the vers
 1. Make the positions and the kinds of team in `project/shared/company.ringi` your own.
 2. Make the three CSV files in `project/org/2026-04-01/` your own. Name the directory by the day that
    organization started. Make it a day before the dates of the scenarios.
-3. In each `.ringi` file, make `owner` the ID of the team that keeps that kind of request. The check does not
-   see whether there is a team of that ID.
+3. In each `.ringi` file, make `owner` the ID of the team that keeps that kind of request. If a version
+   of the organization has no team of that ID, the check (`ritsu check`) says so, as E511.
 4. Make the IDs and the mail addresses in the scenarios of the `.ringi` files and in the tests
    (`pages_test.go`, `server_test.go`) those of people of your company.
 5. Check it, make the code again, and test it.

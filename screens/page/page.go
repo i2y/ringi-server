@@ -147,6 +147,23 @@ func (p *Pages) WithAssets(base string) (*Pages, error) {
 	return &c, nil
 }
 
+// WithStyle answers the pages with rules added at the end of their page.css: a server's own look,
+// such as the colours of its organization (web.Look). The pages are the same otherwise; p does not
+// change, and a style given before is replaced.
+func (p *Pages) WithStyle(css string) (*Pages, error) {
+	b, err := files.ReadFile("files/page.css")
+	if err != nil {
+		return nil, err
+	}
+	c := *p
+	c.assets = maps.Clone(p.assets)
+	if css != "" {
+		b = append(append(b, '\n'), css...)
+	}
+	c.assets["page.css"] = asset("page.css", p.assets["page.css"].ContentType, b)
+	return &c, nil
+}
+
 // Asset is a file the pages load, by its name: "page.css", "page.js", or the set's "functions.js"
 // (fs.ErrNotExist for another). A server serves each at Options.Assets with its ContentType and
 // ETag.
@@ -223,8 +240,7 @@ type Card struct {
 	Token   string
 	Now     time.Time
 	Picks   Picks
-	Zone    *time.Location // the zone the card shows times in; nil is UTC
-	History string         // the address of the ticket's history, for a link; "" for none
+	History string // the address of the ticket's history, for a link; "" for none
 	// Resubmit is the address of the form a request that is back with its requester is made again in,
 	// where they may make it again: the card says so, and links to it; "" shows none.
 	Resubmit string
@@ -244,8 +260,8 @@ type Card struct {
 type List struct {
 	screens.List
 	Open string // the address of a ticket's page, with {id} for its ID ("/tickets/{id}"); "" shows no link
-	// Of is whose tickets the list shows, which its heading says: ListWaiting, ListMine, or "" for
-	// the kind's title alone.
+	// Of is whose tickets the list shows, which its heading says: ListWaiting, ListMine, ListAll, or
+	// "" for the kind's title alone.
 	Of string
 	// More is the address of the list's next page (the older tickets); "" for none.
 	More string
@@ -257,6 +273,7 @@ type List struct {
 const (
 	ListWaiting = "waiting" // the tickets that wait for the person
 	ListMine    = "mine"    // the person's own requests: made by them, or for them
+	ListAll     = "all"     // the requests of the kind the person sees for the kind (server.Server.Tickets)
 )
 
 // History is what a ticket's history is made of. Each line is shown in the zone of its At.
@@ -275,6 +292,10 @@ type Home struct {
 	Waiting  []Entry // the kinds of the tickets that wait for the person, with how many
 	New      []Entry // the kinds the person may make a request of, and those they may from a day (Entry.From)
 	Mine     []Entry // the kinds the person has made requests of
+	// All are the kinds whose requests the person sees for the kind, whoever made them (the
+	// department that owns a kind, as the examples' gate has it: server.Server.KindsSeen), each a
+	// link to the list of all of them (ListAll). The part is left out when there are none.
+	All []Entry
 	// Admin is the address of the administration's pages, for a person who may use one of them;
 	// "" for none.
 	Admin string
@@ -323,13 +344,19 @@ type EntryTicket struct {
 	// Info is a short line of the request's values that tells it apart (the sum it works out, a
 	// day); "" for none.
 	Info string
+	// Due is the deadline the ticket runs to, in words ("Due 2026-11-30 18:00", as Pages.TicketDue
+	// answers it); "" for none.
+	Due string
 }
 
 // Bar is the bar a server puts at the top of each page it shows (the page's Bar): the way back to
-// the start page, who is signed in, the page in its other languages, and signing out.
+// the start page, who is signed in, the page in its other languages, and signing out. The way back
+// is the organization's logo and name when the server has them, and "Home" otherwise.
 type Bar struct {
 	Language  string
 	Home      string // the address of the start page; "" for none
+	Name      string // the organization's name, the words of the way back; "" for none
+	Logo      string // the address of the organization's logo, before the name; "" for none
 	Person    string // the name of the person signed in; "" for none
 	Languages []Link // the page in other languages, each named in its own
 	SignOut   string // the address the bar's button posts to, to sign out; "" for none

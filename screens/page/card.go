@@ -98,13 +98,21 @@ func (p *Pages) Card(in Card) (Page, error) {
 	if madeBy != "" {
 		v.Facts = append(v.Facts, fact{Label: w.MadeBy(), Value: plain(name(people, madeBy))})
 	}
+	// the deadlines it runs to, as the A2UI card shows them (/due): the stage's, the requester's to
+	// submit it again, the end of its hold
+	due := dm.obj("due")
+	for _, key := range dueKeys {
+		if at, ok := w.dueAt(due, key); ok {
+			v.Facts = append(v.Facts, fact{Label: w.due(key), Value: plain(at)})
+		}
+	}
 	// the request's values, and what its form works out: a field shown on a condition is left out
 	// where the condition does not hold, and listed where it holds; where the form does not decide it
 	// (or there is no answer), it is listed when it holds a value, as a field hidden on its condition
 	// holds none (ringi's DESIGN 7.3)
 	values := dm.obj("form")
 	masters := dm.obj("masters")
-	filesTable := dm.obj("files")
+	files := fileTables{urls: dm.obj("files"), names: dm.obj("file_names")}
 	worked, err := ask(in.Worked, ticketForm(k.d, values), nil)
 	if err != nil {
 		return Page{}, err
@@ -117,7 +125,7 @@ func (p *Pages) Card(in Card) (Page, error) {
 				continue
 			}
 		}
-		v.Values = append(v.Values, p.value(k, f, val, lang, people, masters, filesTable, worked))
+		v.Values = append(v.Values, p.value(k, f, val, lang, people, masters, files, worked))
 	}
 	// the route
 	cur, status, route := str(ticket["stage"]), str(ticket["status"]), asList(dm["route"])
@@ -165,6 +173,23 @@ func (p *Pages) Card(in Card) (Page, error) {
 		}
 		v.Route = append(v.Route, sv)
 	}
+	// what became of the work the ticket launched (/works), as the A2UI card shows it
+	for _, x := range asList(dm["works"]) {
+		line, _ := x.(map[string]any)
+		wv := workView{Flow: str(line["flow"]), StateKey: str(line["state"]), State: w.work(str(line["state"])), Outputs: str(line["outputs"]), Reason: str(line["reason"])}
+		if at, ok := timeAt(line["at"]); ok {
+			wv.At = at
+		}
+		v.Works = append(v.Works, wv)
+	}
+	// what an agent answered in the round the ticket is in (/agent), as the A2UI card shows it: under
+	// the stage it was asked at, the last of the route of its name, what it said and its reason
+	for _, x := range asList(dm["agent"]) {
+		line, _ := x.(map[string]any)
+		if i, ok := last[str(line["stage"])]; ok && i < len(v.Route) {
+			v.Route[i].Agent = append(v.Route[i].Agent, agentView{Said: from(dids, str(line["did"]), lang), Reason: str(line["comment"])})
+		}
+	}
 	// what the viewer may do
 	acts := p.actions(kn, "card")
 	if !slices.ContainsFunc(acts, dm.can) {
@@ -179,7 +204,7 @@ func (p *Pages) Card(in Card) (Page, error) {
 		b, _ := json.Marshal(rev)
 		fv.Revision = string(b)
 	}
-	b := builder{p: p, k: k, lang: lang, again: again, picks: in.Picks, people: people, masters: masters, edit: true, find: dm.find()}
+	b := builder{p: p, k: k, lang: lang, again: again, picks: in.Picks, people: people, masters: masters, files: files.names, edit: true, find: dm.find()}
 	if edit := dm.obj("edit"); dm.can("edit") && edit != nil {
 		// the fields approvers edit, as the form after the edits shown decides them: each edit in
 		// place of the form's value, and a field the edit empties empty
@@ -406,7 +431,7 @@ func wireForm(d *description, form map[string]any) map[string]any {
 
 // value is how a card shows a field's value: a value the form works out as the ticket holds it, or
 // as the Worked entry answers it (worked) where the ticket holds none (a computed field of a row).
-func (p *Pages) value(k *kind, f *field, v any, lang string, people, masters, files map[string]any, worked *answer) valueView {
+func (p *Pages) value(k *kind, f *field, v any, lang string, people, masters map[string]any, files fileTables, worked *answer) valueView {
 	w := words{lang}
 	if f.Computed && (v == nil || v == "") {
 		if x, said := worked.of("", -1, f.Name).value(); said && x != nil {
@@ -433,7 +458,9 @@ func (p *Pages) value(k *kind, f *field, v any, lang string, people, masters, fi
 						x = y
 					}
 				}
-				s, _ := p.shown(c, x, lang, people, masters, files)
+				// a row's file is opened by its name
+				s, u := p.shown(c, x, lang, people, masters, files)
+				s.URL = u
 				cells = append(cells, s)
 			}
 			out.Rows = append(out.Rows, cells)
@@ -445,9 +472,14 @@ func (p *Pages) value(k *kind, f *field, v any, lang string, people, masters, fi
 	return out
 }
 
+// fileTables are the tables of the files a card shows: their addresses (the data's /files) and the names
+// they were given (/file_names), by their IDs.
+type fileTables struct{ urls, names map[string]any }
+
 // shown is a value as a page shows it, and a file's address. A choice is shown by its label, marked
-// with its language where the page's has none.
-func (p *Pages) shown(f *field, v any, lang string, people, masters, files map[string]any) (text, string) {
+// with its language where the page's has none; a file by its name, or by its ID where the names do
+// not have it (a file the person may not open).
+func (p *Pages) shown(f *field, v any, lang string, people, masters map[string]any, files fileTables) (text, string) {
 	w := words{lang}
 	if v == nil || v == "" {
 		return plain(w.NotYet()), ""
@@ -466,8 +498,8 @@ func (p *Pages) shown(f *field, v any, lang string, people, masters, files map[s
 		return plain(name(people, str(v))), ""
 	case "attachment":
 		id := str(v)
-		u, _ := files[id].(string)
-		return plain(id), u
+		u, _ := files.urls[id].(string)
+		return plain(name(files.names, id)), u
 	case "bool":
 		if b, _ := v.(bool); b {
 			return plain(w.Yes()), ""
@@ -519,7 +551,7 @@ func (p *Pages) List(in List) (Page, error) {
 	if in.Of == ListMine {
 		whoWords = w.MadeBy()
 	}
-	lv := &listView{Columns: []text{plain(w.ID()), plain(w.State()), plain(w.Stage()), plain(whoWords)}, More: in.More}
+	lv := &listView{Columns: []text{plain(w.ID()), plain(w.State()), plain(w.Stage()), plain(whoWords), plain(w.due("stage"))}, More: in.More}
 	// the short fields: the given ones, as the A2UI list shows them, and a field the form works out
 	// (the sum of a request), which the data holds the value of
 	var short []*field
@@ -565,19 +597,52 @@ func (p *Pages) List(in List) (Page, error) {
 		if s := name(people, str(row[who])); s != "" {
 			who2 = plain(s)
 		}
-		lr.Cells = []text{stage, who2}
+		// the deadline it runs to (the row's due): the stage's, the requester's to submit it again
+		// (its state says it is with them) or the end of its hold (its state says so); "—" for none
+		when := plain(w.NotYet())
+		due, _ := row["due"].(map[string]any)
+		for _, key := range dueKeys {
+			if at, ok := w.dueAt(due, key); ok {
+				when = plain(at)
+				break
+			}
+		}
+		lr.Cells = []text{stage, who2, when}
 		form := forms[id]
 		if form == nil {
 			form, _ = row["form"].(map[string]any)
 		}
 		for _, f := range short {
-			s, _ := p.shown(f, form[f.Name], lang, people, masters, nil)
+			s, _ := p.shown(f, form[f.Name], lang, people, masters, fileTables{})
 			lr.Cells = append(lr.Cells, s)
 		}
 		lv.Rows = append(lv.Rows, lr)
 	}
 	v.List = lv
 	return p.render(v)
+}
+
+// dueKeys are the deadlines a card's /due and a list's row's due hold, in the order they are shown.
+var dueKeys = []string{"stage", "resubmit", "pause_ends"}
+
+// dueAt writes a deadline of the deadlines as the server fills them in (a time in RFC 3339, in the
+// kind's zone, and the day it is the end of, when it is at midnight there) as the pages write times:
+// "2026-11-30 18:00", or "2026-11-19 at the end of the day" (screens.EndOfDay); false for none.
+func (w words) dueAt(due map[string]any, key string) (string, bool) {
+	if day := str(due[key+"_day"]); day != "" {
+		return w.endOfDay(day), true
+	}
+	return timeAt(due[key])
+}
+
+// timeAt writes a time as the server fills it in (RFC 3339, in the kind's zone) as the pages write
+// times; false for none.
+func timeAt(v any) (string, bool) {
+	at, err := time.Parse(time.RFC3339, str(v))
+	if err != nil {
+		return "", false
+	}
+	return at.Format("2006-01-02 15:04"), true
 }
 
 // ── the history ──

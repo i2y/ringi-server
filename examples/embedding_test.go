@@ -5,8 +5,6 @@ package examples
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +14,7 @@ import (
 	"time"
 
 	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/apikeys"
 	"github.com/i2y/ringi-server/mcp"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/servertest"
@@ -32,26 +31,6 @@ func behindProxy(cfg server.Config, secret string) (http.Handler, *server.Server
 	}
 	h, err := web.New(srv, web.Config{Logger: cfg.Logger})
 	return h, srv, err
-}
-
-// Tokens finds programs by their tokens, and everyone else by SignIn.
-type Tokens struct {
-	SignIn server.Authenticator
-	People map[string]string // the SHA-256 of a token, in hexadecimal, and the ID of the person who acts
-}
-
-// Authenticate answers whose request it is.
-func (t Tokens) Authenticate(r *http.Request) (server.Person, error) {
-	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok {
-		return t.SignIn.Authenticate(r)
-	}
-	sum := sha256.Sum256([]byte(token))
-	id, ok := t.People[hex.EncodeToString(sum[:])]
-	if !ok {
-		return server.Person{}, server.ErrNoPerson // answered 401
-	}
-	return server.Person{ID: id}, nil
 }
 
 // docs/agents.md
@@ -73,8 +52,10 @@ func lookUp(_ context.Context, token string) (server.Person, time.Time, error) {
 }
 
 // TestEmbedded runs behindProxy: the proxy's headers name the person only with its secret. Then it
-// runs Tokens in front of the proxy's: a program's token names its person, and one it does not know
-// names no one.
+// puts the keys of programs (package apikeys) in front of the proxy's sign-in, as docs/embedding.md
+// puts them in front of the provider's: a program's key names its person; a key no line has, and
+// the key of a person the organization does not have, name no one; a request with no key is the
+// proxy's.
 func TestEmbedded(t *testing.T) {
 	pkg, err := Package()
 	if err != nil {
@@ -105,13 +86,21 @@ func TestEmbedded(t *testing.T) {
 			t.Errorf("with the secret %q: %d, want %d", c.secret, w.Code, c.want)
 		}
 	}
-	sum := sha256.Sum256([]byte("a program's token"))
-	a := Tokens{SignIn: web.ProxyHeader{Secret: secret}, People: map[string]string{hex.EncodeToString(sum[:]): "e1201"}}
+	keys, err := apikeys.Parse(strings.NewReader("e1201 " + apikeys.Sum("a program's key") + " # the purchasing system\n" +
+		"e9999 " + apikeys.Sum("the key of someone who left") + "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := apikeys.New(apikeys.Config{Keys: keys, Next: web.ProxyHeader{Secret: secret}, Known: srv.InOrganization})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		header, value, person string
 	}{
-		{"Authorization", "Bearer a program's token", "e1201"},
+		{"Authorization", "Bearer a program's key", "e1201"},
 		{"Authorization", "Bearer another", ""},
+		{"Authorization", "Bearer the key of someone who left", ""},
 		{"X-Ringi-Proxy-Secret", secret, "e1101"},
 		{"", "", ""},
 	} {

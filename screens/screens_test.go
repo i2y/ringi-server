@@ -186,6 +186,36 @@ func TestLoadRefuses(t *testing.T) {
 		{"a screen that starts refused at the comment", func(t *testing.T, m fstest.MapFS) {
 			edit(t, m, "a2ui/expense/card.en.json", func(v any) { dataOf(v)["refused"].(map[string]any)["comment"] = true })
 		}, ErrSet, "its place /refused/comment starts as true, not false"},
+		{"a card that starts with a deadline", func(t *testing.T, m fstest.MapFS) {
+			edit(t, m, "a2ui/expense/card.en.json", func(v any) { dataOf(v)["due"].(map[string]any)["stage"] = "2026-11-30T18:00:00+09:00" })
+		}, ErrSet, `its place /due/stage starts as "2026-11-30T18:00:00+09:00", not null`},
+		{"a deadline a card's /due does not have", func(t *testing.T, m fstest.MapFS) {
+			edit(t, m, "a2ui/expense/card.en.json", func(v any) { dataOf(v)["due"].(map[string]any)["remind"] = nil })
+		}, ErrSet, "the place /due/remind, which this module does not fill"},
+		{"a row that reads a deadline a ticket's row does not have", func(t *testing.T, m fstest.MapFS) {
+			b := bytes.ReplaceAll(m["a2ui/leave/list.en.json"].Data, []byte(`"due/resubmit"`), []byte(`"due/remind"`))
+			m["a2ui/leave/list.en.json"] = &fstest.MapFile{Data: b}
+		}, ErrSet, "\"/tickets/*/due/remind\", which is no deadline of a ticket's row"},
+		{"a card that starts with work", func(t *testing.T, m fstest.MapFS) {
+			edit(t, m, "a2ui/purchase/card.en.json", func(v any) {
+				dataOf(v)["works"] = []any{map[string]any{"flow": "order", "state": "done", "at": nil, "outputs": nil, "reason": nil}}
+			})
+		}, ErrSet, "its place /works starts with lines"},
+		{"a line of the work that reads what it does not have", func(t *testing.T, m fstest.MapFS) {
+			edit(t, m, "a2ui/purchase/card.en.json", func(v any) {
+				partOf(t, v, "works.line.reason")["text"] = map[string]any{"@path": "note"}
+			})
+		}, ErrSet, "\"/works/*/note\", which a line of the work a ticket launched does not have"},
+		{"a card that starts with what an agent answered", func(t *testing.T, m fstest.MapFS) {
+			edit(t, m, "a2ui/expense/card.en.json", func(v any) {
+				dataOf(v)["agent"] = []any{map[string]any{"stage": "decide", "did": "agent ok", "comment": nil}}
+			})
+		}, ErrSet, "its place /agent starts with lines"},
+		{"a line of what an agent answered that reads what it does not have", func(t *testing.T, m fstest.MapFS) {
+			edit(t, m, "a2ui/expense/card.en.json", func(v any) {
+				partOf(t, v, "agent.line.comment")["text"] = map[string]any{"@path": "note"}
+			})
+		}, ErrSet, "\"/agent/*/note\", which a line of what an agent answered does not have"},
 		{"a list that starts with more", func(t *testing.T, m fstest.MapFS) {
 			edit(t, m, "a2ui/expense/list.en.json", func(v any) { dataOf(v)["more"] = nil })
 		}, ErrSet, "its place /more starts as null, not bool"},
@@ -552,6 +582,7 @@ type failing struct{ err error }
 func (f failing) PeopleNames(string, []string) (map[string]string, error)         { return nil, f.err }
 func (f failing) MasterNames(string, string, []string) (map[string]string, error) { return nil, f.err }
 func (f failing) FileURLs([]string) (map[string]string, error)                    { return nil, f.err }
+func (f failing) FileNames([]string) (map[string]string, error)                   { return nil, f.err }
 
 // A card that comes to show who made the request (a key of the API's ticket under /ticket, looked
 // up in /people) loads, and is filled and named from the ticket, with no change to this module.

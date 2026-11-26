@@ -26,8 +26,8 @@ func TestReasonAsked(t *testing.T) {
 	})
 	for _, lang := range []string{"en", "ja"} {
 		words := reasonGiven(lang)
-		in := Card{Card: screens.Card{Language: lang, Ticket: raw, Can: can, Names: namer{}}, Action: "/post", Now: testNow, History: "/history",
-			Zone: time.FixedZone("", 9*3600), Worked: workedOf(t, "leave")}
+		in := Card{Card: screens.Card{Language: lang, Ticket: raw, Can: can, Names: namer{}, Zone: time.FixedZone("", 9*3600)}, Action: "/post", Now: testNow, History: "/history",
+			Worked: workedOf(t, "leave")}
 		pg, err := p.Card(in)
 		page := checkPageBytes(t, pg, err)
 		root, err := readHTML(page)

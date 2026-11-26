@@ -57,7 +57,7 @@ func TestHomeListsBarAndNotices(t *testing.T) {
 		if !slices.Equal(langs, []string{"", "", another}) {
 			t.Errorf("home %s: the links' languages %q", lang, langs)
 		}
-		// with nothing to show, it says so in each part
+		// with nothing to show, it says so in each part; the part of all requests is left out
 		pg, err = p.Home(Home{Language: lang})
 		if root := checkPage(t, "an empty home "+lang, pg, err); root != nil {
 			got := text(root)
@@ -66,10 +66,26 @@ func TestHomeListsBarAndNotices(t *testing.T) {
 					t.Errorf("an empty home %s does not say %q: %s", lang, want, got)
 				}
 			}
+			if strings.Contains(got, w.AllRequests()) || len(root.all(func(n *node) bool { return n.class("all") })) != 0 {
+				t.Errorf("an empty home %s has the part of all requests: %s", lang, got)
+			}
+		}
+		// the kinds whose requests the person sees for the kind: a part of their own, after the
+		// person's requests, its heading naming it, each kind a link to its list
+		pg, err = p.Home(Home{Language: lang, All: []Entry{{Title: evil, URL: `/requests/expense?a="b"`}, {Title: p.Title("leave", another), Lang: another, URL: "/requests/leave"}}})
+		if root := checkPage(t, "a home with all requests "+lang, pg, err); root != nil {
+			parts := root.all(func(n *node) bool { return n.Name == "section" })
+			last := parts[len(parts)-1]
+			h2 := last.all(func(n *node) bool { return n.Name == "h2" })
+			links := last.all(func(n *node) bool { return n.Name == "a" })
+			if !last.class("all") || len(h2) != 1 || text(h2[0]) != w.AllRequests() || last.Attr["aria-labelledby"] != h2[0].Attr["id"] ||
+				len(links) != 2 || links[0].Attr["href"] != `/requests/expense?a=%22b%22` || text(links[0]) != evil || links[1].Attr["lang"] != another {
+				t.Errorf("home %s: the part of all requests: %s", lang, text(last))
+			}
 		}
 
 		// a list's heading says whose tickets it shows; its link goes on to older ones
-		for _, of := range []string{ListWaiting, ListMine, ""} {
+		for _, of := range []string{ListWaiting, ListMine, ListAll, ""} {
 			pg, err := p.List(List{List: screens.List{Kind: "expense", Language: lang, Tickets: ticks["expense"][:3], Names: namer{}}, Open: "/tickets/{id}", Of: of, More: "/mine/expense?before=T-1"})
 			root := checkPage(t, "list "+of+" "+lang, pg, err)
 			if root == nil {
@@ -141,6 +157,28 @@ func TestHomeListsBarAndNotices(t *testing.T) {
 		must(t, err)
 		if root, err := readHTML([]byte(bar)); err != nil || len(root.all(func(n *node) bool { return n.Name == "form" || n.class("person") })) != 0 {
 			t.Errorf("the bar %s of no one: %v %s", lang, err, bar)
+		}
+		// the organization's logo and name lead to the start page in place of "Home": the name as
+		// text, the logo named "Home" only when there is no name
+		for _, c := range []struct{ name, logo, alt, says string }{
+			{evil, "/pages/assets/logo", "", evil},
+			{"", "/pages/assets/logo", w.HomeLink(), ""},
+			{evil, "", "", evil},
+		} {
+			bar, err = p.Bar(Bar{Language: lang, Home: "/pages/", Name: c.name, Logo: c.logo})
+			must(t, err)
+			root, err := readHTML([]byte(bar))
+			if err != nil {
+				t.Fatalf("the bar %s of the organization is not well-formed: %v", lang, err)
+			}
+			home := root.all(func(n *node) bool { return n.Name == "a" })
+			imgs := root.all(func(n *node) bool { return n.Name == "img" })
+			if len(home) != 1 || home[0].Attr["href"] != "/pages/" || !home[0].class("brand") || text(home[0]) != c.says {
+				t.Errorf("the bar %s of the name %q and the logo %q: %s", lang, c.name, c.logo, bar)
+			}
+			if c.logo != "" && (len(imgs) != 1 || imgs[0].Attr["src"] != c.logo || imgs[0].Attr["alt"] != c.alt || !imgs[0].class("logo")) || c.logo == "" && len(imgs) != 0 {
+				t.Errorf("the bar %s of the name %q and the logo %q: the image %s", lang, c.name, c.logo, bar)
+			}
 		}
 
 		// each notice, with its way on and without
@@ -247,6 +285,38 @@ func TestKindOfferedFrom(t *testing.T) {
 		want := []string{p.Title("expense", lang), p.Title("leave", lang) + sep + w.MayBeMadeFrom("2027-04-01")}
 		if !slices.Equal(lines, want) || !slices.Equal(hrefs, []string{"/new/expense"}) {
 			t.Errorf("home %s lists %q, linking %q; want %q, linking the expense alone", lang, lines, hrefs, want)
+		}
+	}
+}
+
+// TestWithStyle: the pages with a style have its rules at the end of their page.css, with an ETag of
+// their own; the pages they were made from keep theirs, a style given again replaces the one before,
+// and the other files are the same.
+func TestWithStyle(t *testing.T) {
+	_, p := testPages(t)
+	style := "/* the organization's colours */\n.ringi { --accent: #0f766e; }\n"
+	styled, err := p.WithStyle(style)
+	must(t, err)
+	before, err := p.Asset("page.css")
+	must(t, err)
+	after, err := styled.Asset("page.css")
+	must(t, err)
+	if string(after.Body) != string(before.Body)+"\n"+style || after.ETag == before.ETag || after.ContentType != before.ContentType {
+		t.Errorf("page.css with a style ends with %q, ETag %s (before %s)", after.Body[max(0, len(after.Body)-100):], after.ETag, before.ETag)
+	}
+	if still, _ := p.Asset("page.css"); still.ETag != before.ETag {
+		t.Error("the pages a style was given to changed")
+	}
+	again, err := styled.WithStyle("")
+	must(t, err)
+	if a, _ := again.Asset("page.css"); a.ETag != before.ETag {
+		t.Error("a style given again is added to the one before")
+	}
+	for _, name := range []string{"page.js", "functions.js"} {
+		a, _ := p.Asset(name)
+		b, _ := styled.Asset(name)
+		if a.ETag != b.ETag {
+			t.Errorf("%s changed with the style", name)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,13 @@ func (s *Server) Do(ctx context.Context, c Call) (Reply, error) {
 
 // operate runs an operation, in a trial's memory when tr is set (Try).
 func (s *Server) operate(ctx context.Context, c Call, tr *trial) (Reply, error) {
+	if c.Operation == "list_tickets" {
+		// the framework's own (DESIGN 10.5), as the administration's: no package's openapi.json has it
+		if c.Person.ID == "" {
+			return Reply{}, errors.New("an operation with no person")
+		}
+		return s.listTickets(ctx, c.Person, c.Query)
+	}
 	if adminOps[c.Operation] {
 		if c.Person.ID == "" {
 			return Reply{}, errors.New("an operation with no person")
@@ -328,6 +336,35 @@ func page(tickets []json.RawMessage, limit int) map[string]any {
 	return map[string]any{"tickets": tickets, "more": more}
 }
 
+// Statuses are the statuses a ticket can have, as ringi's contract lists them: list_tickets takes one
+// of them as `status`.
+var Statuses = []string{"in_progress", "paused", "with_requester", "approved", "rejected", "withdrawn", "expired"}
+
+// listTickets answers a page of the requests of a kind the person sees for the kind (list_tickets,
+// DESIGN 10.5), of one status when the query names it, and whether the list goes on after it (page).
+func (s *Server) listTickets(ctx context.Context, p Person, q url.Values) (Reply, error) {
+	limit, before, problem := pageOf(q)
+	if problem != "" {
+		return invalid("%s", problem), nil
+	}
+	kind := q.Get("kind")
+	if kind == "" {
+		return invalid("kind: the kind of request whose tickets are listed is needed"), nil
+	}
+	if _, ok := s.kinds[kind]; !ok {
+		return invalid("kind: no kind of request %q", kind), nil
+	}
+	status := q.Get("status")
+	if status != "" && !slices.Contains(Statuses, status) {
+		return invalid("status: one of %s is expected, not %q", strings.Join(Statuses, ", "), status), nil
+	}
+	tickets, err := s.Tickets(ctx, p, TicketsQuery{Kind: kind, Status: status, Before: before, Limit: limit + 1})
+	if err != nil {
+		return Reply{}, err
+	}
+	return ok(page(tickets, limit))
+}
+
 // listMine answers a page of the person's own requests (list_mine), of one kind when the query
 // names it, and whether the list goes on after it (page).
 func (s *Server) listMine(ctx context.Context, p Person, q url.Values) (Reply, error) {
@@ -570,6 +607,114 @@ func (s *Server) CountMine(ctx context.Context, p Person) (map[string]MineCount,
 	return out, nil
 }
 
+// Tickets answers the requests of a kind a person sees for the kind (list_tickets, DESIGN 10.5), each
+// as its JSON: the tickets of the versions of the kind whose tickets the gate lets the person see
+// whoever is on them (KindsSeen), each one the person may see (DESIGN 10.3), the newest first, by when
+// they were made, then by ID from the highest. q narrows them and pages through them as MineQuery
+// does a person's own (Before is the last ticket of the page before: one that is not in the list
+// gives none; Limit 0 gives all); its Versions are not read. A kind the server does not serve is an
+// error.
+func (s *Server) Tickets(ctx context.Context, p Person, q TicketsQuery) ([]json.RawMessage, error) {
+	if p.ID == "" {
+		return nil, errors.New("a list with no person")
+	}
+	if _, ok := s.kinds[q.Kind]; !ok {
+		return nil, fmt.Errorf("no kind of request %q", q.Kind)
+	}
+	now := s.now()
+	snap, err := s.organization(ctx)
+	if err != nil {
+		return nil, err
+	}
+	versions, err := s.seenVersions(ctx, p, q.Kind, snap, now)
+	if err != nil || len(versions) == 0 {
+		return nil, err
+	}
+	// the store reads the tickets of those versions, a page at a time; the server keeps the ones the
+	// person may see, and reads on after the store's page when it kept fewer than a page
+	read := TicketsQuery{Kind: q.Kind, Versions: versions, Status: q.Status, Before: q.Before, Limit: q.Limit}
+	var out []json.RawMessage
+	for {
+		recs, err := s.cfg.Store.Tickets(ctx, read)
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			k, err := s.kindOf(rec.Kind, rec.Version)
+			if err != nil {
+				return nil, err
+			}
+			t, err := readTicket(rec.Body)
+			if err != nil {
+				return nil, err
+			}
+			if see, err := s.maySee(ctx, p, k, rec, t, snap, now); err != nil {
+				return nil, err
+			} else if !see {
+				continue
+			}
+			if out = append(out, rec.Body); q.Limit > 0 && len(out) == q.Limit {
+				return out, nil
+			}
+		}
+		if q.Limit == 0 || len(recs) < read.Limit {
+			return out, nil
+		}
+		read.Before = recs[len(recs)-1].ID
+	}
+}
+
+// KindsSeen answers the kinds of request a person sees the tickets of for the kind (DESIGN 10.5): those
+// with a version the server has whose tickets the gate lets the person see whoever is on them, in
+// the order the server lists its kinds. The start page of the pages links to their lists.
+func (s *Server) KindsSeen(ctx context.Context, p Person) ([]string, error) {
+	if p.ID == "" {
+		return nil, errors.New("a list with no person")
+	}
+	now := s.now()
+	snap, err := s.organization(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, name := range s.order {
+		vs, err := s.seenVersions(ctx, p, name, snap, now)
+		if err != nil {
+			return nil, err
+		}
+		if len(vs) > 0 {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// seenVersions answers the versions of a kind the server has whose tickets the gate lets the person
+// see whoever is on them (DESIGN 10.5): `see` asked of each version as of a ticket that names no one
+// (no ticket, requester, requesters, approvers or stage), with the version's owner and the version
+// of the organization in effect that day in the kind's offset. While none is in effect, none.
+func (s *Server) seenVersions(ctx context.Context, p Person, name string, snap *orgSnapshot, now time.Time) ([]int, error) {
+	if snap == nil {
+		return nil, nil
+	}
+	var out []int
+	for _, k := range s.kinds[name] {
+		ov := snap.at(k.day(now))
+		if ov == nil {
+			continue
+		}
+		q := Question{Action: "see", Person: p, Kind: k.Name, Version: k.Version, Owner: k.desc.Owner, SelfApproval: k.self, Now: now, Org: ov.OrgVersion}
+		ok, err := s.cfg.Gate.Allow(ctx, q)
+		if err != nil {
+			return nil, fmt.Errorf("the gate, asked see of %s %d: %w", k.Name, k.Version, err)
+		}
+		if ok {
+			out = append(out, k.Version)
+		}
+	}
+	return out, nil
+}
+
 // utcDay is the day for the parts of a list that no kind's offset decides.
 func utcDay(t time.Time) string { return t.UTC().Format(time.DateOnly) }
 
@@ -759,6 +904,25 @@ func (s *Server) People(ctx context.Context) ([]OrgPerson, error) {
 		return nil, ErrNotFound
 	}
 	return slices.Clone(snap.at(s.today()).People), nil
+}
+
+// InOrganization reports whether the version of the organization in effect today has a person: what
+// a sign-in asks before it takes someone, as package apikeys does for the person of a key. It is false
+// while no version is in effect.
+func (s *Server) InOrganization(ctx context.Context, id string) (bool, error) {
+	snap, err := s.organization(ctx)
+	if err != nil {
+		return false, err
+	}
+	if snap == nil {
+		return false, nil
+	}
+	v := snap.at(s.today())
+	if v == nil {
+		return false, nil
+	}
+	_, ok := v.people[id]
+	return ok, nil
 }
 
 // Teams answers the teams of the version of the organization in effect today, as People answers

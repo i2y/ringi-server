@@ -22,6 +22,7 @@ The flags of a server that uses the package `serve`, as the one `ritsu ringi ini
 | `-oidc-scopes` | The scopes to ask for besides `openid`, `email` and `profile`, with spaces between them |
 | `-session-keys` | The keys of the cookies of the sign-in: the base64 of 32 random bytes each, the newest first, with commas between them. The environment variable `RINGI_SESSION_KEYS` is better |
 | `-tls-cert`, `-tls-key` | The certificate for https, and its key |
+| `-api-keys` | A file of the keys programs call the API with: a line for each key, with the ID of the person it stands for, the SHA-256 of the key, and their roles if they have any, separated by commas ([Call it from a program](api.md#call-it-from-a-program)). It is read when the server starts |
 
 A server made with `--temporal` has `-temporal` too, the address of Temporal (`localhost:7233` when it is not given).
 
@@ -48,6 +49,20 @@ values below can be changed too. Left `0` or empty, they are as in the table.
 | `BooksApart` | The books are in another database than the requests | `false` |
 | `Logger` | The log of the server | `slog.Default()` |
 
+## The look of the pages
+
+How the server's pages look, given as `Look` of the stores in `cmd/server/main.go` (`web.Look`, [Change how the pages
+look](screens.md#change-how-the-pages-look)). Left empty, the pages look as the framework makes them.
+
+| Field | What it is | What it takes |
+|---|---|---|
+| `Name` | The name at the top of the pages, which leads to the start page. Without it, the bar says "Home" unless there is a logo | Up to 60 characters, with no line break and no space at its ends |
+| `Logo` | The image before the name, shown 28 pixels high. Served at `/pages/assets/logo` | SVG, PNG, JPEG, GIF or WebP, of 256 KiB at most |
+| `Accent` | The colour of the links, the buttons and the stage a request is at, as `#rrggbb` | 4.5:1 or more with the pages' backgrounds, `#ffffff` and `#f1f4f9` |
+| `AccentDark` | The same, for a browser set to dark colours. Without it, the server makes it of `Accent` | 4.5:1 or more with the dark pages' backgrounds, `#151b26` and `#1d2534` |
+
+A look that does not take these stops the server, which says why.
+
 ## Other limits
 
 | What | Limit | Where it is changed |
@@ -69,8 +84,9 @@ the package `serve`, they are as in the table.
 | `/pages/` | The pages to make requests, approve them and administer them |
 | `/pages/admin/` | The pages for administrators, for people with a role |
 | `/login`, `/login/callback`, `/logout` | Your organization's sign-in |
-| `/requests/…`<br>`/tickets/{id}`<br>`/waiting`<br>`/mine`<br>`/find/…`<br>`/organization`<br>`/masters/…`<br>`/admin/…`<br>`/files` | The API ([Call the API from a program](api.md)) |
+| `/requests/…`<br>`/tickets`<br>`/tickets/{id}`<br>`/waiting`<br>`/mine`<br>`/find/…`<br>`/organization`<br>`/masters/…`<br>`/admin/…`<br>`/files` | The API ([Call the API from a program](api.md)) |
 | `/a2ui/…` | The A2UI screens ([Make screens of your own](screens.md#use-the-a2ui-screens)) |
+| `/pages/assets/page.css`, `/pages/assets/logo` | The style sheet of the pages, with the colours of their look at its end, and the logo ([The look of the pages](#the-look-of-the-pages)). They answer with no one signed in |
 | `/a2ui/functions.js` | Answers 200 with no one signed in: use it to see that the server is running |
 | `/mcp` | The tools of agents, on a server they were added to ([Let agents make and approve requests](agents.md)) |
 

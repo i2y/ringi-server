@@ -25,10 +25,10 @@ An operation of the API is always someone's. How the server finds that person de
 | With `-dev-login` | The person chosen on the page of the trial sign-in (a cookie) |
 | With your organization's sign-in | The person who signed in (the cookie of a browser) |
 | One you put together yourself | The person found in the way you wrote |
+| Any of these, with `-api-keys` | The person of the key a program sends in the header `Authorization`. A request with no key is found as above |
 
-A program with no one to sign in cannot call the API of a server with your organization's sign-in as it is. For
-programs, put the server together yourself, and let it take their tokens ([Take the tokens of
-programs](embedding.md#2-take-the-tokens-of-programs)).
+A program has no one to sign in. Start the server with `-api-keys`, and give the program a key ([Call it from a
+program](#call-it-from-a-program)).
 
 From here on, this page uses the first. In the directory of the project, start the server with no flags.
 
@@ -148,6 +148,7 @@ curl -s -w ' %{http_code}\n' localhost:8080/tickets/$TICKET -H 'X-Person: s1202'
 |---|---|
 | List the request types one can make a request of | `GET /requests` |
 | List the requests that wait for one, and one's own | `GET /waiting`, `GET /mine` |
+| List all the requests of a request type, for the department that keeps it | `GET /tickets?kind={kind}` |
 | Read a request and its history | `GET /tickets/{id}` |
 | Make a request, submit it again | `POST /requests/{kind}/tickets`, `POST /requests/{kind}/tickets/{id}/resubmit` |
 | Fill in the fields an approver fills in | `POST /requests/{kind}/tickets/{id}/edit` |
@@ -163,6 +164,30 @@ curl -s -w ' %{http_code}\n' localhost:8080/tickets/$TICKET -H 'X-Person: s1202'
 
 `requests/openapi.json` says what goes in each body. An operation that no request type uses is not in it. Who may
 do which is as on the pages.
+
+The server describes its whole API at `GET /openapi.json`, to anyone signed in: the operations of every request type
+it has, as the newest version describes them, and the operations the framework adds itself: attaching a file,
+[listing all the requests of a request type](#list-all-the-requests-of-a-request-type), and [administering
+it](#administer-it). A program reads it from the server it calls:
+
+```sh
+curl -s localhost:8080/openapi.json -H 'X-Person: s1201' | jq -r '.paths | keys[] | select(test("^/admin|/files|^/tickets$"))'
+```
+
+```
+/admin/kinds
+/admin/kinds/{kind}/versions/{version}
+/admin/organization
+/admin/organization/drafts
+/admin/organization/drafts/{id}
+/admin/organization/imports
+/admin/records
+/admin/records.csv
+/files
+/files/{id}
+/tickets
+/tickets/{ticket}/files/{id}
+```
 
 ## The answers
 
@@ -183,12 +208,12 @@ number. A number and its answer are kept for 30 days.
 
 ## Read the rest of a list
 
-`GET /waiting` and `GET /mine` answer the newest first, up to 50 at a time without `limit`.
+`GET /waiting`, `GET /mine` and `GET /tickets` answer the newest first, up to 50 at a time without `limit`.
 
 | Argument | What it means |
 |---|---|
-| `kind` | Only one request type |
-| `status` | Only one status (`/mine` only) |
+| `kind` | Only one request type (`/tickets` needs it) |
+| `status` | Only one status (`/mine` and `/tickets`) |
 | `limit` | How many at a time (1 to 100) |
 | `before` | Only those older than the request of this number |
 
@@ -202,6 +227,26 @@ curl -s 'localhost:8080/mine?limit=1' -H 'X-Person: s1201' | jq -c '{shown: [.ti
 ```
 {"shown":[["01M89M0RBPS2H5M8HF082BPSN9","purchase","in_progress"]],"more":false}
 ```
+
+## List all the requests of a request type
+
+`GET /tickets?kind=` lists every request of a request type, whoever made it, to the people the rules (the gate) let
+see them all. In the project of the tutorial, those are the people of the department that keeps the request type:
+General Affairs keeps the purchase request (`owner general_affairs`).
+
+```sh
+curl -s 'localhost:8080/tickets?kind=purchase' -H 'X-Person: g1201' | jq -c '{shown: [.tickets[] | [.id, .requester, .status]], more}'
+curl -s 'localhost:8080/tickets?kind=purchase' -H 'X-Person: s1202' | jq -c '{shown: [.tickets[] | [.id, .requester, .status]], more}'
+```
+
+```
+{"shown":[["01M89M0RBPS2H5M8HF082BPSN9","s1201","in_progress"]],"more":false}
+{"shown":[],"more":false}
+```
+
+Sales staff 2 (s1202) is answered an empty list: they see their own requests and the ones they are asked to
+approve, and not the others. Who may see them all is written in the gate ([Decide who may do what](permissions.md)).
+The framework adds this operation itself, so it is in `GET /openapi.json`, and not in `requests/openapi.json`.
 
 ## Have it work out a form filled in part
 
@@ -297,3 +342,59 @@ curl -s -w ' %{http_code}\n' -X POST localhost:8080/requests/purchase/tickets -H
 
 The requests in progress go on to their end. This server keeps everything in memory, so it is as it was when it is
 started again.
+
+## Call it from a program
+
+A program has no one to sign in, and a server that people sign in to through your organization's sign-in takes no
+`X-Person`. Give each program a key of its own instead. A request that sends the key in the header `Authorization`
+is an operation of the person the key stands for, with the roles written for it. The server keeps only the SHA-256
+of each key, in the file that `-api-keys` names.
+
+Make a key. The first line printed is the key, for the program. The second is its SHA-256, for the server.
+
+```sh
+KEY=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')
+echo "$KEY"
+printf %s "$KEY" | shasum -a 256 | cut -d ' ' -f 1
+```
+
+On Linux, `sha256sum` does what `shasum -a 256` does.
+
+Write a line in the file for each key: the ID of the person it stands for, its SHA-256, and their roles if they have
+any, separated by commas. A word that begins with `#` begins a comment, to the end of the line. This key stands for
+Sales staff 1.
+
+```sh
+printf 's1201 %s # the purchasing system\n' "$(printf %s "$KEY" | shasum -a 256 | cut -d ' ' -f 1)" > api-keys.txt
+```
+
+Start the server with the file. Keys work the same whichever way people sign in to the server. Here, as on the rest
+of this page, it takes `X-Person` too.
+
+```sh
+go run ./cmd/server -api-keys api-keys.txt
+```
+
+```
+level=INFO msg="programs may call the API with the keys of -api-keys" keys=1
+```
+
+The program sends its key. A key the file does not have is answered 401.
+
+```sh
+curl -s -X POST localhost:8080/requests/purchase/tickets -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-4' \
+  -d '{"form": {"amount": 120000, "purpose": "A laptop for the new member"}}' | jq -c '.ticket | {requester, status, stage}'
+curl -s -w ' %{http_code}\n' localhost:8080/mine -H 'Authorization: Bearer not-a-key'
+```
+
+```
+{"requester":"s1201","status":"in_progress","stage":"manager"}
+{"error":"no one is signed in"} 401
+```
+
+A key stands for its person only while the organization's data of that day has them: once they have left, it is
+answered 401 too. A program can do only what its person can. To give a program a person of its own, add one to the
+organization's data, as for [a request for someone else](#make-a-request-for-someone-else). The server reads the
+file when it starts. To change a key, add the new one's line and start the server again; once the program uses the
+new key, take the old line out and start the server again.

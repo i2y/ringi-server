@@ -1,16 +1,92 @@
 # Make screens of your own
 
-The colours and the logo of the server's pages cannot be changed. To decide how things look yourself, to show the
-numbers in your company's portal, or to approve in an application of your own, take one of these. Japanese:
-[screens.ja.md](screens.ja.md).
+The server's pages can have your company's logo, name and colour. To decide everything about how things look
+yourself, to show the numbers in your company's portal, or to approve in an application of your own, take one of the
+other ways. Japanese: [screens.ja.md](screens.ja.md).
 
 | What you want | How |
 |---|---|
+| To put your company's logo, name and colour on the server's pages | [Change how the pages look](#change-how-the-pages-look) |
 | To add pages and an API of your own to the same server | [Add routes](#add-routes) |
 | To make and approve requests from your own application | [Use the HTTP API](#use-the-http-api) |
 | To show the parts of the forms and the approvals in your own application | [Use the A2UI screens](#use-the-a2ui-screens) |
 
 You can also use the server's pages, and make only some of them yourself.
+
+## Change how the pages look
+
+Put your company's logo and name at the top of the server's pages, and its colour on the links and the buttons.
+First put the logo beside the code of the project.
+
+```svg title="logo.svg"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#0f766e"/><path d="M18 46 32 16l14 30" fill="none" stroke="#fff" stroke-width="6"/></svg>
+```
+
+Write the look in the package of the project.
+
+```go title="look.go"
+package approvals
+
+import (
+	_ "embed"
+
+	"github.com/i2y/ringi-server/web"
+)
+
+//go:embed logo.svg
+var logo []byte
+
+// Look is how the pages look: the company's logo and name, and its colour.
+func Look() web.Look {
+	return web.Look{Name: "Acme", Logo: logo, Accent: "#0f766e"}
+}
+```
+
+In `cmd/server/main.go`, give it to the server after the lines that open where the requests are kept.
+
+```go title="cmd/server/main.go" hl_lines="2"
+	defer stores.Close()
+	stores.Look = approvals.Look()
+	cfg, err := approvals.Parts(log)
+```
+
+Start the server with the trial sign-in, and open `http://localhost:8080/pages/`. The logo and the name lead to the
+start page.
+
+```sh
+go run ./cmd/server -dev-login
+```
+
+<img src="images/look.en.webp" width="600" alt="The start page of a person who approves, in the look of Acme: its logo and name at the top, and the links in its colour">
+
+The colours are added at the end of the pages' style sheet, so the page of the trial sign-in has them too. The logo
+has an address of its own.
+
+```sh
+curl -s localhost:8080/pages/assets/page.css | tail -n 5
+curl -s -o /dev/null -w '%{content_type}\n' localhost:8080/pages/assets/logo
+```
+
+```
+/* the organization's colours (web.Look) */
+.ringi { --accent: #0f766e; }
+@media (prefers-color-scheme: dark) {
+  .ringi { --accent: #4b9892; }
+}
+image/svg+xml
+```
+
+`#4b9892` is the colour for a browser set to dark colours. The server made it of `Accent`, lighter so that it reads
+on the dark pages. To choose it yourself, give `AccentDark` too. The text must read on the pages: a colour that is
+less than 4.5:1 with their backgrounds (WCAG 1.4.3) stops the server, which says why.
+
+```
+web: Look.Accent #e11d48 reads at 4.26:1 on the pages' tint #f1f4f9, and the links and the buttons need 4.5:1 (WCAG 1.4.3): take a darker colour
+```
+
+The logo can be SVG, PNG, JPEG, GIF or WebP, and the name up to 60 characters ([The look of the
+pages](reference.md#the-look-of-the-pages)). The look is that of the server's pages. The A2UI screens you show in an
+application of your own look as your application does.
 
 ## Add routes
 
@@ -129,6 +205,7 @@ and answers them.
 | `GET /a2ui/tickets/{id}/form` | The form to submit a request again |
 | `GET /a2ui/tickets/{id}/history` | The history |
 | `GET /a2ui/waiting/{kind}`, `/a2ui/mine/{kind}` | The lists of the requests that wait for one, and of one's own |
+| `GET /a2ui/requests/{kind}` | The list of all the requests of a request type, for the department that keeps it (the screen of the list, on the surface `<kind>.list.all`) |
 | `POST /a2ui/actions` | Sent when a button is pressed. It carries out the operation, and answers the next screen |
 | `GET /a2ui/catalog.json`, `/a2ui/functions.js` | The list of the components, and the functions of what is computed on a screen |
 

@@ -63,6 +63,10 @@ On the page of a request, "Route" says who has approved it, and who is next. "St
 different words: a request marked "Waiting" is "In progress", and one marked "Sent back" or "To be
 resubmitted" is "With the requester".
 
+Some requests start work once they are approved, such as placing an order or paying. Their page says under
+"After approval" how the work goes: "Not started yet", "Could not be started, and is tried again",
+"Started", then "Done", with what it ended with (the number of the order, say), or "Failed", with why.
+
 "See the history" shows, in order, who did what, when, and with which comment.
 
 ## When it is sent back
@@ -110,4 +114,5 @@ Choose the person, and it is their request. Leave it empty for your own request.
 | "A book (of a budget or of days of leave, say) did not take this." | The reason is right under it ("the department's budget is short", say). If you can ask for less money or fewer days, change the request and send it again. If it is not clear, ask the people who keep this kind of request |
 | "The request cannot be dealt with on this date with the data the company has set up." | The company's data of the organization or of the calendar does not have that day. Tell the department that keeps the request type |
 | A second comment is not taken | Leave about 10 seconds between comments on the same request |
+| "After approval" says "Failed" | The request stays approved: the work after it did not go through. Tell the people who administer the requests, with the reason under it |
 | Someone else's request says "Not found" | You are not one of those who can see it, or the ID is wrong |

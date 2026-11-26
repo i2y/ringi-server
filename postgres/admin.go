@@ -35,6 +35,8 @@ var adminQueries = map[string]string{
 	"count_tickets": `select kind, version, status, count(*) from {s}.tickets
 	                  where (kind, version) in (select * from unnest($1::text[], $2::int[]))
 	                  group by kind, version, status order by kind collate "C", version, status collate "C"`,
+	"kept_versions": `select kind, version, status, count(*) from {s}.tickets
+	                  group by kind, version, status order by kind collate "C", version, status collate "C"`,
 	"draft_keep": `insert into {s}.drafts (person, id, source, data, at) values ($1, $2, $3, $4::json, $5)
 	               on conflict (person, id) do update set source = excluded.source, data = excluded.data, at = excluded.at`,
 	"drafts_past": `delete from {s}.drafts where (person, id) in
@@ -363,11 +365,24 @@ func (s *Store) CountTickets(ctx context.Context, versions []server.KindVersion)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (server.TicketCount, error) {
-		var c server.TicketCount
-		err := r.Scan(&c.Kind, &c.Version, &c.Status, &c.N)
-		return c, err
-	})
+	return pgx.CollectRows(rows, scanCount)
+}
+
+// KeptVersions counts the tickets of every version the store keeps any of, by kind, version and
+// status.
+func (s *Store) KeptVersions(ctx context.Context) ([]server.TicketCount, error) {
+	rows, err := s.q(ctx).Query(ctx, s.sql["kept_versions"])
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanCount)
+}
+
+// scanCount reads a row of a count of tickets: the kind, the version, the status, how many.
+func scanCount(r pgx.CollectableRow) (server.TicketCount, error) {
+	var c server.TicketCount
+	err := r.Scan(&c.Kind, &c.Version, &c.Status, &c.N)
+	return c, err
 }
 
 // Imports answers the times of the imports that added a snapshot at or after since.

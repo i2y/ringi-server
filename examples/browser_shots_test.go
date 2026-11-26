@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/memstore"
 	"github.com/i2y/ringi-server/servertest"
+	"github.com/i2y/ringi-server/web"
 )
 
 // TestShots takes the pictures of the pages that the documents show, in English and in Japanese, into
@@ -141,17 +143,20 @@ func shots(t *testing.T, lang, dir string) {
 		}
 		return name
 	}
-	for _, name := range []string{"expense", "purchase", "leave", "account", "contract"} {
-		off := name + "_ja"
-		if lang == "ja" {
-			off = name
-		}
-		for i := range 2 {
-			v := fmt.Sprint(i + 1)
-			body, _ := json.Marshal(map[string]any{"start": "never", "reason": "The other language is used", "number": 0})
-			send(h, "POST", "/admin/kinds/"+off+"/versions/"+v, "e7001", body, "Content-Type", "application/json", "Idempotency-Key", "off-"+off+v, "X-Roles", "system_admin")
+	oneLanguage := func(h http.Handler) {
+		for _, name := range []string{"expense", "purchase", "leave", "account", "contract"} {
+			off := name + "_ja"
+			if lang == "ja" {
+				off = name
+			}
+			for i := range 2 {
+				v := fmt.Sprint(i + 1)
+				body, _ := json.Marshal(map[string]any{"start": "never", "reason": "The other language is used", "number": 0})
+				send(h, "POST", "/admin/kinds/"+off+"/versions/"+v, "e7001", body, "Content-Type", "application/json", "Idempotency-Key", "off-"+off+v, "X-Roles", "system_admin")
+			}
 		}
 	}
+	oneLanguage(h)
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	b := openBrowser(t, ts.URL, inLanguage(lang)...)
@@ -207,4 +212,21 @@ func shots(t *testing.T, lang, dir string) {
 			t.Fatal(marked)
 		}
 	})
+
+	// The look of docs/screens.md (web.Look): a server of its own, in the logo, the name and the colour
+	// of Acme, where a request waits for e1101.
+	_, looked := newWeb(t, webSetup{Store: memstore.New(), At: monday, Auth: personOf{}, Gate: &Gate{}, Packages: []*server.Package{p, p2},
+		Web: web.Config{Look: web.Look{Name: "Acme", Logo: []byte(acmeLogo), Accent: "#0f766e"}}})
+	oneLanguage(looked)
+	if id, w := submitAPI(t, looked, kind("leave"), "e1203", "look-leave", map[string]any{"kind": "paid", "first_day": "2026-12-21", "days": 2, "reason": words("A family visit", "帰省のため")}); id == "" {
+		t.Fatalf("look-leave: %d %s", w.code, w.body)
+	}
+	lts := httptest.NewServer(looked)
+	t.Cleanup(lts.Close)
+	lb := openBrowser(t, lts.URL, inLanguage(lang)...)
+	screen(lb)
+	if status := lb.open("e1101", "/pages/?lang="+lang); status != 200 {
+		t.Fatalf("the look: %d", status)
+	}
+	picture(lb, dir, "look", lang, "")
 }
