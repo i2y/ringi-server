@@ -1,0 +1,27 @@
+{
+  "name": "ringi-server",
+  "owner": {
+    "name": "i2y"
+  },
+  "description": "The Agent Skill of ringi-server, one plugin with a skill for the projects built on the framework.",
+  "plugins": [
+    {
+      "name": "ringi-server",
+      "description": "An Agent Skill for the projects built on ringi-server, the Go framework that serves the request types written in ringi: the project ritsu ringi init writes, the loop of a change, new kinds and new versions of a kind, the organization's data, the gate, sign-in, notices, the calendar, work after an approval on Temporal, books, agents' tools, signed bundles of WebAssembly, running it on PostgreSQL, testing it, and what its API refuses. It is used with the ringi skill of ritsu, and runs the ritsu binary and Go, which have to be on PATH.",
+      "version": "0.1.0",
+      "author": {
+        "name": "i2y"
+      },
+      "homepage": "https://i2y.github.io/ringi-server/",
+      "repository": "https://github.com/i2y/ringi-server",
+      "license": "MIT OR Apache-2.0",
+      "keywords": ["ringi-server", "ringi", "ritsu", "approvals", "workflow", "go", "agent-skills"],
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/i2y/ringi-server.git",
+        "path": "skills"
+      },
+      "skills": ["./"]
+    }
+  ]
+}

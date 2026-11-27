@@ -7,7 +7,9 @@
 #   website/build.sh
 #
 # pages.py writes the pages from the documents of the repository, and finish.py checks what was built.
-# The English build cleans build/, so it goes first.
+# The English build cleans build/, so it goes first, and the plugin marketplace of the skill
+# (marketplace.json, https://i2y.github.io/ringi-server/marketplace.json) is put at the root of
+# build/ after both.
 set -eu
 cd "$(dirname "$0")"
 .venv/bin/python pages.py
@@ -17,4 +19,5 @@ rm -rf .cache
 export PYTHONPATH="$PWD/tools${PYTHONPATH:+:$PYTHONPATH}" # the lexers that colour ritsu's languages
 .venv/bin/zensical build --clean --strict
 .venv/bin/zensical build --clean --strict -f zensical.ja.toml
+cp marketplace.json build/marketplace.json
 .venv/bin/python finish.py

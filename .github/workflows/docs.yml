@@ -1,7 +1,8 @@
 name: docs
 
 # Builds the site from the documents (website/), and publishes it to GitHub Pages from main:
-# https://i2y.github.io/ringi-server/ and, in Japanese, https://i2y.github.io/ringi-server/ja/. A pull
+# https://i2y.github.io/ringi-server/ and, in Japanese, https://i2y.github.io/ringi-server/ja/, with the
+# plugin marketplace of the skill (skills/) at https://i2y.github.io/ringi-server/marketplace.json. A pull
 # request builds it and publishes nothing. Pages takes its source from "GitHub Actions" in the
 # repository's settings; while the repository is private, nothing is published.
 
@@ -11,12 +12,14 @@ on:
     paths:
       - "**.md"
       - "docs/images/**"
+      - "skills/**"
       - "website/**"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "**.md"
       - "docs/images/**"
+      - "skills/**"
       - "website/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:

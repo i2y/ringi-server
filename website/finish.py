@@ -5,9 +5,12 @@
 - The switch of languages at the head of a page leads to the same page in the other language.
 - Every link, picture and anchor of a page is there, in the site or, for a link to a file of the
   repository on GitHub, in the repository.
+- The plugin marketplace of the skill is at the root of the site, as website/marketplace.json is, and
+  hands out a folder of the repository that holds skills (skill_test.go checks the rest of it).
 """
 
 import html
+import json
 import os
 import re
 import sys
@@ -121,8 +124,29 @@ def check_links() -> tuple[list[str], int]:
     return problems, checked
 
 
+def check_marketplace() -> list[str]:
+    built, source = BUILD / "marketplace.json", HERE / "marketplace.json"
+    if not built.exists():
+        return ["build/marketplace.json is not there: build.sh copies it after the builds"]
+    if built.read_bytes() != source.read_bytes():
+        return ["build/marketplace.json is not website/marketplace.json"]
+    if (BUILD / "ja" / "marketplace.json").exists():
+        return ["build/ja/marketplace.json is there too: the marketplace is published once, at the root"]
+    try:
+        plugins = json.loads(source.read_text())["plugins"]
+    except (ValueError, KeyError) as e:
+        return [f"website/marketplace.json: {e!r}"]
+    problems = []
+    for plugin in plugins:
+        folder = REPO / plugin["source"]["path"]
+        for skills in plugin.get("skills", ["./"]):
+            if not list((folder / skills).glob("*/SKILL.md")):
+                problems.append(f"the plugin {plugin['name']} hands out {folder.relative_to(REPO)}, which has no skill")
+    return problems
+
+
 def main() -> None:
-    problems = check_nav()
+    problems = check_nav() + check_marketplace()
     if set(html_of("en")) != set(html_of("ja")):
         problems.append("the two languages have different pages")
     if problems:
@@ -131,7 +155,7 @@ def main() -> None:
     problems, checked = check_links()
     if problems:
         sys.exit("\n".join(problems))
-    print(f"build/ and build/ja: {len(html_of('en'))} pages each, {checked} links lead somewhere")
+    print(f"build/ and build/ja: {len(html_of('en'))} pages each, {checked} links lead somewhere, and the marketplace")
 
 
 if __name__ == "__main__":

@@ -133,6 +133,7 @@ it. The requests are in memory, and are gone when the server stops.
 | Put in your own people, business days and permissions | [Prepare the organization's data](docs/organization.md), [Set the business days](docs/calendar.md), [Decide who may do what](docs/permissions.md) |
 | Connect your sign-in, notices, budgets and the work after an approval | [Connect the sign-in](docs/sign-in.md), [Change how notices are sent](docs/notices.md), [Check budgets and days of leave](docs/books.md), [Start work after an approval](docs/flows.md) |
 | Use it from screens, programs and agents of your own | [Call the API from a program](docs/api.md), [Let agents make and approve requests](docs/agents.md), [Have an agent check requests](docs/agent-steps.md), [Make screens of your own](docs/screens.md), [Embed it in a program of your own](docs/embedding.md) |
+| Have an agent set up and change a project on the framework | [The Agent Skill of ringi-server](skills/README.md) |
 | Run a server your staff use | [Prepare it and start it](docs/operations.md), [Backups and raising versions](docs/maintenance.md), [Watch it, and when something is wrong](docs/troubleshooting.md) |
 | Look up flags, limits and errors | [Flags and settings](docs/reference.md), [Why something is refused](docs/refusals.md), [Parts and packages](docs/parts.md) |
 

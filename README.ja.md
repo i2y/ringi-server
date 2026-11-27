@@ -110,6 +110,7 @@ go run ./cmd/server -dev-login
 | 自分の会社の人、営業日、権限を入れる | [組織のデータを用意する](docs/organization.ja.md)、[営業日と祝日を決める](docs/calendar.ja.md)、[だれが何をしてよいかを決める](docs/permissions.ja.md) |
 | 会社のログイン、通知、予算、承認のあとの処理とつなぐ | [ログインをつなぐ](docs/sign-in.ja.md)、[通知の送り方を変える](docs/notices.ja.md)、[予算や休暇の残りを確かめる](docs/books.ja.md)、[承認のあとの処理を始める](docs/flows.ja.md) |
 | 自分の画面、プログラム、エージェントから使う | [プログラムから API を呼ぶ](docs/api.ja.md)、[エージェントに申請と承認をさせる](docs/agents.ja.md)、[承認の経路でエージェントに確かめさせる](docs/agent-steps.ja.md)、[自分の画面を作る](docs/screens.ja.md)、[自分のプログラムに組み込む](docs/embedding.ja.md) |
+| このフレームワークのプロジェクトを、エージェントに用意させ、変えさせる | [ringi-server の Agent Skill](skills/README.ja.md) |
 | 社員に使ってもらうサーバーを動かす | [用意して起動する](docs/operations.ja.md)、[バックアップと版の上げ方](docs/maintenance.ja.md)、[監視する、困ったとき](docs/troubleshooting.ja.md) |
 | フラグ、上限、エラーの意味を調べる | [フラグと設定](docs/reference.ja.md)、[受け付けない理由](docs/refusals.ja.md)、[部品とパッケージ](docs/parts.ja.md) |
 

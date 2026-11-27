@@ -270,7 +270,9 @@ func TestDocumentsInBothLanguages(t *testing.T) {
 	}
 	compared, documents := 0, 0
 	for _, doc := range allDocuments(t) {
-		if strings.HasSuffix(doc, ".ja.md") {
+		// the pages of an Agent Skill are read by agents, in English: skill_test.go holds them to the
+		// code, and the README of skills/ is in both languages
+		if strings.HasSuffix(doc, ".ja.md") || strings.HasPrefix(doc, "../skills/") && filepath.Dir(doc) != "../skills" {
 			continue
 		}
 		if _, err := os.Stat(japanese(doc)); err != nil {
