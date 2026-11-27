@@ -990,6 +990,45 @@ func TestAdminHTTP(t *testing.T) {
 	}
 }
 
+// TestAdminFailures checks that an operation of the administration that fails is answered as one of
+// a package is: 503 with Retry-After: 1 for a call that found no instance free (server.Busy), which
+// may be sent again in a breath, and 500 with no Retry-After for any other failure.
+func TestAdminFailures(t *testing.T) {
+	a := newAdmins(t, namedStore{"memory", memstore.New()})
+	for _, c := range []struct {
+		name  string
+		gate  server.Gate
+		code  int
+		retry string
+	}{
+		{"no instance free", busyGate{}, 503, "1"},
+		{"another failure", failGate{}, 500, ""},
+	} {
+		srv := a.server(a.clock, func(cfg *server.Config) { cfg.Gate = c.gate })
+		code, b, h := send(srv, "GET", "/admin/kinds", "ann", "system_admin", "", "", nil)
+		if code != c.code || h.Get("Retry-After") != c.retry {
+			t.Errorf("%s: %d, Retry-After %q, %s; want %d, %q", c.name, code, h.Get("Retry-After"), b, c.code, c.retry)
+		}
+	}
+}
+
+// busyGate answers every question of the administration with an error that says no instance was
+// free (server.Busy), as a call of a kind's code that waited past its time for one does.
+type busyGate struct{}
+
+func (busyGate) Allow(_ context.Context, q server.Question) (bool, error) {
+	switch q.Action {
+	case "change_request_type", "read_audit", "import_organization", "read_organization_audit":
+		return false, busyError{}
+	}
+	return true, nil
+}
+
+type busyError struct{}
+
+func (busyError) Error() string { return "no instance was free in time" }
+func (busyError) Busy() bool    { return true }
+
 // TestAdminImportGuards checks the refusals of what a person sends to check the organization's data
 // and to import a draft (DESIGN 13.10), each 400 with what is wrong or 404, on each store: no
 // idempotency key, a key not of visible ASCII, a key used again for another body, an empty body, a

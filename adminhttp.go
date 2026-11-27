@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"mime"
@@ -13,9 +12,10 @@ import (
 
 // serveAdmin serves the framework's own operations: the administration's API under /admin (DESIGN
 // 13.6), and the list of a kind's requests at /tickets (10.5). It finds who sends the request, reads
-// the path and the body, calls Do and writes the reply. A body is taken as
-// application/json, within Config.MaxBody; an upload of the organization's data as application/zip,
-// read by Do only once the gate allows the person to import, within Config.MaxOrganization.
+// the path and the body, calls Do and writes the reply as ServeHTTP does (writeReply, writeFailed).
+// A body is taken as application/json, within Config.MaxBody; an upload of the organization's data
+// as application/zip, read by Do only once the gate allows the person to import, within
+// Config.MaxOrganization; and a bundle as application/zip alone, within Config.MaxBundle.
 func (s *Server) serveAdmin(w http.ResponseWriter, r *http.Request, segs []string) {
 	c, method, ok := adminRoute(segs)
 	if !ok {
@@ -75,8 +75,7 @@ func (s *Server) serveAdmin(w http.ResponseWriter, r *http.Request, segs []strin
 	}
 	reply, err := s.Do(r.Context(), c)
 	if err != nil {
-		s.log.Error("an operation failed", "operation", c.Operation, "person", p.ID, "err", err)
-		writeError(w, http.StatusInternalServerError, "the server failed")
+		s.writeFailed(w, err, "operation", c.Operation, "person", p.ID)
 		return
 	}
 	writeAdmin(w, r, c.Operation, reply)
@@ -143,40 +142,20 @@ func digestFits(v string) bool {
 	return true
 }
 
-// writeAdmin writes the reply of an administration's operation.
+// writeAdmin writes the reply of an administration's operation: the record's CSV as a file, and
+// any other reply as the API answers every operation (writeReply).
 func writeAdmin(w http.ResponseWriter, r *http.Request, op string, reply Reply) {
-	switch reply.Outcome {
-	case OK:
-		if op == "admin_records_csv" {
-			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-			w.Header().Set("Content-Disposition", `attachment; filename="records.csv"`)
-			if reply.Next != "" {
-				q := r.URL.Query()
-				q.Set("before", reply.Next)
-				w.Header().Set("Link", "<"+(&url.URL{Path: r.URL.Path, RawQuery: q.Encode()}).String()+`>; rel="next"`)
-			}
-			w.WriteHeader(http.StatusOK)
-			w.Write(reply.Body)
-			return
+	if reply.Outcome == OK && op == "admin_records_csv" {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="records.csv"`)
+		if reply.Next != "" {
+			q := r.URL.Query()
+			q.Set("before", reply.Next)
+			w.Header().Set("Link", "<"+(&url.URL{Path: r.URL.Path, RawQuery: q.Encode()}).String()+`>; rel="next"`)
 		}
-		writeJSON(w, http.StatusOK, reply.Body)
-	case Refused:
-		writeJSON(w, http.StatusConflict, reply.Body)
-	case NotFound:
-		writeError(w, http.StatusNotFound, reply.Problem)
-	case Limited:
-		if reply.RetryAfter > 0 {
-			w.Header().Set("Retry-After", RetryAfter(reply.RetryAfter))
-		}
-		writeError(w, http.StatusTooManyRequests, reply.Problem)
-	case TooLarge:
-		writeError(w, http.StatusRequestEntityTooLarge, reply.Problem)
-	default:
-		if reply.Problems != nil {
-			b, _ := json.Marshal(map[string]any{"error": reply.Problem, "problems": reply.Problems, "more": reply.MoreProblems, "stopped": reply.Stopped})
-			writeJSON(w, http.StatusBadRequest, b)
-			return
-		}
-		writeError(w, http.StatusBadRequest, reply.Problem)
+		w.WriteHeader(http.StatusOK)
+		w.Write(reply.Body)
+		return
 	}
+	writeReply(w, reply)
 }

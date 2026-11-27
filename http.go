@@ -77,18 +77,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reply, err := s.Do(r.Context(), Call{Operation: op.id, Person: p, Ticket: ticket, Body: body, Key: r.Header.Get("Idempotency-Key"), Query: r.URL.Query(),
 		Languages: AcceptLanguages(r.Header.Get("Accept-Language"))})
 	if err != nil {
-		if Busy(err) {
-			// too much work at once is not the server's failure: the caller may try again in a
-			// breath, which Retry-After says
-			s.log.Error("an operation found no instance free", "operation", op.id, "ticket", ticket, "person", p.ID, "err", err)
-			w.Header().Set("Retry-After", "1")
-			writeError(w, http.StatusServiceUnavailable, "the server is busy")
-			return
-		}
-		s.log.Error("an operation failed", "operation", op.id, "ticket", ticket, "person", p.ID, "err", err)
-		writeError(w, http.StatusInternalServerError, "the server failed")
+		s.writeFailed(w, err, "operation", op.id, "ticket", ticket, "person", p.ID)
 		return
 	}
+	writeReply(w, reply)
+}
+
+// writeReply writes the reply of an operation as the API answers it: the status of its outcome
+// (Outcome), with Retry-After for Limited and Unavailable when waiting helps, `from` for the
+// NotFound of a kind whose next version starts later, and the problems of a check for Invalid.
+// The operations of the packages (ServeHTTP) and the framework's own (serveAdmin) are answered
+// with it, so that an outcome is answered alike whichever operation ends with it.
+func writeReply(w http.ResponseWriter, reply Reply) {
 	switch reply.Outcome {
 	case OK:
 		writeJSON(w, http.StatusOK, reply.Body)
@@ -111,9 +111,33 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Retry-After", RetryAfter(reply.RetryAfter))
 		}
 		writeError(w, http.StatusServiceUnavailable, reply.Problem)
+	case TooLarge:
+		writeError(w, http.StatusRequestEntityTooLarge, reply.Problem)
 	default:
+		if reply.Problems != nil {
+			b, _ := json.Marshal(map[string]any{"error": reply.Problem, "problems": reply.Problems, "more": reply.MoreProblems, "stopped": reply.Stopped})
+			writeJSON(w, http.StatusBadRequest, b)
+			return
+		}
 		writeError(w, http.StatusBadRequest, reply.Problem)
 	}
+}
+
+// writeFailed writes an operation that Do answered with an error, and logs it with attrs, what
+// names the operation. A call of a kind that found no instance free (Busy) is too much work at
+// once, not the server's failure: 503 with `Retry-After: 1`, for the caller may send it again in a
+// breath. Any other error is the server's failure (500). ServeHTTP and serveAdmin both write with
+// it.
+func (s *Server) writeFailed(w http.ResponseWriter, err error, attrs ...any) {
+	attrs = append(attrs, "err", err)
+	if Busy(err) {
+		s.log.Error("an operation found no instance free", attrs...)
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "the server is busy")
+		return
+	}
+	s.log.Error("an operation failed", attrs...)
+	writeError(w, http.StatusInternalServerError, "the server failed")
 }
 
 // RetryAfter writes a wait as the Retry-After header does: whole seconds, rounded up, at least 1.
