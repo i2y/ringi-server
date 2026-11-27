@@ -96,7 +96,7 @@ curl -s http://127.0.0.1:8080/admin/bundles/uploads \
 ```
 
 ```
-{"digest":"6cb2ab05a85f60619ac563fb8bf4e4336b68d7734202b4a06c33ebffa6bd0724","state":"pending","adds":[{"name":"leave","version":3},{"name":"leave_ja","version":3}],"checks":{"vectors":244,"worked":50},"difference":{"digest":"c0d89609974abd7853451fe5ab6033f7e228e112e738b0c58ade40d5fe6b19ab","api_changes":true,"script_changes":true,"tools_changes":true,"screens_changes":true}}
+{"digest":"8f331813bd2b79a44f64f4ed6bcd2a2971788a0d1ff2e9a8c2794b963797633b","state":"pending","adds":[{"name":"leave","version":3},{"name":"leave_ja","version":3}],"checks":{"vectors":244,"worked":50},"difference":{"digest":"3c945201fdcccc359a23993537516a74c344e1816fa2e618f123d3dfddc0e500","api_changes":true,"script_changes":true,"tools_changes":true,"screens_changes":true}}
 ```
 
 The server ran 244 events and 50 forms of the bundle's vectors on its code, and each answered as the vector
@@ -107,10 +107,10 @@ Approve it as another person, sending back the digest of the difference you read
 `screens_changes` when it says the script, the tools or the screens change:
 
 ```sh
-curl -s http://127.0.0.1:8080/admin/bundles/6cb2ab05a85f60619ac563fb8bf4e4336b68d7734202b4a06c33ebffa6bd0724/approve \
+curl -s http://127.0.0.1:8080/admin/bundles/8f331813bd2b79a44f64f4ed6bcd2a2971788a0d1ff2e9a8c2794b963797633b/approve \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: approve-leave-v3' \
   -H 'X-Person: e7001' -H 'X-Roles: system_admin' \
-  -d '{"digest": "c0d89609974abd7853451fe5ab6033f7e228e112e738b0c58ade40d5fe6b19ab", "api_changes": true, "script_changes": true, "tools_changes": true, "screens_changes": true, "reason": "The contact while away, from April"}' |
+  -d '{"digest": "3c945201fdcccc359a23993537516a74c344e1816fa2e618f123d3dfddc0e500", "api_changes": true, "script_changes": true, "tools_changes": true, "screens_changes": true, "reason": "The contact while away, from April"}' |
   jq -c '{state, decided: {person: .decided.person, reason: .decided.reason}, starts: [.difference.kinds[] | {name, version, day: .starts.day}]}'
 ```
 
@@ -140,7 +140,7 @@ go run ./cmd/server -dev-login -bundle-keys bundle.pub -bundles bundles
 
 ```
 level=INFO msg="the server reads the bundles of -bundles as it starts" dir=bundles bundles=1
-level=INFO msg="a bundle of Config.Bundles is checked, and served" bundle=leave-v3.zip digest=6cb2ab05a85f adds="leave v3, leave_ja v3" vectors=244 worked=50
+level=INFO msg="a bundle of Config.Bundles is checked, and served" bundle=leave-v3.zip digest=8f331813bd2b adds="leave v3, leave_ja v3" vectors=244 worked=50
 level=INFO msg=listening addr=127.0.0.1:8080 pages=http://127.0.0.1:8080/
 ```
 
