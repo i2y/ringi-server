@@ -92,9 +92,10 @@ jobs:
         working-directory: mcp
         run: ../ci/test.sh -race ./...
 
+      # TestWasmTimes is a measurement, run by hand with RINGI_WASM_TIMES set (DESIGN, "Kinds in Wasm").
       - name: Test the examples
         working-directory: examples
-        run: ../ci/test.sh -race -timeout 60m ./... -skip '^TestGuides$'
+        run: ../ci/test.sh -race -timeout 60m ./... -skip '^TestGuides$|^TestWasmTimes$'
 
   # The pages in the browser of the runner, with the fonts of the pages' Japanese.
   browser:
