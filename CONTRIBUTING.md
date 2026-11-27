@@ -190,7 +190,9 @@ website/serve.sh
 name, which is a placeholder (`example-model`): here the agents are answered by `examples/parts.go`
 and by the tests, and ritsu writes the same `go/` and `requests/` with either model.
 `examples/regen.sh` writes `examples/go/` and `examples/requests/` again from the copy, with the
-`ritsu` on your `PATH`.
+`ritsu` on your `PATH`. It builds the kinds' Wasm with cargo, which needs the target
+`wasm32-unknown-unknown`; a crate gives the same bytes only with the same toolchain, so CI builds
+them again with the rustc that `examples/requests/wasm.json` names (`built.rustc`).
 
 ## Publishing a version
 

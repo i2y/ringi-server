@@ -185,6 +185,19 @@ jobs:
           echo "$d" >> "$GITHUB_PATH"
           echo "released=true" >> "$GITHUB_OUTPUT"
 
+      # --extra wasm builds the kinds with cargo for wasm32-unknown-unknown, and a crate gives the
+      # same bytes only with the same toolchain: the one that built the examples' kinds.wasm, which
+      # their wasm.json names (built.rustc), is the default from here on, with that target.
+      - name: Rust, the toolchain the examples' Wasm was built with
+        if: steps.ritsu.outputs.released == 'true'
+        run: |
+          set -eu
+          v=$(jq -r '.built.rustc' examples/requests/wasm.json | awk '{print $2}')
+          test -n "$v"
+          rustup toolchain install "$v" --profile minimal --target wasm32-unknown-unknown
+          rustup default "$v"
+          rustc -V
+
       - name: The examples are what ritsu writes
         if: steps.ritsu.outputs.released == 'true'
         run: |

@@ -154,7 +154,7 @@ website/serve.sh
 
 ## 例を作り直す
 
-`examples/project/` は、ritsu の例の写しです。違うのは、エージェントを持つ三つの flow のモデルの名前だけで、ここでは仮の名前（`example-model`）です。エージェントの答えは `examples/parts.go` と試験が返し、どちらのモデルでも、ritsu が書く `go/` と `requests/` は同じです。`examples/regen.sh` は、`PATH` にある `ritsu` で、写しから `examples/go/` と `examples/requests/` を書き直します。
+`examples/project/` は、ritsu の例の写しです。違うのは、エージェントを持つ三つの flow のモデルの名前だけで、ここでは仮の名前（`example-model`）です。エージェントの答えは `examples/parts.go` と試験が返し、どちらのモデルでも、ritsu が書く `go/` と `requests/` は同じです。`examples/regen.sh` は、`PATH` にある `ritsu` で、写しから `examples/go/` と `examples/requests/` を書き直します。申請の種類の Wasm は cargo で組むので、target の `wasm32-unknown-unknown` が要ります。一つのクレートから同じバイト列ができるのは同じツールチェーンで組んだときだけなので、CI は `examples/requests/wasm.json` が記録する rustc（`built.rustc`）で組み直します。
 
 ## 版を公開する
 
