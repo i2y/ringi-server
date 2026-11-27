@@ -57,15 +57,11 @@ func TestWasmTimes(t *testing.T) {
 		pkg  *server.Package
 	}
 	goPkg := webPackage(t)
-	kept, err := wasmkind.Load(ctx, dir)
+	wasmPkg, err := wasmkind.Load(ctx, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, err := wasmkind.LoadWith(ctx, dir, wasmkind.Options{Fresh: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	modes := []mode{{"Go", goPkg}, {"Wasm, kept", kept}, {"Wasm, fresh", fresh}}
+	modes := []mode{{"Go", goPkg}, {"Wasm", wasmPkg}}
 	ms := func(d time.Duration) string { return fmt.Sprintf("%.3f ms", float64(d)/1e6) }
 	us := func(ns int64) string { return fmt.Sprintf("%.1f µs", float64(ns)/1e3) }
 	var out strings.Builder
@@ -107,7 +103,7 @@ func TestWasmTimes(t *testing.T) {
 			pick[c.entry] = c
 		}
 	}
-	fmt.Fprintf(&out, "| One call (expense) | %s |\n| --- | --- | --- | --- |\n", strings.Join([]string{modes[0].name, modes[1].name, modes[2].name}, " | "))
+	fmt.Fprintf(&out, "| One call (expense) | %s |\n| --- | --- | --- |\n", strings.Join([]string{modes[0].name, modes[1].name}, " | "))
 	for _, e := range []string{"start", "next", "worked"} {
 		row := []string{"`" + e + "`"}
 		for _, m := range modes {
@@ -151,7 +147,7 @@ func TestWasmTimes(t *testing.T) {
 	fmt.Fprintf(&out, "| %s |\n\n", strings.Join(row, " | "))
 
 	// calls at once: as many as a card asks (13), and four for each processor
-	fmt.Fprintf(&out, "| `next` (expense) at once, all of them | %s |\n| --- | --- | --- | --- |\n", strings.Join([]string{modes[0].name, modes[1].name, modes[2].name}, " | "))
+	fmt.Fprintf(&out, "| `next` (expense) at once, all of them | %s |\n| --- | --- | --- |\n", strings.Join([]string{modes[0].name, modes[1].name}, " | "))
 	for _, n := range []int{13, 4 * runtime.GOMAXPROCS(0)} {
 		row := []string{fmt.Sprintf("%d calls", n)}
 		for _, m := range modes {
@@ -206,7 +202,7 @@ func TestWasmTimes(t *testing.T) {
 		{"in a team no kind reads", func(n int) server.OrgSource { return staffOf{Organization(), n, "hr"} }},
 		{"in general affairs, whose members purchase reads", func(n int) server.OrgSource { return grownOrg{Organization(), n} }},
 	} {
-		fmt.Fprintf(&out, "| People (the more %s) | Page | %s |\n| --- | --- | --- | --- | --- |\n", o.name, strings.Join([]string{modes[0].name, modes[1].name, modes[2].name}, " | "))
+		fmt.Fprintf(&out, "| People (the more %s) | Page | %s |\n| --- | --- | --- | --- |\n", o.name, strings.Join([]string{modes[0].name, modes[1].name}, " | "))
 		for _, size := range []int{24, 1200, 5000, 20000} {
 			var cards, starts []string
 			for _, m := range modes {
@@ -218,7 +214,7 @@ func TestWasmTimes(t *testing.T) {
 		out.WriteString("\n")
 	}
 	// the card where the server runs on fewer processors: the calls of `next` wait for them
-	fmt.Fprintf(&out, "| Processors (24 people) | Page | %s |\n| --- | --- | --- | --- | --- |\n", strings.Join([]string{modes[0].name, modes[1].name, modes[2].name}, " | "))
+	fmt.Fprintf(&out, "| Processors (24 people) | Page | %s |\n| --- | --- | --- | --- |\n", strings.Join([]string{modes[0].name, modes[1].name}, " | "))
 	for _, procs := range []int{1, 2, 4} {
 		var cards, starts []string
 		for _, m := range modes {

@@ -371,6 +371,13 @@ func (s *Server) tryOnce(ctx context.Context, in *input) (Reply, error) {
 			return r, err
 		}
 	}
+	// an event whose next failed to answer within the minute is not asked of it again: doing it
+	// is answered 503 with Retry-After of the seconds of the minute left, and nothing is kept
+	if in.ticket != "" && in.name != "" {
+		if left, stopped := s.stoppedWithin(in.ticket, in.name, in.now); stopped {
+			return Reply{Outcome: Unavailable, Problem: "the kind of this ticket failed to answer this event less than a minute ago: try again after the seconds Retry-After says", RetryAfter: left}, nil
+		}
+	}
 	out, err := s.call(k, view == nil, rec.Body, event, snap, in.now)
 	if err != nil {
 		if text, ok := entryInput(err); ok && in.person != nil {
@@ -378,11 +385,16 @@ func (s *Server) tryOnce(ctx context.Context, in *input) (Reply, error) {
 			// the entry's own words, and nothing is kept.
 			return invalid("%s", text), nil
 		}
+		// a call that did not answer is remembered for the ticket and event for a minute: within
+		// it the event is not asked of the entry again, and doing it is answered 503
+		if stoppedCall(err) && in.ticket != "" && in.name != "" {
+			s.noteStopped(in.ticket, in.name, in.now)
+		}
 		return Reply{}, err
 	}
 	ans, err := readAnswer(out)
 	if err != nil {
-		return Reply{}, fmt.Errorf("%s: %w", k.Name, err)
+		return Reply{}, &kindError{err: fmt.Errorf("%s: %w", k.Name, err), stopped: true}
 	}
 	if ans.refusal != nil {
 		return s.refuse(ctx, in, k, event, ans.refusal)
@@ -404,10 +416,10 @@ func (s *Server) call(k *kind, start bool, ticket, event json.RawMessage, snap *
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(error); ok {
-				err = fmt.Errorf("%s: the entry panicked: %w", k.Name, e)
+				err = &kindError{err: fmt.Errorf("%s: the entry panicked: %w", k.Name, e), stopped: true}
 				return
 			}
-			err = fmt.Errorf("%s: the entry panicked: %v", k.Name, p)
+			err = &kindError{err: fmt.Errorf("%s: the entry panicked: %v", k.Name, p), stopped: true}
 		}
 	}()
 	if start {
@@ -422,9 +434,45 @@ func (s *Server) call(k *kind, start bool, ticket, event json.RawMessage, snap *
 		out, err = k.Next(ticket, event, part, now.Unix())
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", k.Name, err)
+		return nil, &kindError{err: fmt.Errorf("%s: %w", k.Name, err), stopped: stopErrorShape(err)}
 	}
 	return out, nil
+}
+
+// kindError is a failure of a kind's own code: a stopped call, a panic, or an answer the
+// framework cannot read. A page or a list that shows several kinds leaves the kind's part out for
+// one and shows the rest, where a failure of the store or the gate is the server's own. What the
+// kind was given is not one: an argument of the server's own making, or the organization's part,
+// is the server's failure whatever it comes wrapped in.
+type kindError struct {
+	err error
+	// stopped is whether the call failed to answer — a stop, a panic, or an answer that does
+	// not read — rather than the entry answering with an error of its own (kaname's input and
+	// rule errors, or a failure a hand-written entry returns). One is remembered for the ticket
+	// and the event for a minute (stoppedCall); the other is the server's failure each time.
+	stopped bool
+}
+
+func (e *kindError) Error() string { return e.err.Error() }
+func (e *kindError) Unwrap() error { return e.err }
+
+// stopErrorShape reports whether err is a stopped call of a module (wasmkind's StopError, read by
+// its shape as kaname's KanameError is, so the framework does not import the runner).
+func stopErrorShape(err error) bool {
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		v := reflect.ValueOf(e)
+		if v.Kind() == reflect.Pointer && !v.IsNil() && v.Elem().Kind() == reflect.Struct && v.Elem().Type().Name() == "StopError" {
+			return true
+		}
+	}
+	return false
+}
+
+// KindFailed reports whether err is a failure of a kind's own code (a stopped call, a panic, an
+// answer that does not read), and not of the store, the gate or the server's own making.
+func KindFailed(err error) bool {
+	var k *kindError
+	return errors.As(err, &k)
 }
 
 // entryInput answers the text of an entry's error that refuses what a person sent, and whether err
@@ -456,6 +504,35 @@ func entryInput(err error) (string, bool) {
 		return "", false
 	}
 	return "", false
+}
+
+// kanameInput reports whether err is an entry's refusal of what it was given (kaname's
+// KanameError of the kind "input"), whether of what a person sent or of the server's own
+// arguments. One is the entry working as written, not a call that failed to answer: it is no
+// stopped call, and nothing of it is remembered.
+func kanameInput(err error) bool {
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		v := reflect.ValueOf(e)
+		if v.Kind() != reflect.Pointer || v.IsNil() || v.Elem().Kind() != reflect.Struct || v.Elem().Type().Name() != "KanameError" {
+			continue
+		}
+		f := v.Elem().FieldByName("Kind")
+		if !f.IsValid() || f.Kind() != reflect.String {
+			continue
+		}
+		return f.String() == "input"
+	}
+	return false
+}
+
+// stoppedCall reports whether err is a call that failed to answer (a stop, a panic), and not the
+// entry's own refusal of what it was given, nor a call that found no instance free (Busy: too much
+// work at once, which the next ask may well find free, and which is answered 503 with
+// `Retry-After: 1`): one is remembered for the ticket and the event for a minute, the others are
+// not.
+func stoppedCall(err error) bool {
+	var k *kindError
+	return errors.As(err, &k) && k.stopped && !kanameInput(err) && !Busy(err)
 }
 
 // quoted answers the words of a text between backquotes, in their order.
@@ -498,6 +575,23 @@ func waitingSince(t, before *ticketView, rec TicketRecord, now time.Time) time.T
 func (s *Server) save(ctx context.Context, in *input, k *kind, rec TicketRecord, before *ticketView, event json.RawMessage, ans *answer, snap *orgSnapshot) (Reply, error) {
 	t, err := readTicket(ans.ticket)
 	if err != nil {
+		return Reply{}, fmt.Errorf("%s: %w", k.Name, err)
+	}
+	if int64(len(ans.ticket)) > s.cfg.MaxBody {
+		// an answered ticket has the body's size limit of a submit: one past it is the server's
+		// failure, as a stopped call is, and nothing is kept of it
+		return Reply{}, fmt.Errorf("%s: the entry answered a ticket of %d bytes, over the server's limit of %d", k.Name, len(ans.ticket), s.cfg.MaxBody)
+	}
+	var kept struct {
+		Form map[string]any `json:"form"`
+	}
+	if err := json.Unmarshal(ans.ticket, &kept); err != nil {
+		return Reply{}, fmt.Errorf("%s: a ticket that does not read: %w", k.Name, err)
+	}
+	if err := answerFormError(k.desc.Form, kept.Form, k.Name+"'s answer"); err != nil {
+		// the form is checked with the same rules the submit body is (the description the upload
+		// check makes the version's schema agree with): one that fails is the server's failure,
+		// and nothing is kept
 		return Reply{}, fmt.Errorf("%s: %w", k.Name, err)
 	}
 	id := t.ID

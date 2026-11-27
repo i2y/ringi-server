@@ -109,8 +109,9 @@ func TestSwitchLabAloneDoesNotHandTheKindBackToOffice(t *testing.T) {
 	}
 }
 
-// Office stops its versions: no version is in effect, and office holds the kind meanwhile. Office's
-// administrator alone puts its own version back; lab's alone does not take the kind.
+// Office stops its versions: no version is in effect. Office holds the kind meanwhile, and lab
+// too, whose version's day has not come (DESIGN 13.2): neither team's administrator alone moves
+// the kind, and one the gate lets switch it for both does.
 func TestSwitchOfficeStoppedIsHeldByOffice(t *testing.T) {
 	for _, st := range stores(t, "ringi_root_owner_stopped") {
 		a := newAdmins(t, st)
@@ -129,20 +130,25 @@ func TestSwitchOfficeStoppedIsHeldByOffice(t *testing.T) {
 		if a.current() != 0 {
 			t.Fatalf("%s: no version should be in effect, not %d", st.name, a.current())
 		}
+		// lab's version 3, whose day has not come, holds the kind too (DESIGN 13.2): both hold it,
+		// no one team is named its owner, and neither team's administrator alone moves it
 		ks := a.kinds("ann", "dept_admin")
-		if len(ks) != 1 || ks[0].Owner == nil || *ks[0].Owner != "office" || !ks[0].Versions[0].MaySwitch || ks[0].Versions[2].MaySwitch {
-			t.Errorf("%s: the kinds as office's administrator while office's stop holds: %+v", st.name, ks)
+		if len(ks) != 1 || ks[0].Owner != nil {
+			t.Errorf("%s: the kinds as office's administrator while both hold: %+v", st.name, ks)
 		}
-		if ks := a.kinds("liz", "dept_admin"); len(ks) != 0 {
-			t.Errorf("%s: the kinds as lab's administrator while office's stop holds: %+v", st.name, ks)
+		if ks := a.kinds("liz", "dept_admin"); len(ks) != 1 || !ks[0].Versions[2].MaySwitch {
+			t.Errorf("%s: the kinds as lab's administrator while both hold: %+v", st.name, ks)
 		}
-		if code, b := a.switchTo("ann", "dept_admin", 1, map[string]any{"start": "description", "reason": "the check is done"}); code != 200 || a.current() != 1 {
-			t.Errorf("%s: office puts its own version back: %d %s; the version taken now %d", st.name, code, b, a.current())
+		if code, b := a.switchTo("ann", "dept_admin", 1, map[string]any{"start": "description", "reason": "the check is done"}); code != 409 || a.current() != 0 {
+			t.Errorf("%s: office's administrator alone put its own version back while both hold: %d %s; the version taken now %d", st.name, code, b, a.current())
 		}
-		if code, b := a.switchTo("ann", "dept_admin", 1, map[string]any{"start": "never"}); code != 200 {
-			t.Fatalf("%s: office stops version 1 again: %d %s", st.name, code, b)
+		if code, b := a.switchTo("boss", "system_admin", 1, map[string]any{"start": "description", "reason": "the check is done"}); code != 200 || a.current() != 1 {
+			t.Errorf("%s: one the gate lets switch it for both puts office's version back: %d %s; the version taken now %d", st.name, code, b, a.current())
 		}
-		if code, b := a.switchTo("liz", "dept_admin", 3, map[string]any{"start": "now", "reason": "lab takes over"}); code != 404 || a.current() != 0 {
+		if code, b := a.switchTo("boss", "system_admin", 1, map[string]any{"start": "never"}); code != 200 {
+			t.Fatalf("%s: version 1 stopped again: %d %s", st.name, code, b)
+		}
+		if code, b := a.switchTo("liz", "dept_admin", 3, map[string]any{"start": "now", "reason": "lab takes over"}); code != 409 || a.current() != 0 {
 			t.Errorf("%s: lab's administrator alone took the kind office stopped: %d %s; the version taken now %d", st.name, code, b, a.current())
 		}
 		// When lab has stopped a version too, both hold the kind: office's administrator alone

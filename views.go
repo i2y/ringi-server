@@ -344,7 +344,7 @@ func (s *Server) mayMakeOn(ctx context.Context, k *kind, p Person, requester str
 	}
 	ans, err := readAnswer(out)
 	if err != nil {
-		return false, err
+		return false, &kindError{err: fmt.Errorf("%s: %w", k.Name, err), stopped: true}
 	}
 	if ans.refusal != nil {
 		switch ans.refusal.Refused {

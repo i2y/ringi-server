@@ -91,6 +91,47 @@ func (s *Server) Can(ctx context.Context, p Person, ticket string, events []stri
 	return out, nil
 }
 
+// stoppedKey is a ticket and an event whose `next` stopped.
+type stoppedKey struct {
+	ticket, event string
+}
+
+// noteStopped remembers that a ticket's entry failed to answer an event now: for one minute the
+// event is not asked of it again.
+func (s *Server) noteStopped(ticket, event string, now time.Time) {
+	s.stoppedMu.Lock()
+	if s.stopped == nil {
+		s.stopped = map[stoppedKey]time.Time{}
+	}
+	s.stopped[stoppedKey{ticket, event}] = now
+	// the memory is small by its minute, but a server of long years is not asked to keep what
+	// ran past it: drop the stale ones when a new one is noted.
+	for key, at := range s.stopped {
+		if now.Sub(at) >= time.Minute {
+			delete(s.stopped, key)
+		}
+	}
+	s.stoppedMu.Unlock()
+}
+
+// stoppedWithin reports whether the ticket's entry failed to answer the event within the minute
+// before now, and how long of the minute is left: doing the event in it is answered 503 with
+// Retry-After of the seconds left, and asking `next` again is of no use, its ticket and event
+// unchanged.
+func (s *Server) stoppedWithin(ticket, event string, now time.Time) (time.Duration, bool) {
+	s.stoppedMu.Lock()
+	at, ok := s.stopped[stoppedKey{ticket, event}]
+	s.stoppedMu.Unlock()
+	if !ok {
+		return 0, false
+	}
+	left := time.Minute - now.Sub(at)
+	if left <= 0 {
+		return 0, false
+	}
+	return left, true
+}
+
 // gives reports whether an operation of the kind's package gives an event to a ticket of the kind.
 func (k *kind) gives(event string) bool {
 	for _, op := range k.pkg.api.ops {
@@ -112,16 +153,30 @@ var asItIs = map[string]bool{"state": true, "person": true, "event": true, "limi
 // a comment, the server is asked too whether it takes another from the person (DESIGN 7.4): one it
 // takes later is one they may make.
 func (s *Server) accepts(ctx context.Context, p Person, k *kind, rec TicketRecord, t *ticketView, snap *orgSnapshot, ov *orgVersion, event string, now time.Time) (bool, error) {
+	// an event whose next failed to answer within the minute is not asked again: one the person
+	// cannot do now, as an answer that says so is
+	if _, stopped := s.stoppedWithin(t.ID, event, now); stopped {
+		return false, nil
+	}
 	takes := false
 	for _, body := range asked(event, t, ov) {
 		body["revision"], body["comment"] = t.Revision, json.RawMessage(`"."`)
 		out, err := s.call(k, false, rec.Body, eventOf(event, p.ID, body, "asked"), snap, now)
 		if err != nil {
+			// a call that did not answer is an event the person cannot do now, remembered for a
+			// minute, and the card shows the ticket; a failure of the server's own is not one, nor
+			// a call that found no instance free, answered 503 with `Retry-After: 1` as everywhere
+			if stoppedCall(err) {
+				s.noteStopped(t.ID, event, now)
+				return false, nil
+			}
 			return false, err
 		}
 		ans, err := readAnswer(out)
 		if err != nil {
-			return false, fmt.Errorf("%s: %w", k.Name, err)
+			// an answer that does not read is the module's own, as a stopped call is
+			s.noteStopped(t.ID, event, now)
+			return false, nil
 		}
 		if ans.refusal == nil || !asItIs[ans.refusal.Refused] {
 			takes = true

@@ -14,20 +14,24 @@
 
 `Compare(old, new, kind)` は、両方のディレクトリーから `types/<kind>.json` を読む。`old` が nil なら、その種類は新しいものとして扱う。種類のファイルがない、説明が JSON のオブジェクトとして読めない、違う種類の説明である、のいずれかなら断る。説明の `name` は比べようとしている種類と同じでなければならない。`name` が変わることは変更として扱わず、違う種類として断る。
 
-説明の最上段にある鍵はすべて比べる。そのうち四つは内容を読み分ける。
+説明の最上段にある鍵は、`version` を除いてすべて比べる。そのうち四つは内容を読み分ける。
 
-- `form`: 項目の追加、削除、移動、ラベル、型、値の範囲、文字数や行数の制限、選択肢、必須かどうか、自動計算かどうか、計算が読む項目、承認者だけが入力するかどうか、入力できる日のカレンダー、見せる条件と必須にする条件。
+- `form`: 項目の追加、削除、移動、ラベル、型、値の範囲、文字の長さや行の数の制限、選択肢、必須かどうか、自動計算かどうか、計算が読む項目、承認者だけが入力するかどうか、入力できる日のカレンダー、見せる条件と必須にする条件。
 - `stages`: ステップの追加、削除、移動、ラベル、書かれたままの名前、理由を求める操作を示す `comment_required`、ステップの期限の行、期限を過ぎたステップが上へ回る表。
 - `approvers`: ステップが来る場合、承認者の決め方とそれぞれがだれを選ぶかの文、組織の役職とチームの種類、組織の `needs`（`people`、`teams`、`members_of`）、出せる人を決める `submitted_by`、`self_approval`、承認者が直す項目を示す `approvers_edit`。
 - `usable`: `effective_from`、`usable.from`、`usable.through`、その日を決める根拠を示す `usable.from_by` と `usable.through_by`、`utc_offset_minutes`。
 
 行の項目は入れ子の中まで比べる。その名前は `items.price` のように点でつないだ ASCII の名前で示す。
 
-ほかの鍵も必ず報告する。`endings`、`events`、`masters`、`flows` には、意味のわかる文を用意する。それ以外の鍵は、中身を推測せず、その鍵の前後の値を示す。ステップや承認者の決め方の中に見知らぬ鍵があっても、名前から規則や期限だと推測しない。`rule` という名前の鍵でも、ritsu が意味を決めるまでは未知の値として `other` に出す。版の番号だけが変わったときは、変更が版の番号だけだと明確に言う。
+ほかの鍵も必ず報告する。`endings`、`events`、`masters`、`flows` には、意味のわかる文を用意する。それ以外の鍵は、中身を推測せず、その鍵の前後の値を示す。ステップや承認者の決め方の中に見知らぬ鍵があっても、名前から規則や期限だと推測しない。`rule` という名前の鍵でも、ritsu が意味を決めるまでは未知の値として `other` に出す。
 
 新しい種類は、空の説明との比較として扱う。項目、ステップ、承認者の決め方、使える日、API の操作がすべて追加として出る。行数は多くなるが、新しい種類を認めることはその形全体を認めることなので、ここでは省略しない。
 
 ラベルは、尋ねられた言語で示す。説明の `label` は元のファイルを書いた言語のもので、`labels` がほかの言語のラベルを持つ。求められた言語のラベルがなければ `label` を使う。ASCII の名前がラベルと違うときは括弧の中に添える。API とファイルでは ASCII の名前を使うからである。
+
+生成された項目は、どの型でも同じ鍵を持ち、当てはまらない所は null か空の値になる。差はその全部を読む。`written`、`label`、`labels`、`type`、`type_written`、`min`、`max`、`count_min`、`count_max`、`choices`、`optional`、`computed`、`reads`、`worked_on_screen`、`approvers_only`、`open_in`、`shown_when`、`required_when`、`fields` である。`min` と `max` は一つの範囲として示し、`count_min` と `count_max` は一つの長さか行数の制限として示す。言い方は型で分け、数、日付、金額はそれぞれの範囲と言い、文は文字数、明細は行数と言う。片方だけの限りも読むので、100文字までの文を制限なしとは言わない。
+
+版の番号の変更そのものは行にしない。ページは比べている二つの版をすでに示しているので、どの組でも同じ行を足すと実質の差が見えにくくなるからである。番号は `Diff.OldVersion` と `Diff.NewVersion` に残る。
 
 ## 3. 承認者の決め方と期限の読み方
 
@@ -64,25 +68,25 @@ OpenAPI を文字の並びとして比べるわけではない。利用者から
 
 それぞれの `Line` は節を持つ。API の行では `API` が true なので、呼び出し側は節で分けるだけでなく、API の形の確認を別に求められる。
 
+日本語の行では、フレームワークの `internal/jatext` と同じ決まりで名前を置く。ASCII の名前、鍵、ID は、仮名や漢字との間を一つの空白で区切り、全角の約物には空白を置かずに付ける。数、日付、金額は日本語の文の中に書くので、単位や助数詞に空白を挟まない。説明にある `when`、`who`、`how`、上へ回る表の文はそのまま示し、文の中を組み替えない。
+
 ## 6. 実際の出力
 
 `example_test.go` の `ExampleCompare` は、`kinddiff/testdata` に置いた、実際に生成された `leave` の版 1と版 2を比べる。これらは ritsu 0.56.0 の `ritsu gen --target requests` が書いたもので、承認者、期限、決め方、上へ回る表の鍵を持つ。`kinddiff/testdata/old` には、これらの鍵を書く前の ritsu が書いた版 1 を置く。古い説明と新しい説明の比較に使う。Go の example テストが、この出力をそのまま検査している。
 
 ```text
-form api=false: The range of the field "Business days" (days) changes from 1 through 20 to 1 through 25.
+form api=false: The number range of the field "Business days" (days) changes from 1 through 20 to 1 through 25.
 usable api=false: This version now takes effect from 2027-04-01.
 usable api=false: The first day the kind can be used changes from 2026-04-01 to 2027-04-01.
 usable api=false: The data deciding the first day the kind can be used changes from "the first version of the organization `shared/company.ringi` (data `../org`)" to "`effective from`".
 api api=true: In the request body of `submit_leave`, `maximum` of `form.days` changes from `20` to `25`.
 api api=true: In the request body of `resubmit_leave`, `maximum` of `form.days` changes from `20` to `25`.
-other api=false: The version number changes from 1 to 2.
-form api=false: 項目「営業日の日数」（days）の範囲が1以上20以下から1以上25以下に変わります。
+form api=false: 項目「営業日の日数」（days）の数値の範囲が1以上20以下から1以上25以下に変わります。
 usable api=false: この版は2027-04-01から効きます。
 usable api=false: この申請の種類を出せる最初の日が2026-04-01から2027-04-01に変わります。
 usable api=false: 申請を出せる最初の日を決めるデータが「the first version of the organization `shared/company.ringi` (data `../org`)」から「`effective from`」に変わります。
-api api=true: `submit_leave`に送る本文では、`form.days`の`maximum`が`20`から`25`に変わります。
-api api=true: `resubmit_leave`に送る本文では、`form.days`の`maximum`が`20`から`25`に変わります。
-other api=false: 版の番号が1から2に変わります。
+api api=true: `submit_leave` に送る本文では、`form.days` の `maximum` が`20`から`25`に変わります。
+api api=true: `resubmit_leave` に送る本文では、`form.days` の `maximum` が`20`から`25`に変わります。
 ```
 
 二つの版では承認者と期限の鍵の内容が同じなので、この出力にはそれらの行がない。詳細なテストでは、この実際の説明の写しを変えて、それぞれの変更を確かめる。空でない上へ回る表は、実際に生成された `expense` の表を使う。表の行や見出しを変えたものはテスト用の写しで、別の版を ritsu が生成したものではない。

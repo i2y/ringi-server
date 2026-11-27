@@ -167,7 +167,7 @@ func TestLoadRefuses(t *testing.T) {
 			"kinds.wasm's call takes (i32) and answers (), and a module of kinds' takes (i32, i32) and answers (i32)"},
 		{"no memory", requestsWith(t, noMemory.bytes(), nil), Options{}, "kinds.wasm exports no memory memory, which wasm.json names"},
 		{"a memory too large", requestsWith(t, large.bytes(), nil), Options{Pages: 8},
-			"kinds.wasm's memory starts with 9 pages, past the 8 pages (512 KiB) its instances may grow to"},
+			"kinds.wasm's memory starts with 9 pages, past the 8 pages (512 KiB) it may start with"},
 		{"a start that traps", requestsWith(t, startTraps.bytes(), nil), Options{}, "kinds.wasm cannot be started: …unreachable"},
 		{"a start that does not end", requestsWith(t, startLoops.bytes(), nil), Options{Time: 50 * time.Millisecond}, "kinds.wasm cannot be started: …deadline exceeded"},
 		{"a module that no line holds", requestsWith(t, good, func(m map[string]any) { kindAt(m)["module"] = `a"b` }), Options{},
@@ -410,6 +410,8 @@ func TestLimits(t *testing.T) {
 			"the call of `start` of the module `purchase` was stopped by the module: wasm error: integer divide by zero"},
 		{"an answer outside the memory", outside(), Options{}, ErrTrap,
 			"the call of `start` of the module `purchase` was stopped by the module: the module answered a place outside its memory"},
+		{"an answer that is not UTF-8", answering("\xff"), Options{}, ErrTrap,
+			"the call of `start` of the module `purchase` was stopped by the module: the module answered bytes that are not UTF-8"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := load(t, c.m, c.o)
@@ -444,9 +446,9 @@ func countOf(t *testing.T, k server.Kind, submit string) string {
 	return string(out)
 }
 
-// TestInstances checks how instances are kept: calls one after another run in the instance the one
-// before left, and a call that was stopped, or that grew its memory past what is kept, leaves none;
-// with Fresh, each call has an instance of its own.
+// TestInstances checks that nothing passes between calls: calls one after another are each the
+// first call of a new instance, including after one that was stopped or that grew its memory.
+// Options.Fresh, kept for source compatibility, is the same.
 func TestInstances(t *testing.T) {
 	long := `"` + strings.Repeat("x", 300) + `"`
 	for _, c := range []struct {
@@ -462,8 +464,8 @@ func TestInstances(t *testing.T) {
 		t.Run("after "+c.name, func(t *testing.T) {
 			k := kindOf(t, load(t, counting(200, c.after), c.o), "leave")
 			for i := 1; i <= 3; i++ {
-				if got, want := countOf(t, k, `{}`), fmt.Sprint(i); got != want {
-					t.Fatalf("call %d: %s; want %s", i, got, want)
+				if got := countOf(t, k, `{}`); got != "1" {
+					t.Fatalf("call %d: %s; want a new instance's first call", i, got)
 				}
 			}
 			if _, err := k.Start([]byte(long), []byte(`{}`), 0); !errors.Is(err, c.stop) {
@@ -474,16 +476,20 @@ func TestInstances(t *testing.T) {
 			}
 		})
 	}
-	t.Run("past the pages kept", func(t *testing.T) {
-		// a long line grows the memory by 80 pages and answers: more than the 64 an instance of
-		// one page may grow by and be kept
+	t.Run("after growth", func(t *testing.T) {
 		k := kindOf(t, load(t, counting(200, "grow 80"), Options{}), "leave")
-		countOf(t, k, `{}`)
-		if got := countOf(t, k, long); got != "2" {
-			t.Fatalf("the long call: %s", got)
+		for i := 1; i <= 2; i++ {
+			if got := countOf(t, k, long); got != "1" {
+				t.Errorf("long call %d: %s; want a new instance's first call", i, got)
+			}
 		}
-		if got := countOf(t, k, `{}`); got != "1" {
-			t.Errorf("after it: %s; want a new instance's first call", got)
+	})
+	t.Run("memory", func(t *testing.T) {
+		k := kindOf(t, load(t, countingMemory(200, "trap"), Options{}), "leave")
+		for i := 1; i <= 3; i++ {
+			if got := countOf(t, k, `{}`); got != "1" {
+				t.Errorf("call %d: %s; want a new instance's first call", i, got)
+			}
 		}
 	})
 	t.Run("fresh", func(t *testing.T) {
@@ -496,6 +502,79 @@ func TestInstances(t *testing.T) {
 	})
 }
 
+// TestAnswerErrorShortensLongAnswers checks that an answer of none of the door's shapes is not
+// written whole: its first bytes and its length are enough to say what it was.
+func TestAnswerErrorShortensLongAnswers(t *testing.T) {
+	p := load(t, answering(strings.Repeat("x", 1000)), Options{})
+	_, err := kindOf(t, p, "leave").Worked([]byte(`{"form":{},"edited":null}`))
+	var ae *answerError
+	if !errors.As(err, &ae) {
+		t.Fatalf("%T %v; want an answerError", err, err)
+	}
+	got := err.Error()
+	if !strings.HasPrefix(got, "the first 200 bytes of an answer of 1000 bytes: "+strings.Repeat("x", 100)) {
+		t.Errorf("%q; want the length and the first bytes", got)
+	}
+	if len(got) >= 300 {
+		t.Errorf("the error is %d bytes; want less than 300", len(got))
+	}
+}
+
+// TestStartPages checks the smaller limit on the memory a module starts with: a module past it is
+// refused with the default, and taken where the options allow it.
+func TestStartPages(t *testing.T) {
+	large := echo()
+	large.memMin = DefaultStartPages + 1
+	files := requestsWith(t, large.bytes(), nil)
+	_, err := LoadWith(context.Background(), files, Options{})
+	want := "kinds.wasm's memory starts with 65 pages, past the 64 pages (4 MiB) it may start with"
+	if err == nil || err.Error() != want {
+		t.Fatalf("%v; want %q", err, want)
+	}
+	if _, err := LoadWith(context.Background(), files, Options{StartPages: DefaultStartPages + 1}); err != nil {
+		t.Errorf("with StartPages allowing it: %v", err)
+	}
+}
+
+// TestBusy checks that waiting for an instance is within the time of a call: calls behind ones
+// that do not end are answered ErrBusy and do not wait for one another without end.
+func TestBusy(t *testing.T) {
+	k := kindOf(t, load(t, looping(), Options{Instances: 1, Time: 80 * time.Millisecond}), "purchase")
+	const calls = 8
+	began := time.Now()
+	errs := make(chan error, calls)
+	var wg sync.WaitGroup
+	for range calls {
+		wg.Go(func() {
+			_, err := k.Start([]byte(`{}`), []byte(`{}`), 0)
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	took := time.Since(began)
+	busy, stopped := 0, 0
+	for err := range errs {
+		switch {
+		case errors.Is(err, ErrBusy):
+			if err.Error() != "the call of `start` of the module `purchase` found no instance free in 80ms, and was not run" {
+				t.Errorf("ErrBusy says %q", err)
+			}
+			busy++
+		case errors.Is(err, ErrTime):
+			stopped++
+		default:
+			t.Errorf("the call answered %v; want ErrBusy or ErrTime", err)
+		}
+	}
+	if busy == 0 {
+		t.Errorf("no call answered ErrBusy (%d stopped by time)", stopped)
+	}
+	if took > 300*time.Millisecond {
+		t.Errorf("the calls took %v; want no waiting behind one another without end", took)
+	}
+}
+
 // TestAtOnce gives many calls at once, more than the instances: each is answered its own line.
 func TestAtOnce(t *testing.T) {
 	for _, o := range []Options{{Instances: 1}, {Instances: 3}, {}, {Fresh: true, Instances: 4}} {
@@ -506,8 +585,8 @@ func TestAtOnce(t *testing.T) {
 			wg.Go(func() {
 				submit := fmt.Sprintf(`{"n":%d,"pad":%q}`, i, strings.Repeat("y", i*37))
 				_, err := k.Start([]byte(submit), []byte(`{}`), int64(i))
-				want := fmt.Sprintf(`{"module":"contract","function":"start","in":{"submit":%s,"organization":{},"now":%d}}`, submit, i)
-				if err == nil || err.Error() != want {
+				line := fmt.Sprintf(`{"module":"contract","function":"start","in":{"submit":%s,"organization":{},"now":%d}}`, submit, i)
+				if err == nil || err.Error() != newAnswerError([]byte(line)).Error() {
 					errs <- fmt.Sprintf("%+v call %d: %v", o, i, err)
 				}
 			})

@@ -123,15 +123,22 @@ func (s *Server) kindOwner(name string, now time.Time) (owner string, ok bool) {
 }
 
 // noneOwners answers who holds a kind while none of its versions is in effect at t, by the starts
-// given: the owners of the versions set to never and of those an administrator set to start after
-// t, each once. A kind comes to have none in effect by such a switch (or by its descriptions alone,
-// when it holds none), and the team that made it so is not known from the starts: so each of them
-// holds it, and no other team takes the kind from a state one team made.
+// given: the owners of the versions set to never, of those an administrator set to start after t,
+// and of those whose own day has not come (a kind no version of which has started yet is owned by
+// the owner its versions name, DESIGN 13.2), each once. A kind comes to have none in effect by such
+// a switch (or by its descriptions alone, when it holds none), and the team that made it so is not
+// known from the starts: so each of them holds it, and no other team takes the kind from a state
+// one team made.
 func (s *Server) noneOwners(name string, start func(*kind) Start, t time.Time) []string {
 	var out []string
 	for _, v := range s.cat().kinds[name] {
 		st := start(v)
-		if (st.How == "never" || st.How == "day" && st.At.After(t)) && !slices.Contains(out, v.desc.Owner) {
+		future := st.How == "never" || st.How == "day" && st.At.After(t)
+		if st.How == "description" && !v.effective(v.day(t)) {
+			// the version's own day has not come (or it may never be used): it holds the kind too
+			future = true
+		}
+		if future && !slices.Contains(out, v.desc.Owner) {
 			out = append(out, v.desc.Owner)
 		}
 	}

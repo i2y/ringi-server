@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -21,21 +23,33 @@ var (
 	// ErrMemory is a call that grew its instance's memory past its pages (Options.Pages).
 	ErrMemory = errors.New("the call grew its memory past its pages")
 	// ErrTrap is a call the module stopped with a trap of WebAssembly (an unreachable, a division by
-	// zero, a read outside its memory, its stack used up), or that answered outside its memory.
+	// zero, a read outside its memory, its stack used up), that answered outside its memory, or
+	// whose answer was not UTF-8.
 	ErrTrap = errors.New("the module trapped")
+	// ErrBusy is a call that found no instance free within its time (Options.Time), and was not
+	// run. A server can answer it as one of too much work, and ask the caller to try again.
+	ErrBusy = errors.New("no instance was free in time")
 )
 
 // StopError is a call of an entry that was stopped: by its time (ErrTime), by its memory
-// (ErrMemory), or by the module (ErrTrap). The instance it ran in is not used again.
+// (ErrMemory), or by the module (ErrTrap); or one that was not run because no instance was free
+// (ErrBusy). An instance a stopped call ran in is not used again.
 type StopError struct {
 	// Module and Function are the module and the function of the door the entry called.
 	Module, Function string
-	// Err is what stopped it: ErrTime, ErrMemory or ErrTrap.
+	// Err is what stopped it: ErrTime, ErrMemory, ErrTrap or ErrBusy.
 	Err error
 	// Limit is the time or the pages the call ran past, as the sentence says it; "" for a trap.
 	Limit string
 	// Cause is what the runtime said, for a trap.
 	Cause error
+}
+
+// Busy reports whether the stop is ErrBusy: too much work at once, which the one who called may
+// retry after a breath, apart from a failure of the module. The server reads it through errors.As
+// (server.Busy), as it does net.Error, so it does not import this package.
+func (e *StopError) Busy() bool {
+	return errors.Is(e.Err, ErrBusy)
 }
 
 func (e *StopError) Error() string {
@@ -45,6 +59,8 @@ func (e *StopError) Error() string {
 		return head + " ran past its time of " + e.Limit + ", and was stopped"
 	case ErrMemory:
 		return head + " grew its memory past " + e.Limit + ", and was stopped"
+	case ErrBusy:
+		return head + " found no instance free in " + e.Limit + ", and was not run"
 	}
 	if e.Cause != nil {
 		return head + " was stopped by the module: " + firstLine(e.Cause.Error())
@@ -65,8 +81,9 @@ func firstLine(s string) string {
 	return s
 }
 
-// runner runs the calls of one compiled module: in instances kept between calls (or one for each
-// call, Options.Fresh), no more of them at once than Options.Instances.
+// runner runs the calls of one compiled module, each in an instance of its own, no more of them at
+// once than Options.Instances. Nothing of a call is left for the next: no memory, no global, and no
+// instance.
 type runner struct {
 	rt       wazero.Runtime
 	compiled wazero.CompiledModule
@@ -74,12 +91,8 @@ type runner struct {
 	// the names of the exports
 	callName, reallocName, postName, memoryName string
 	o                                           Options
-	// slots holds a token for each call that runs, and idle the instances calls left
+	// slots holds a token for each call that runs.
 	slots chan struct{}
-	idle  chan *instance
-	// keep is the most pages an instance may have to be kept for the next call: a call that grew it
-	// past them leaves it to be dropped, so that no instance keeps the memory one large call took.
-	keep uint32
 }
 
 // newRunner compiles the module and checks its exports, and makes its first instance.
@@ -87,9 +100,6 @@ func newRunner(ctx context.Context, bin []byte, file, call, realloc, post, memor
 	rt := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithCloseOnContextDone(true))
 	r := &runner{rt: rt, file: file, callName: call, reallocName: realloc, postName: post, memoryName: memory, o: o,
 		slots: make(chan struct{}, o.Instances)}
-	if !o.Fresh {
-		r.idle = make(chan *instance, o.Instances)
-	}
 	compiled, err := rt.CompileModule(ctx, bin)
 	if err != nil {
 		return nil, r.fail(fmt.Errorf("%s: %w", file, err))
@@ -112,15 +122,14 @@ func newRunner(ctx context.Context, bin []byte, file, call, realloc, post, memor
 	if !ok {
 		return nil, r.fail(fmt.Errorf("%s exports no memory %s, which wasm.json names", file, memory))
 	}
-	if mem.Min() > o.Pages {
-		return nil, r.fail(fmt.Errorf("%s's memory starts with %d pages, past the %s its instances may grow to", file, mem.Min(), pagesSaid(o.Pages)))
+	if mem.Min() > o.StartPages {
+		return nil, r.fail(fmt.Errorf("%s's memory starts with %d pages, past the %s it may start with", file, mem.Min(), pagesSaid(o.StartPages)))
 	}
-	r.keep = min(o.Pages, max(2*mem.Min(), mem.Min()+64))
 	in, err := r.instance()
 	if err != nil {
 		return nil, r.fail(fmt.Errorf("%s cannot be started: %w", file, err))
 	}
-	r.leave(in)
+	in.mod.Close(context.Background())
 	return r, nil
 }
 
@@ -159,36 +168,20 @@ func (r *runner) instance() (*instance, error) {
 	return in, nil
 }
 
-// take answers an instance a call left, or a new one.
-func (r *runner) take() (*instance, error) {
-	select {
-	case in := <-r.idle:
-		return in, nil
-	default:
-		return r.instance()
-	}
-}
-
-// leave keeps an instance for the next call, or drops it: under Options.Fresh, past the pages kept,
-// or with as many kept already.
-func (r *runner) leave(in *instance) {
-	if r.idle != nil && in.memory.Size()/65536 <= r.keep {
-		select {
-		case r.idle <- in:
-			return
-		default:
-		}
-	}
-	in.mod.Close(context.Background())
-}
-
 // call gives the module one line and answers what it answers, within the time and the pages of
-// the options: a call stopped by either, or by the module, is a *StopError, and its instance is
-// dropped.
+// the options. Waiting for an instance is within the same time: a call that finds none free is a
+// *StopError of ErrBusy and is not run. A call stopped by its time or memory, or by the module, is
+// a *StopError of the one that stopped it. Its instance is closed in any case.
 func (r *runner) call(e *entry, line []byte) ([]byte, error) {
-	r.slots <- struct{}{}
-	defer func() { <-r.slots }()
-	in, err := r.take()
+	wait := time.NewTimer(r.o.Time)
+	select {
+	case r.slots <- struct{}{}:
+		wait.Stop()
+		defer func() { <-r.slots }()
+	case <-wait.C:
+		return nil, &StopError{Module: e.module, Function: e.function, Err: ErrBusy, Limit: r.o.Time.String()}
+	}
+	in, err := r.instance()
 	if err != nil {
 		return nil, &StopError{Module: e.module, Function: e.function, Err: ErrTrap, Cause: err}
 	}
@@ -196,8 +189,8 @@ func (r *runner) call(e *entry, line []byte) ([]byte, error) {
 	defer cancel()
 	in.mem.hit = false
 	answer, err := in.answer(ctx, line)
+	in.mod.Close(context.Background())
 	if err != nil {
-		in.mod.Close(context.Background())
 		s := &StopError{Module: e.module, Function: e.function, Err: ErrTrap, Cause: err}
 		var exit *sys.ExitError
 		switch {
@@ -208,12 +201,14 @@ func (r *runner) call(e *entry, line []byte) ([]byte, error) {
 		}
 		return nil, s
 	}
-	r.leave(in)
 	return answer, nil
 }
 
 // errOutside is an answer of the module outside its memory.
 var errOutside = errors.New("the module answered a place outside its memory")
+
+// errNotUTF8 is an answer of the module that is not UTF-8, which JSON text cannot be.
+var errNotUTF8 = errors.New("the module answered bytes that are not UTF-8")
 
 // answer runs one call of the canonical ABI (kaname's DESIGN 36.11): the line is put where the
 // module's allocator says, `call` reads it and frees it, and what it answers points at the place and
@@ -239,6 +234,9 @@ func (in *instance) answer(ctx context.Context, line []byte) ([]byte, error) {
 		return nil, errOutside
 	}
 	answer := bytes.Clone(b)
+	if !utf8.Valid(answer) {
+		return nil, errNotUTF8
+	}
 	if _, err := in.post.Call(ctx, uint64(ret)); err != nil {
 		return nil, err
 	}

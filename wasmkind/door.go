@@ -3,6 +3,7 @@ package wasmkind
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -175,11 +176,28 @@ func (f *entry) answerOf(answer []byte) (json.RawMessage, error) {
 		}
 		return nil, e
 	}
-	return nil, &answerError{answer: string(answer)}
+	return nil, newAnswerError(answer)
 }
 
-// answerError is an answer of the door of none of its shapes, said whole.
+// answerErrorBytes is how much of an answer of the door of none of its shapes an answerError holds:
+// enough to say what it was, not enough to fill a log line with it.
+const answerErrorBytes = 200
+
+// answerError is an answer of the door of none of its shapes. A short one is said whole, a long one
+// by its first bytes and its length.
 type answerError struct{ answer string }
+
+// newAnswerError makes the error of an answer, holding it whole where it is short.
+func newAnswerError(answer []byte) *answerError {
+	if len(answer) <= answerErrorBytes {
+		return &answerError{answer: string(answer)}
+	}
+	head := answer[:answerErrorBytes]
+	for !utf8.Valid(head) {
+		head = head[:len(head)-1]
+	}
+	return &answerError{answer: fmt.Sprintf("the first %d bytes of an answer of %d bytes: %s", len(head), len(answer), head)}
+}
 
 func (e *answerError) Error() string { return e.answer }
 

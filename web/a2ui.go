@@ -443,7 +443,8 @@ type actionReply struct {
 	Text    string `json:"text,omitempty"`
 	Words   string `json:"words,omitempty"`
 	Problem string `json:"problem,omitempty"`
-	// RetryAfter is, for limited, the seconds to wait before the same action is taken.
+	// RetryAfter is, for limited and unavailable, the seconds to wait before the same action is
+	// taken.
 	RetryAfter int               `json:"retry_after,omitempty"`
 	Messages   []json.RawMessage `json:"messages"`
 }
@@ -596,6 +597,15 @@ func (h *Handler) action(w http.ResponseWriter, r *http.Request, p server.Person
 			wait, _ = strconv.Atoi(server.RetryAfter(rep.RetryAfter))
 		}
 		writeJSON(w, http.StatusTooManyRequests, actionReply{Outcome: "limited", Problem: rep.Problem, Words: screens.LimitedWords(lang, wait), RetryAfter: wait, Messages: said(nil)})
+	case server.Unavailable:
+		// The kind failed to answer the event within the minute: the screen's action is answered
+		// 503, and the person may try again when it is out, which Retry-After says.
+		wait := 0
+		if rep.RetryAfter > 0 {
+			w.Header().Set("Retry-After", server.RetryAfter(rep.RetryAfter))
+			wait, _ = strconv.Atoi(server.RetryAfter(rep.RetryAfter))
+		}
+		writeJSON(w, http.StatusServiceUnavailable, actionReply{Outcome: "unavailable", Problem: rep.Problem, Words: screens.UnavailableWords(lang, wait), RetryAfter: wait, Messages: said(nil)})
 	case server.Refused:
 		x := refusalOf(rep.Body)
 		out := actionReply{Outcome: "refused", Refused: x.Refused, Text: x.In(lang), Words: screens.RefusalWords(lang, x.Refused)}

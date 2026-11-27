@@ -273,11 +273,22 @@ type kindLabel struct {
 	Text string `json:"text"`
 }
 
-// descField is a field of a form, or of its rows.
+// descField is a field of a form, or of its rows. The framework reads what it checks a module's
+// answers with: the type, the bounds and the choices, and whether the field is computed or for the
+// approvers alone.
 type descField struct {
-	Name   string      `json:"name"`
-	Type   string      `json:"type"`
-	Fields []descField `json:"fields"`
+	Name     string       `json:"name"`
+	Type     string       `json:"type"`
+	Min      any          `json:"min"`
+	Max      any          `json:"max"`
+	CountMin any          `json:"count_min"`
+	CountMax any          `json:"count_max"`
+	Choices  []descChoice `json:"choices"`
+	Fields   []descField  `json:"fields"`
+}
+
+type descChoice struct {
+	Name string `json:"name"`
 }
 
 // day answers the day of t in the kind's offset.

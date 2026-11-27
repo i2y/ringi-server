@@ -208,6 +208,7 @@ curl -s localhost:8080/openapi.json -H 'X-Person: s1201' | jq -r '.paths | keys[
 | 413, 415 | `{"error": …}` | The body is too large, or is not JSON |
 | 429 | `{"error": …}` | Too many. When it is enough to wait, `Retry-After` says how long |
 | 500 | `{"error": …}` | The server failed. Its log says why. You may send it again with the same number |
+| 503 | `{"error": …}` | The server has too much work at once, or the ticket's kind failed to answer this event less than a minute ago. Send it again after the seconds `Retry-After` says |
 
 An answer of 409 is kept with its number too. When you put the operation right and send it again, give it a new
 number. A number and its answer are kept for 30 days.

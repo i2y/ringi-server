@@ -1447,6 +1447,14 @@ func startLeave(submit json.RawMessage, organization json.RawMessage, now int64)
 			err = entryError(r, "start", "leave", 501)
 		}
 	}()
+	for _, part := range []struct {
+		raw json.RawMessage
+		at  string
+	}{{submit, "submit"}, {organization, "organization"}} {
+		if deepJSON(part.raw) {
+			panic(wrongJSON{path: part.at, kind: 5})
+		}
+	}
 	r := m2.Start(c1(jsonValue(submit, "submit"), "submit"), c9(jsonValue(organization, "organization"), "organization"), now)
 	return json.Marshal(c25(r))
 }
@@ -1460,6 +1468,14 @@ func nextLeave(ticket json.RawMessage, event json.RawMessage, organization json.
 			err = entryError(r, "next", "leave", 512)
 		}
 	}()
+	for _, part := range []struct {
+		raw json.RawMessage
+		at  string
+	}{{ticket, "ticket"}, {event, "event"}, {organization, "organization"}} {
+		if deepJSON(part.raw) {
+			panic(wrongJSON{path: part.at, kind: 5})
+		}
+	}
 	r := m2.Next(c66(jsonValue(ticket, "ticket"), "ticket"), c89(jsonValue(event, "event"), "event"), c9(jsonValue(organization, "organization"), "organization"), now)
 	return json.Marshal(c25(r))
 }
@@ -1473,6 +1489,14 @@ func workedLeave(input json.RawMessage) (out json.RawMessage, err error) {
 			err = entryError(r, "worked_out", "leave", 433)
 		}
 	}()
+	for _, part := range []struct {
+		raw json.RawMessage
+		at  string
+	}{{input, "input"}} {
+		if deepJSON(part.raw) {
+			panic(wrongJSON{path: part.at, kind: 5})
+		}
+	}
 	r := m2.WorkedOutFn(c93(jsonValue(input, "input"), "input"))
 	return json.Marshal(c95(r))
 }
@@ -1486,6 +1510,14 @@ func startLeaveJa(submit json.RawMessage, organization json.RawMessage, now int6
 			err = entryError(r, "start", "leave_ja", 501)
 		}
 	}()
+	for _, part := range []struct {
+		raw json.RawMessage
+		at  string
+	}{{submit, "submit"}, {organization, "organization"}} {
+		if deepJSON(part.raw) {
+			panic(wrongJSON{path: part.at, kind: 5})
+		}
+	}
 	r := m1.Start(c100(jsonValue(submit, "submit"), "submit"), c9(jsonValue(organization, "organization"), "organization"), now)
 	return json.Marshal(c102(r))
 }
@@ -1499,6 +1531,14 @@ func nextLeaveJa(ticket json.RawMessage, event json.RawMessage, organization jso
 			err = entryError(r, "next", "leave_ja", 512)
 		}
 	}()
+	for _, part := range []struct {
+		raw json.RawMessage
+		at  string
+	}{{ticket, "ticket"}, {event, "event"}, {organization, "organization"}} {
+		if deepJSON(part.raw) {
+			panic(wrongJSON{path: part.at, kind: 5})
+		}
+	}
 	r := m1.Next(c106(jsonValue(ticket, "ticket"), "ticket"), c108(jsonValue(event, "event"), "event"), c9(jsonValue(organization, "organization"), "organization"), now)
 	return json.Marshal(c102(r))
 }
@@ -1512,6 +1552,14 @@ func workedLeaveJa(input json.RawMessage) (out json.RawMessage, err error) {
 			err = entryError(r, "worked_out", "leave_ja", 433)
 		}
 	}()
+	for _, part := range []struct {
+		raw json.RawMessage
+		at  string
+	}{{input, "input"}} {
+		if deepJSON(part.raw) {
+			panic(wrongJSON{path: part.at, kind: 5})
+		}
+	}
 	r := m1.WorkedOutFn(c109(jsonValue(input, "input"), "input"))
 	return json.Marshal(c111(r))
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	server "github.com/i2y/ringi-server"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -66,6 +67,10 @@ func (t *Tools) checkHandler(c choice, who whoFunc) sdkmcp.ToolHandler {
 		call.Person, call.Via, call.Key = p, "mcp", ""
 		r, err := t.srv.Try(ctx, call)
 		if err != nil {
+			if server.Busy(err) {
+				t.log.Error("a check found no instance free", "tool", d.name, "person", p.ID, "ticket", call.Ticket, "err", err)
+				return busy(lang), nil
+			}
 			t.log.Error("a check failed", "tool", d.name, "person", p.ID, "ticket", call.Ticket, "err", err)
 			return failed(lang), nil
 		}

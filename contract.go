@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"unicode/utf8"
 )
 
 // ticketView is what the framework reads of a ticket's JSON: the parts every kind shares.
@@ -241,6 +242,11 @@ func (e effect) name() (string, json.RawMessage) {
 }
 
 func readAnswer(b []byte) (*answer, error) {
+	if !utf8.Valid(b) {
+		// a broken module's answer is not kept: the store's data would stay broken, and the
+		// ticket could not be opened again
+		return nil, fmt.Errorf("an answer that is not UTF-8")
+	}
 	var a struct {
 		OK *struct {
 			Ticket  json.RawMessage `json:"ticket"`

@@ -5,8 +5,12 @@ server](bundles.md)). The command `ringi-bundle` makes a key pair, signs a bundl
 signature by hand. It uses only the standard library. Japanese: [signing.ja.md](signing.ja.md).
 
 The command signs the bytes it is given. It does not check that the zip is a valid bundle; the
-server's bundle support does that. The server checks a signature only when its configuration lists
-public keys.
+server's bundle support does that.
+
+Signing is meant to happen where the bundle is built from the reviewed repository: a job of the
+build, not the person who uploads the bundle. The private key belongs to that job, and no one else
+needs it. A server takes only bundles signed with a key it lists; a server that lists no keys
+refuses every upload.
 
 The outputs below are examples from a real run. Keys and signatures differ from one run to another.
 
@@ -79,9 +83,12 @@ go run ./cmd/server -bundle-keys ../bundle.pub
 A server made in Go without package serve gives the keys in `server.Config.BundleKeys`
 (`bundlesign.ReadPublicKeys` reads the file).
 
-When no key is given, the server does not require a signature. When keys are given, a bundle's
-signature must verify with one of them, whether the bundle is uploaded or read from the directory
-of `-bundles` as the server starts. A signature made before a key is removed no longer verifies,
+A server that lists keys takes only bundles one of them signed. An upload with no signature, or
+one no listed key verifies, is refused before the zip is opened; a server that lists no keys
+refuses every upload. A bundle read from the directory of `-bundles` as the server starts is
+asked a signature by one of the keys all the same, and a wrong or missing one stops the start;
+a server that lists no keys asks none of the directory's bundles (whoever runs the server places
+them). A signature made before a key is removed no longer verifies,
 so remove a key only when bundles signed with it must stop being accepted.
 
 The signature goes with the bundle in one of three ways:

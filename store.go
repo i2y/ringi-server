@@ -304,9 +304,23 @@ type Bundle struct {
 	// Size is the archive's size in bytes, and Signed says a key the server takes signed it.
 	Size   int64
 	Signed bool
+	// Key names the key that signed it: the key's fingerprint (bundlesign.KeyFingerprint). "" for
+	// a bundle with no signature, and for one read from the directory at start before the server
+	// listed keys.
+	Key string
+	// Signature is the signature it was uploaded with (the content of the file `ringi-bundle
+	// sign` writes), kept so that a decision made later verifies it again with the keys the
+	// process lists then. "" for one with no signature.
+	Signature string
 	// Vectors and Worked are how many vectors of the kinds' events and of their forms the checks ran,
 	// all of which agreed.
 	Vectors, Worked int
+	// PerKind is how many of the vectors each kind has, of a ticket's first event (Starts) and of
+	// the events after it (Nexts), counted at the check and shown on the bundle's page.
+	PerKind []BundleVectorCount
+	// Ritsu is the version of ritsu wasm.json names ("0.56.0"), "" for one it does not name. The
+	// bundle's page shows it beside the key's fingerprint.
+	Ritsu string
 	// Uploaded is who uploaded it and when (no person for one read at start); Decided who approved or
 	// declined it, when and why; Hid who hid it. Decided and Hid are nil while not done.
 	Uploaded BundleAct
@@ -322,6 +336,13 @@ type BundleVersion struct {
 	Owner   string
 	Title   string
 	New     bool
+}
+
+// BundleVectorCount is how many vectors of a kind a bundle's check ran: of a ticket's first
+// event (Starts) and of the events after it (Nexts).
+type BundleVectorCount struct {
+	Kind          string
+	Starts, Nexts int
 }
 
 // BundleAct is who did something to a bundle, when, and why ("" for no reason given).

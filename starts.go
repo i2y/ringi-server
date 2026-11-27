@@ -334,6 +334,19 @@ func (s *Server) switchKind(ctx context.Context, c Call) (Reply, error) {
 		to.How, to.Day = "day", day
 		to.At = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, k.zone)
 	}
+	if to.How != "never" {
+		// A version of a hidden bundle does not start again: hiding is for once no new request
+		// takes its versions, and the bundle stays out of the list (DESIGN 15.7).
+		if digest := k.pkg.Bundle(); digest != "" {
+			hidden, err := s.bundleHidden(ctx, digest)
+			if err != nil {
+				return Reply{}, err
+			}
+			if hidden {
+				return invalid("start: version %d of %s is of a bundle that is hidden: it does not start again", k.Version, k.Name), nil
+			}
+		}
+	}
 	if to.How == "now" || to.How == "day" {
 		// The version's code refuses a request on a day it may not be used on.
 		u := k.desc.Usable

@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"weak"
 
 	server "github.com/i2y/ringi-server"
@@ -106,6 +107,10 @@ type Handler struct {
 	// server serves others (a bundle approved: the framework's DESIGN 15), and remade under remake.
 	cur    atomic.Pointer[packs]
 	remake sync.Mutex
+	// kindsOut is when a kind whose own code failed to answer was last logged, by kind and
+	// version: the log says so once a minute for each, not once per page.
+	kindsOut   map[string]time.Time
+	kindsOutMu sync.Mutex
 }
 
 // packs is what the handler makes of the packages the server serves: the screens of each, the
@@ -122,12 +127,15 @@ type packs struct {
 // screenSet is the screens of one package, with the kinds it has, and its plain HTML pages.
 type screenSet struct {
 	*screens.Set
+	pkg   *server.Package
 	kinds map[string]screens.Kind
 	pages *page.Pages
-	// files is the segment of the addresses of the files of a package other than the newest: its
-	// pages' (PageAssets+files+"/": page.css, page.js and its functions.js) and its screens' (
-	// "/a2ui/"+files+"/": its catalog.json and functions.js). It is the first 16 hexadecimal digits of
-	// the SHA-256 of its catalog.json and functions.js. "" for the newest's, at PageAssets and /a2ui/.
+	// files is the segment of the addresses of the files of a package the shared address does not
+	// speak for: its pages' (PageAssets+files+"/": page.css, page.js and its functions.js) and its
+	// screens' ("/a2ui/"+files+"/": its catalog.json and functions.js). It is the first 16
+	// hexadecimal digits of the SHA-256 of its catalog.json and functions.js. "" for the newest
+	// package built into the server, at PageAssets and /a2ui/; a bundle's files are always at their
+	// own address, so that the shared one never serves a bundle's script (DESIGN 15.6).
 	files string
 }
 
@@ -234,7 +242,7 @@ func (h *Handler) makePacks(packages []*server.Package) (*packs, error) {
 			return nil, fmt.Errorf("the screens of package %d: %w", i+1, err)
 		}
 		set := l.set
-		ss := &screenSet{Set: set, kinds: map[string]screens.Kind{}, pages: l.pages}
+		ss := &screenSet{Set: set, pkg: p, kinds: map[string]screens.Kind{}, pages: l.pages}
 		top := 0
 		for _, k := range set.Kinds() {
 			ss.kinds[k.Name] = k
@@ -272,7 +280,7 @@ func (h *Handler) makePacks(packages []*server.Package) (*packs, error) {
 				return nil, err
 			}
 		}
-		if ss.Set == ps.assets {
+		if ss.Set == ps.assets && ss.pkg.Bundle() == "" {
 			continue
 		}
 		ss.files = digests[i]
@@ -413,21 +421,34 @@ func (h *Handler) personLanguage(r *http.Request) string {
 	return l
 }
 
-// setOf answers the screens of a kind's version; nil when no package has them.
+// setOf answers the screens of a kind's version, of the package that added it and nowhere else
+// (DESIGN 15.2): a bundle that only holds a version never gives its screens, its script or its
+// pages. nil when no package has them.
 func (h *Handler) setOf(kind string, version int) *screenSet {
+	origin := h.srv.VersionPackage(kind, version)
+	if origin == nil {
+		return nil
+	}
 	for _, s := range h.packs().sets {
-		if k, ok := s.kinds[kind]; ok && k.Version == version {
-			return s
+		if s.pkg == origin {
+			if k, ok := s.kinds[kind]; ok && k.Version == version {
+				return s
+			}
 		}
 	}
 	return nil
 }
 
-// newestOf answers the screens of a kind's newest version; nil when no package has the kind.
+// newestOf answers the screens of a kind's newest version the server serves, of the package that
+// added it; nil when no package has the kind.
 func (h *Handler) newestOf(kind string) *screenSet {
 	var out *screenSet
 	for _, s := range h.packs().sets {
-		if k, ok := s.kinds[kind]; ok && (out == nil || k.Version > out.kinds[kind].Version) {
+		k, ok := s.kinds[kind]
+		if !ok || h.srv.VersionPackage(kind, k.Version) != s.pkg {
+			continue
+		}
+		if out == nil || k.Version > out.kinds[kind].Version {
 			out = s
 		}
 	}
@@ -479,9 +500,16 @@ func writeError(w http.ResponseWriter, status int, problem string) {
 	writeJSON(w, status, map[string]string{"error": problem})
 }
 
-// fail answers a failure of the server's, and logs it.
+// fail answers a failure of the server's, and logs it. A call of a kind that found no instance
+// free (server.Busy) is not one: it is too much work at once, answered 503 with Retry-After, so
+// the one who asked may try again in a breath.
 func (h *Handler) fail(w http.ResponseWriter, what string, err error) {
 	h.log.Error(what, "err", err)
+	if server.Busy(err) {
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "the server is busy")
+		return
+	}
 	writeError(w, http.StatusInternalServerError, "the server failed")
 }
 

@@ -100,9 +100,9 @@ Some things it cannot do:
 3. ringi-server runs that code as a server. The server does not decide whom a request goes to next, or
    when it ends: it asks the code that was made. ritsu can also build that code into one module of
    WebAssembly, which the server runs in its place ([Run the request types as Wasm](docs/embedding.md#4-run-the-request-types-as-wasm)).
-   In that form a new version reaches a running server as one file, a bundle: an administrator uploads
-   it, the server checks it, and another administrator approves it
-   ([Add a version to a running server](docs/bundles.md)).
+   In that form a new version reaches a running server as one file, a bundle, signed with a key the
+   server lists: an administrator uploads it, the server checks it, and another administrator approves
+   it ([Add a version to a running server](docs/bundles.md), [Sign the bundles](docs/signing.md)).
 
 For real use it needs PostgreSQL and your organization's sign-in (a service of OpenID Connect). The server
 is one executable file, and you can run as many of it as you like. Temporal is needed only when it runs

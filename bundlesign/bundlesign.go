@@ -56,34 +56,50 @@ func Sign(key ed25519.PrivateKey, bundle []byte) []byte {
 // answers nil when any key verifies it. The file may end at the base64 line, or with a newline or
 // CRLF; anything else around the base64 is refused.
 func Verify(keys []ed25519.PublicKey, bundle []byte, sig []byte) error {
+	_, err := VerifyKey(keys, bundle, sig)
+	return err
+}
+
+// VerifyKey is Verify, and answers the key that verifies the signature (nil when none does, with
+// the error). A server keeps which key signed a bundle, so that a decision made later can say
+// whether the keys it lists still verify it.
+func VerifyKey(keys []ed25519.PublicKey, bundle []byte, sig []byte) (ed25519.PublicKey, error) {
 	if len(keys) == 0 {
-		return errors.New("bundlesign: no public key is given")
+		return nil, errors.New("bundlesign: no public key is given")
 	}
 	for i, key := range keys {
 		if len(key) != ed25519.PublicKeySize {
-			return fmt.Errorf("bundlesign: public key %d is %d bytes, and an ed25519 public key is %d bytes", i+1, len(key), ed25519.PublicKeySize)
+			return nil, fmt.Errorf("bundlesign: public key %d is %d bytes, and an ed25519 public key is %d bytes", i+1, len(key), ed25519.PublicKeySize)
 		}
 	}
 	line, ok := signatureLine(sig)
 	if !ok {
-		return errors.New("bundlesign: the signature file is not one line of base64")
+		return nil, errors.New("bundlesign: the signature file is not one line of base64")
 	}
 	decoded, err := base64.StdEncoding.DecodeString(line)
 	if err != nil {
-		return fmt.Errorf("bundlesign: the signature file is not one line of base64: %w", err)
+		return nil, fmt.Errorf("bundlesign: the signature file is not one line of base64: %w", err)
 	}
 	if base64.StdEncoding.EncodeToString(decoded) != line {
-		return errors.New("bundlesign: the signature file is not standard base64")
+		return nil, errors.New("bundlesign: the signature file is not standard base64")
 	}
 	if len(decoded) != ed25519.SignatureSize {
-		return fmt.Errorf("bundlesign: the signature has the wrong length: %d bytes, and an ed25519 signature is %d bytes", len(decoded), ed25519.SignatureSize)
+		return nil, fmt.Errorf("bundlesign: the signature has the wrong length: %d bytes, and an ed25519 signature is %d bytes", len(decoded), ed25519.SignatureSize)
 	}
 	for _, key := range keys {
 		if ed25519.Verify(key, message(bundle), decoded) {
-			return nil
+			return key, nil
 		}
 	}
-	return errors.New("bundlesign: no public key verifies the signature")
+	return nil, errors.New("bundlesign: no public key verifies the signature")
+}
+
+// KeyFingerprint names a key: the SHA-256 of its bytes, in lower-case hexadecimal. It names the
+// key, not what it signed, so that a store can record which key signed a bundle without keeping
+// the key.
+func KeyFingerprint(key ed25519.PublicKey) string {
+	sum := sha256.Sum256(key)
+	return hex.EncodeToString(sum[:])
 }
 
 // signatureLine answers the one line of sig without its ending newline or CRLF. It answers false

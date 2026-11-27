@@ -3,6 +3,10 @@ package kinddiff
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/i2y/ringi-server/internal/jatext"
 )
 
 func addChange(changes *[]change, section, en, ja string, api bool) {
@@ -121,4 +125,105 @@ func quoteValues(lang string, values []*jsonValue) string {
 	return out
 }
 
-func sprintf(format string, args ...any) string { return fmt.Sprintf(format, args...) }
+// sprintf is fmt.Sprintf for English. For a Japanese format it joins the pieces with jatext, so
+// an ASCII name is set off from kana and kanji. A number, a date or an amount is written into the
+// Japanese piece itself, as the pages do, rather than made a piece jatext would set off as a name.
+func sprintf(format string, args ...any) string {
+	if !hasJapanese(format) {
+		return fmt.Sprintf(format, args...)
+	}
+	return sprintfJapanese(format, args...)
+}
+
+func hasJapanese(s string) bool {
+	for _, c := range s {
+		if c >= 0x3040 && c <= 0x30ff || c >= 0x4e00 && c <= 0x9fff {
+			return true
+		}
+	}
+	return false
+}
+
+type sprintfFragment struct {
+	literal string
+	verb    byte
+}
+
+func sprintfJapanese(format string, args ...any) string {
+	var fragments []sprintfFragment
+	start := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' || i+1 >= len(format) || (format[i+1] != 's' && format[i+1] != 'd') {
+			continue
+		}
+		fragments = append(fragments, sprintfFragment{literal: format[start:i], verb: format[i+1]})
+		i++
+		start = i + 1
+	}
+	if len(fragments) != len(args) {
+		return fmt.Sprintf(format, args...)
+	}
+	tail := format[start:]
+	var pieces []string
+	var pending strings.Builder
+	flush := func() {
+		if pending.Len() != 0 {
+			pieces = append(pieces, pending.String())
+			pending.Reset()
+		}
+	}
+	consumeNextBacktick := func(i int) {
+		if i+1 < len(fragments) {
+			fragments[i+1].literal = strings.TrimPrefix(fragments[i+1].literal, "`")
+		} else {
+			tail = strings.TrimPrefix(tail, "`")
+		}
+	}
+	nextHasBacktick := func(i int) bool {
+		if i+1 < len(fragments) {
+			return strings.HasPrefix(fragments[i+1].literal, "`")
+		}
+		return strings.HasPrefix(tail, "`")
+	}
+	for i, fragment := range fragments {
+		pending.WriteString(fragment.literal)
+		arg := args[i]
+		if fragment.verb == 'd' {
+			pending.WriteString(fmt.Sprintf("%d", arg))
+			continue
+		}
+		text := fmt.Sprint(arg)
+		if measureText(text) {
+			pending.WriteString(text)
+			continue
+		}
+		if strings.HasSuffix(pending.String(), "`") && nextHasBacktick(i) {
+			withoutTick := strings.TrimSuffix(pending.String(), "`")
+			pending.Reset()
+			pending.WriteString(withoutTick)
+			consumeNextBacktick(i)
+			text = "`" + text + "`"
+		}
+		flush()
+		pieces = append(pieces, text)
+	}
+	pending.WriteString(tail)
+	flush()
+	return jatext.Join(pieces...)
+}
+
+// measureText is a number, a date or an amount, with or without the backticks a machine value
+// carries. It starts with a digit (or its sign); the rest can be a Japanese counter or bound, as in
+// "1以上20以下". A digit-only ID is indistinguishable here, as jatext's own contract says; the
+// kinddiff sentences use this for the values ritsu writes, which are measures, not IDs.
+func measureText(s string) bool {
+	s = strings.Trim(s, "`")
+	if s == "" {
+		return false
+	}
+	c, n := utf8.DecodeRuneInString(s)
+	if c == '+' || c == '-' {
+		c, _ = utf8.DecodeRuneInString(s[n:])
+	}
+	return c >= '0' && c <= '9'
+}

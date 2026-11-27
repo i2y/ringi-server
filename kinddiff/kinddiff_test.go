@@ -111,10 +111,10 @@ func TestVersionOnly(t *testing.T) {
 	d := comparePair(t, mapFS("expense", typ, api), mapFS("expense", newType, api), "expense")
 	en := d.Lines("en")
 	ja := d.Lines("ja")
-	if len(en) != 1 || en[0].Text != "The only change is the version number, from 1 to 2." {
+	if len(en) != 0 {
 		t.Errorf("English lines: %v", texts(en))
 	}
-	if len(ja) != 1 || ja[0].Text != "変更は版の番号だけです。1から2に変わります。" {
+	if len(ja) != 0 {
 		t.Errorf("Japanese lines: %v", texts(ja))
 	}
 	if d.OldVersion != 1 || d.NewVersion != 2 || d.NewKind {

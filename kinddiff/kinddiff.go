@@ -34,8 +34,6 @@ type change struct {
 	en      string
 	ja      string
 	api     bool
-	onlyEn  string
-	onlyJa  string
 }
 
 // APIChanged reports whether any operation of the kind takes or answers a different shape, or an
@@ -109,10 +107,6 @@ func Compare(old, new fs.FS, kind string) (*Diff, error) {
 	changes := compareDescriptions(od, nd)
 	changes = append(changes, compareOpenAPIs(oa, na, kind)...)
 	d.changes = orderChanges(changes)
-	if len(d.changes) == 1 && d.changes[0].onlyEn != "" {
-		d.changes[0].en = d.changes[0].onlyEn
-		d.changes[0].ja = d.changes[0].onlyJa
-	}
 	return d, nil
 }
 

@@ -100,6 +100,10 @@ type Config struct {
 	// MaxBody is the largest body a request may have, in bytes (default 1 MiB); a larger one is
 	// answered 413.
 	MaxBody int64
+	// MaxCheckTime is how long the whole check of an uploaded bundle may take (default 20
+	// seconds, shorter than the serve package's WriteTimeout): one past it is refused, and
+	// nothing of it is kept (DESIGN 15.5).
+	MaxCheckTime time.Duration
 	// CommentEvery is how long a person waits between two comments on one ticket (default 10
 	// seconds; a negative duration, no wait), CommentsPerTicket how many comments one ticket takes
 	// in all (default 100), and CommentsPerPerson how many of them one person may make (default 25,
@@ -170,6 +174,15 @@ type Server struct {
 
 	org     atomic.Pointer[orgSnapshot]
 	orgSeen atomic.Int64
+	// kindsOut is when a kind whose own code failed to answer a list of several kinds was last
+	// logged, by kind and version: the log says so once a minute for each, not once per page.
+	kindsOut   map[string]time.Time
+	kindsOutMu sync.Mutex
+	// stopped is when a ticket's `next` last failed to answer an event, by ticket and event: for
+	// one minute the event is treated as one the person cannot do now, and doing it is answered
+	// 503, without asking the entry again.
+	stopped   map[stoppedKey]time.Time
+	stoppedMu sync.Mutex
 	// snaps are the snapshots read besides the latest (org), at most keptSnapshots of them, and
 	// snapUsed their IDs, the one used last first.
 	snapMu   sync.Mutex
@@ -197,6 +210,10 @@ const (
 	retryMost   = 10 * time.Minute
 	tries       = 20 // how many times an event is tried while its ticket moves
 	defaultBody = 1 << 20
+	// DefaultMaxCheckTime is how long the whole check of an uploaded bundle may take when
+	// Config.MaxCheckTime is not given: shorter than serve's WriteTimeout, so the answer is
+	// written before the server's own write ends.
+	DefaultMaxCheckTime = 20 * time.Second
 )
 
 // The comment limits when Config.CommentEvery, Config.CommentsPerTicket and
@@ -270,6 +287,9 @@ func New(cfg Config) (*Server, error) {
 	if cfg.MaxBody <= 0 {
 		cfg.MaxBody = defaultBody
 	}
+	if cfg.MaxCheckTime <= 0 {
+		cfg.MaxCheckTime = DefaultMaxCheckTime
+	}
 	if cfg.CommentEvery == 0 {
 		cfg.CommentEvery = DefaultCommentEvery
 	}
@@ -306,6 +326,17 @@ func (s *Server) now() time.Time { return s.cfg.Clock.Now() }
 
 // Now answers the time of the server's clock (Config.Clock): the time the operations are done at.
 func (s *Server) Now() time.Time { return s.now() }
+
+// VersionPackage answers the package the version of the kind is served from: the one that added
+// it (a version a bundle only holds is never taken from it, DESIGN 15.2). nil when no package has
+// it. The pages, the screens, the script and the tools of the version come from this package and
+// nowhere else.
+func (s *Server) VersionPackage(kind string, version int) *Package {
+	if k := s.cat().version(kind, version); k != nil {
+		return k.pkg
+	}
+	return nil
+}
 
 // kindOf answers a kind at a version: the version a ticket keeps.
 func (s *Server) kindOf(name string, version int) (*kind, error) {
@@ -450,6 +481,10 @@ const (
 	Invalid  Outcome = "invalid"   // 400
 	Limited  Outcome = "limited"   // 429: the server does not take the call now (DESIGN 7.4)
 	TooLarge Outcome = "too_large" // 413: an upload larger than the server takes (DESIGN 13.3)
+	// Unavailable is an event the ticket's kind failed to answer within the minute before
+	// (DESIGN 8.1): 503, with Retry-After of the seconds of the minute left. Waiting helps, as it
+	// does for Limited, but what is waited for is the entry answering again, not a turn.
+	Unavailable Outcome = "unavailable"
 )
 
 // Reply is what an operation answers.
@@ -463,8 +498,8 @@ type Reply struct {
 	// nearest later version starts (YYYY-MM-DD, the kind's day), said to a person who may submit it;
 	// "" when no version is to start, and to anyone else.
 	From string
-	// RetryAfter is, for Limited, how long to wait before the same call is taken; 0 when waiting
-	// does not help.
+	// RetryAfter is, for Limited and Unavailable, how long to wait before the same call is
+	// taken; 0 when waiting does not help.
 	RetryAfter time.Duration
 	// NotAsked are the books' calls a trial (Try) did not ask, for it could not ask them without
 	// the books keeping them: the books may still refuse them when the operation is done.

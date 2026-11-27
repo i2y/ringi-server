@@ -32,13 +32,18 @@ func leaveV3(t testing.TB) []byte {
 	return b
 }
 
-// uploadBundle posts the bundles' page's form with a bundle, as a browser does.
+// uploadBundle posts the bundles' page's form with a bundle, as a browser does: signed with the
+// tests' key, as one signed with ringi-bundle sign is chosen with its signature file.
 func (a adminAs) uploadBundle(at string, archive []byte) *httptest.ResponseRecorder {
 	var b bytes.Buffer
 	mw := multipart.NewWriter(&b)
 	mw.WriteField("_at", at)
 	fw, _ := mw.CreateFormFile("bundle", "leave-v3.zip")
 	fw.Write(archive)
+	if sig := signBundle(a.t, archive); sig != nil {
+		sf, _ := mw.CreateFormFile("signature", "leave-v3.zip.sig")
+		sf.Write(sig)
+	}
 	mw.Close()
 	r := httptest.NewRequest("POST", "/pages/admin/bundles?lang=en", &b)
 	r.Header.Set("Content-Type", mw.FormDataContentType())
@@ -68,6 +73,7 @@ func TestBundlePagesWithoutScript(t *testing.T) {
 	_, h := newWeb(t, webSetup{Store: memstore.New(), At: at, Clock: clock, Gate: &Gate{}, Config: func(c *server.Config) {
 		c.Packages = append(c.Packages, version2(t))
 		c.LoadBundle = wasmkind.Load
+		withBundleKeys(t, c)
 	}})
 	staff := adminAs{t, h, "e1201", "staff"}
 	hr := adminAs{t, h, "e6001", "workflow_admin"}
@@ -93,7 +99,7 @@ func TestBundlePagesWithoutScript(t *testing.T) {
 	for _, want := range []string{
 		"The bundle was uploaded and checked: another administrator decides it.",
 		"Waiting to be decided", "leave Version 3", "leave_ja Version 3", "What changes from version 2:",
-		`class="api"`, "changes the API", "The text the bundle held (written by <code>ritsu ringi diff</code> against version 2)",
+		`class="api"`, "changes the API", "The bundle&#39;s own text (written by <code>ritsu ringi diff</code> against version 2): the server checks only its own difference above, not this text",
 		// the lines of the difference, by the fields' labels, with the API's names as code
 		"The field &#34;How to reach you while away&#34; (contact) is added", "In the request body of <code>submit_leave</code>, <code>form.contact</code> is added",
 		// the text the bundle held, as HTML: its headings and tables, with no comment of it
@@ -125,7 +131,9 @@ func TestBundlePagesWithoutScript(t *testing.T) {
 	// the administrator of the whole: no approval with the API changes unticked
 	page = whole.get("/pages/admin/bundles/" + digest + "?lang=en").Body.String()
 	action, values = formOn(t, page, "decide", "/pages/admin/bundles/"+digest)
-	if action == "" || values.Get("difference") == "" || !strings.Contains(page, "I checked that the API changes") {
+	if action == "" || values.Get("difference") == "" || !strings.Contains(page, "I checked that the API changes") ||
+		!strings.Contains(page, "I read how the script changes") || !strings.Contains(page, "I read how the tools&#39; descriptions change") ||
+		!strings.Contains(page, "I read how the screens change") {
 		t.Fatalf("the form to decide the bundle: %q %v", action, values)
 	}
 	values.Set("_do", "approve")
@@ -133,6 +141,12 @@ func TestBundlePagesWithoutScript(t *testing.T) {
 		t.Errorf("an approval with the API changes unticked: %d", w.Code)
 	}
 	values.Set("api_changes", "yes")
+	if w := whole.post(action, values); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "tick that you read it") {
+		t.Errorf("an approval with the script unticked: %d", w.Code)
+	}
+	values.Set("script_changes", "yes")
+	values.Set("tools_changes", "yes")
+	values.Set("screens_changes", "yes")
 	values.Set("reason", "The contact while away, from April")
 	to, w = whole.follow(whole.post(action, values))
 	if !strings.Contains(to, "done=approved") || !strings.Contains(w.Body.String(), "Approved: served") || !strings.Contains(w.Body.String(), "The contact while away, from April") {
@@ -215,9 +229,11 @@ func TestBundlesDocument(t *testing.T) {
 	_, h := newWeb(t, webSetup{Store: memstore.New(), At: time.Date(2026, 11, 26, 19, 49, 0, 0, Zone), Config: func(c *server.Config) {
 		c.Packages = append(c.Packages, version2(t))
 		c.LoadBundle = wasmkind.Load
+		withBundleKeys(t, c)
 	}})
 	w := send(h, "POST", "/admin/bundles/uploads", "e6001", archive, "Content-Type", "application/zip",
-		"Idempotency-Key", "leave-v3", "X-Roles", "workflow_admin")
+		"Idempotency-Key", "leave-v3", "X-Roles", "workflow_admin",
+		server.BundleSignatureHeader, string(signBundle(t, archive)))
 	var up struct {
 		Digest string `json:"digest"`
 		State  string `json:"state"`
@@ -230,18 +246,22 @@ func TestBundlesDocument(t *testing.T) {
 			Worked  int `json:"worked"`
 		} `json:"checks"`
 		Difference struct {
-			Digest     string `json:"digest"`
-			APIChanges bool   `json:"api_changes"`
+			Digest         string `json:"digest"`
+			APIChanges     bool   `json:"api_changes"`
+			ScriptChanges  bool   `json:"script_changes"`
+			ToolsChanges   bool   `json:"tools_changes"`
+			ScreensChanges bool   `json:"screens_changes"`
 		} `json:"difference"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &up); err != nil || w.Code != 200 {
 		t.Fatalf("the upload: %d %.300s", w.Code, w.Body.String())
 	}
+	body := `{"digest": "` + up.Difference.Digest + `", "api_changes": true, "script_changes": true, "tools_changes": true, "screens_changes": true, "reason": "The contact while away, from April"}`
 	refused := send(h, "POST", "/admin/bundles/"+up.Digest+"/approve", "e6001",
-		[]byte(`{"digest": "`+up.Difference.Digest+`", "api_changes": true}`), "Content-Type", "application/json",
+		[]byte(body), "Content-Type", "application/json",
 		"Idempotency-Key", "approve-leave-v3", "X-Roles", "workflow_admin")
 	w = send(h, "POST", "/admin/bundles/"+up.Digest+"/approve", "e7001",
-		[]byte(`{"digest": "`+up.Difference.Digest+`", "api_changes": true, "reason": "The contact while away, from April"}`),
+		[]byte(body),
 		"Content-Type", "application/json", "Idempotency-Key", "approve-leave-v3", "X-Roles", "system_admin")
 	var approved struct {
 		State   string `json:"state"`

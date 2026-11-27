@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/i2y/ringi-server/internal/jatext"
 )
 
 // compareDescriptions compares every key of two descriptions. The detailed comparisons are of the
@@ -271,7 +273,6 @@ func compareDescriptionKeys(old, new *descriptionFile, changes *[]change) {
 		case "utc_offset_minutes":
 			compareUTCOffset(ov, nv, changes)
 		case "version":
-			compareVersion(ov, nv, changes)
 		case "endings", "events":
 			compareStringSet(key, ov, nv, changes)
 		case "submitted_by":
@@ -286,31 +287,6 @@ func compareDescriptionKeys(old, new *descriptionFile, changes *[]change) {
 			compareOtherKey(key, ov, nv, changes)
 		}
 	}
-}
-
-func compareVersion(old, new *jsonValue, changes *[]change) {
-	if old == nil {
-		addChange(changes, "other",
-			"The version is "+new.compact()+".",
-			"版は"+new.compact()+"です。",
-			false)
-		return
-	}
-	if new == nil {
-		addChange(changes, "other",
-			"The version is removed.",
-			"版の番号がなくなりました。",
-			false)
-		return
-	}
-	c := change{
-		section: "other",
-		en:      sprintf("The version number changes from %s to %s.", old.compact(), new.compact()),
-		ja:      sprintf("版の番号が%sから%sに変わります。", old.compact(), new.compact()),
-		onlyEn:  sprintf("The only change is the version number, from %s to %s.", old.compact(), new.compact()),
-		onlyJa:  sprintf("変更は版の番号だけです。%sから%sに変わります。", old.compact(), new.compact()),
-	}
-	*changes = append(*changes, c)
 }
 
 // formItems answers the array of a list node, or nil for anything else. The callers still report
@@ -454,14 +430,17 @@ func fieldSummary(item *jsonValue, lang string) string {
 		return ""
 	}
 	typ, _ := item.get("type")
+	typeName := typ.strOr("")
 	optional, _ := item.get("optional")
 	min, _ := item.get("min")
 	max, _ := item.get("max")
+	countMin, _ := item.get("count_min")
+	countMax, _ := item.get("count_max")
 	var en []string
 	var ja []string
 	if typ != nil && typ.kind == jsonString {
 		en = append(en, "type "+valueWord("en", typ))
-		ja = append(ja, "型は"+valueWord("ja", typ))
+		ja = append(ja, jatext.Join("型は", valueWord("ja", typ)))
 	}
 	if optional != nil {
 		if optional.boolOr(false) {
@@ -472,14 +451,22 @@ func fieldSummary(item *jsonValue, lang string) string {
 			ja = append(ja, "必須")
 		}
 	}
-	if min != nil || max != nil {
-		en = append(en, "range "+rangeText("en", min, max))
-		ja = append(ja, "範囲は"+rangeText("ja", min, max))
+	if boundValue(min) || boundValue(max) {
+		en = append(en, rangeWhat("en", typeName)+" "+rangeText("en", min, max))
+		ja = append(ja, rangeWhat("ja", typeName)+"は"+rangeText("ja", min, max))
+	}
+	if boundValue(countMin) || boundValue(countMax) {
+		en = append(en, countWhat("en", typeName)+" "+countText("en", typeName, countMin, countMax))
+		ja = append(ja, countWhat("ja", typeName)+"は"+countText("ja", typeName, countMin, countMax))
 	}
 	if lang == "ja" {
 		return strings.Join(ja, "、")
 	}
 	return strings.Join(en, ", ")
+}
+
+func boundValue(v *jsonValue) bool {
+	return v != nil && v.kind != jsonNull
 }
 
 func compareFieldList(oldArr, newArr []*jsonValue, parent string, od, nd *descriptionFile, changes *[]change) {
@@ -503,7 +490,7 @@ func compareFieldList(oldArr, newArr []*jsonValue, parent string, od, nd *descri
 			addChange(changes, "form",
 				sprintf("The field %s is removed.", enName),
 				sprintf("項目%sがなくなりました。", jaName),
-				false)
+				true)
 			continue
 		case !inOld && inNew:
 			enText := sprintf("The field %s is added.", enName)
@@ -514,7 +501,7 @@ func compareFieldList(oldArr, newArr []*jsonValue, parent string, od, nd *descri
 			if summary := fieldSummary(nv, "ja"); summary != "" {
 				jaText = sprintf("項目%sが追加されました。%sです。", jaName, summary)
 			}
-			addChange(changes, "form", enText, jaText, false)
+			addChange(changes, "form", enText, jaText, true)
 			continue
 		}
 		if moved[name] {
@@ -566,7 +553,7 @@ func compareField(old, new *jsonValue, path string, od, nd *descriptionFile, cha
 			omax, _ := old.get("max")
 			nmin, _ := new.get("min")
 			nmax, _ := new.get("max")
-			compareRange(enName, jaName, omin, omax, nmin, nmax, changes)
+			compareRange(enName, jaName, fieldTypeOf(new, old), omin, omax, nmin, nmax, changes)
 		case "count_min", "count_max":
 			if doneCount {
 				continue
@@ -576,10 +563,10 @@ func compareField(old, new *jsonValue, path string, od, nd *descriptionFile, cha
 			omax, _ := old.get("count_max")
 			nmin, _ := new.get("count_min")
 			nmax, _ := new.get("count_max")
-			compareCountRange(enName, jaName, omin, omax, nmin, nmax, changes)
+			compareCountRange(enName, jaName, fieldTypeOf(new, old), omin, omax, nmin, nmax, changes)
 		case "type":
-			compareFieldValue(key, enName, jaName, ov, nv, changes,
-				"the type", "型")
+			compareFieldValueAPI(key, enName, jaName, ov, nv, changes,
+				"the type", "型", true)
 		case "type_written":
 			compareFieldValue(key, enName, jaName, ov, nv, changes,
 				"the type as written", "書かれたままの型")
@@ -599,12 +586,12 @@ func compareField(old, new *jsonValue, path string, od, nd *descriptionFile, cha
 				addChange(changes, "form",
 					sprintf("The field %s becomes optional.", enName),
 					sprintf("項目%sは、なくてもよい項目になります。", jaName),
-					false)
+					true)
 			} else {
 				addChange(changes, "form",
 					sprintf("The field %s becomes required.", enName),
 					sprintf("項目%sは必須になります。", jaName),
-					false)
+					true)
 			}
 		case "computed":
 			if nv.boolOr(false) {
@@ -664,25 +651,32 @@ func compareField(old, new *jsonValue, path string, od, nd *descriptionFile, cha
 }
 
 func compareFieldValue(key string, enName, jaName string, old, new *jsonValue, changes *[]change, enWhat, jaWhat string) {
+	compareFieldValueAPI(key, enName, jaName, old, new, changes, enWhat, jaWhat, false)
+}
+
+// compareFieldValueAPI is compareFieldValue, marking the change as one of the API's shape or not.
+// A change of a field's type is one: a program sends or reads the field in another shape. The
+// type as written, the labels and the name as written are not: the machine reads the type.
+func compareFieldValueAPI(key string, enName, jaName string, old, new *jsonValue, changes *[]change, enWhat, jaWhat string, api bool) {
 	enWhat = strings.ReplaceAll(enWhat, "`", "")
 	if old == nil {
 		addChange(changes, "form",
 			sprintf("The field %s gains %s: %s.", enName, enWhat, valueWord("en", new)),
 			sprintf("項目%sに%sとして%sが加わります。", jaName, jaWhat, valueWord("ja", new)),
-			false)
+			api)
 		return
 	}
 	if new == nil {
 		addChange(changes, "form",
 			sprintf("The field %s loses %s: it was %s.", enName, enWhat, valueWord("en", old)),
 			sprintf("項目%sの%sがなくなります。これまでは%sでした。", jaName, jaWhat, valueWord("ja", old)),
-			false)
+			api)
 		return
 	}
 	addChange(changes, "form",
 		sprintf("The %s of the field %s changes from %s to %s.", strings.TrimPrefix(enWhat, "the "), enName, valueWord("en", old), valueWord("en", new)),
 		sprintf("項目%sの%sが%sから%sに変わります。", jaName, jaWhat, valueWord("ja", old), valueWord("ja", new)),
-		false)
+		api)
 }
 
 func rangeText(lang string, min, max *jsonValue) string {
@@ -710,18 +704,117 @@ func rangeText(lang string, min, max *jsonValue) string {
 	return "without bounds"
 }
 
-func compareRange(enName, jaName string, omin, omax, nmin, nmax *jsonValue, changes *[]change) {
-	addChange(changes, "form",
-		sprintf("The range of the field %s changes from %s to %s.", enName, rangeText("en", omin, omax), rangeText("en", nmin, nmax)),
-		sprintf("項目%sの範囲が%sから%sに変わります。", jaName, rangeText("ja", omin, omax), rangeText("ja", nmin, nmax)),
-		false)
+func fieldTypeOf(new, old *jsonValue) string {
+	for _, field := range []*jsonValue{new, old} {
+		if typ, ok := field.get("type"); ok && typ.kind == jsonString {
+			return typ.str
+		}
+	}
+	return ""
 }
 
-func compareCountRange(enName, jaName string, omin, omax, nmin, nmax *jsonValue, changes *[]change) {
+func rangeWhat(lang, typ string) string {
+	if lang == "ja" {
+		switch {
+		case typ == "date":
+			return "日付の範囲"
+		case strings.HasPrefix(typ, "money["):
+			return "金額の範囲"
+		case typ == "number" || strings.HasPrefix(typ, "rate["):
+			return "数値の範囲"
+		}
+		return "範囲"
+	}
+	switch {
+	case typ == "date":
+		return "date range"
+	case strings.HasPrefix(typ, "money["):
+		return "amount range"
+	case typ == "number" || strings.HasPrefix(typ, "rate["):
+		return "number range"
+	}
+	return "range"
+}
+
+func countWhat(lang, typ string) string {
+	if lang == "ja" {
+		switch typ {
+		case "text", "long text":
+			return "文字数の制限"
+		case "rows":
+			return "行数の制限"
+		}
+		return "文字数や行数の制限"
+	}
+	switch typ {
+	case "text", "long text":
+		return "length limit"
+	case "rows":
+		return "row-count limit"
+	}
+	return "limits on the length or rows"
+}
+
+func countText(lang, typ string, min, max *jsonValue) string {
+	hasMin := boundValue(min)
+	hasMax := boundValue(max)
+	if lang == "ja" {
+		if typ == "rows" {
+			switch {
+			case hasMin && hasMax:
+				return dayWord(min) + "行から" + dayWord(max) + "行まで"
+			case hasMin:
+				return dayWord(min) + "行以上"
+			case hasMax:
+				return dayWord(max) + "行まで"
+			}
+			return "制限なし"
+		}
+		switch {
+		case hasMin && hasMax:
+			return dayWord(min) + "文字以上" + dayWord(max) + "文字以内"
+		case hasMin:
+			return dayWord(min) + "文字以上"
+		case hasMax:
+			return dayWord(max) + "文字以内"
+		}
+		return "制限なし"
+	}
+	unit := "characters"
+	if typ == "rows" {
+		unit = "rows"
+	}
+	switch {
+	case hasMin && hasMax:
+		return dayWord(min) + " through " + dayWord(max) + " " + unit
+	case hasMin:
+		return dayWord(min) + " or more " + unit
+	case hasMax:
+		return "up to " + dayWord(max) + " " + unit
+	}
+	return "without bounds"
+}
+
+func compareRange(enName, jaName, typ string, omin, omax, nmin, nmax *jsonValue, changes *[]change) {
 	addChange(changes, "form",
-		sprintf("The limits on the length or rows of the field %s change from %s to %s.", enName, rangeText("en", omin, omax), rangeText("en", nmin, nmax)),
-		sprintf("項目%sの文字数や行数の制限が%sから%sに変わります。", jaName, rangeText("ja", omin, omax), rangeText("ja", nmin, nmax)),
-		false)
+		sprintf("The %s of the field %s changes from %s to %s.", rangeWhat("en", typ), enName, rangeText("en", omin, omax), rangeText("en", nmin, nmax)),
+		sprintf("項目%sの%sが%sから%sに変わります。", jaName, rangeWhat("ja", typ), rangeText("ja", omin, omax), rangeText("ja", nmin, nmax)),
+		true)
+}
+
+func compareCountRange(enName, jaName, typ string, omin, omax, nmin, nmax *jsonValue, changes *[]change) {
+	jaOld := countText("ja", typ, omin, omax)
+	jaNew := countText("ja", typ, nmin, nmax)
+	if jaOld != "制限なし" {
+		jaOld = "「" + jaOld + "」"
+	}
+	if jaNew != "制限なし" {
+		jaNew = "「" + jaNew + "」"
+	}
+	addChange(changes, "form",
+		sprintf("The %s of the field %s changes from %s to %s.", countWhat("en", typ), enName, countText("en", typ, omin, omax), countText("en", typ, nmin, nmax)),
+		sprintf("項目%sの%sが%sから%sに変わります。", jaName, countWhat("ja", typ), jaOld, jaNew),
+		true)
 }
 
 func compareChoices(old, new *jsonValue, path string, od, nd *descriptionFile, changes *[]change) {
@@ -1267,7 +1360,7 @@ func compareUTCOffset(old, new *jsonValue, changes *[]change) {
 	}
 	addChange(changes, "usable",
 		sprintf("The UTC offset the kind reads its days in changes from %s to %s minutes.", old.compact(), new.compact()),
-		sprintf("日付を読むUTCからの差が%s分から%s分に変わります。", old.compact(), new.compact()),
+		sprintf("日付を読む%sからの差が%s分から%s分に変わります。", "UTC", old.compact(), new.compact()),
 		false)
 }
 
@@ -1316,23 +1409,23 @@ func submitGroupWord(lang string, v *jsonValue) string {
 		switch k {
 		case "everyone":
 			if within != nil && within.kind == jsonString {
-				return "チーム`" + within.str + "`とその下のチームの全員"
+				return jatext.Join("チーム", "`"+within.str+"`", "とその下のチームの全員")
 			}
 			return "組織の全員"
 		case "team":
-			return "チーム`" + team.strOr("") + "`の人"
+			return jatext.Join("チーム", "`"+team.strOr("")+"`", "の人")
 		case "position":
-			out := "役職`" + position.strOr("") + "`"
+			role := jatext.Join("役職", "`"+position.strOr("")+"`")
 			if higher != nil && higher.kind == jsonBool && higher.boolean {
-				out += "以上"
+				role += "以上"
 			}
-			out += "の人"
+			role += "の人"
 			if within != nil && within.kind == jsonString {
-				out += "（チーム`" + within.str + "`とその下）"
+				role += jatext.Join("（チーム", "`"+within.str+"`", "とその下）")
 			}
-			return out
+			return role
 		case "person":
-			return "人`" + person.strOr("") + "`"
+			return jatext.Join("人", "`"+person.strOr("")+"`")
 		}
 		return valueWord(lang, v)
 	}
@@ -1657,12 +1750,12 @@ func compareFlows(old, new *jsonValue, changes *[]change) {
 		case inOld && !inNew:
 			addChange(changes, "other",
 				sprintf("The flow `%s` is no longer used.", name),
-				sprintf("flowの`%s`は使わなくなります。", name),
+				sprintf("%sの`%s`は使わなくなります。", "flow", name),
 				false)
 		case !inOld && inNew:
 			addChange(changes, "other",
 				sprintf("The flow `%s` is now used.", name),
-				sprintf("flowの`%s`を使うようになります。", name),
+				sprintf("%sの`%s`を使うようになります。", "flow", name),
 				false)
 		default:
 			for _, key := range keyUnion(ov, nv) {
@@ -1673,7 +1766,7 @@ func compareFlows(old, new *jsonValue, changes *[]change) {
 				}
 				addChange(changes, "other",
 					sprintf("The %s of the flow `%s` changes from %s to %s.", keyWord(key), name, valueWord("en", ovv), valueWord("en", nvv)),
-					sprintf("flowの`%s`の%sが%sから%sに変わります。", name, keyWord(key), valueWord("ja", ovv), valueWord("ja", nvv)),
+					sprintf("%sの`%s`の%sが%sから%sに変わります。", "flow", name, keyWord(key), valueWord("ja", ovv), valueWord("ja", nvv)),
 					false)
 			}
 		}
@@ -1794,7 +1887,7 @@ func caseFacts(v *jsonValue, lang string) string {
 	kind, _ := v.get("kind")
 	if kind != nil && kind.kind == jsonString && kind.str != "" {
 		if lang == "ja" {
-			parts = append(parts, "種類`"+kind.str+"`")
+			parts = append(parts, jatext.Join("種類", "`"+kind.str+"`"))
 		} else {
 			parts = append(parts, "kind `"+kind.str+"`")
 		}
@@ -1802,7 +1895,7 @@ func caseFacts(v *jsonValue, lang string) string {
 	ways, _ := v.get("ways")
 	if ways != nil && ways.kind == jsonArray && len(ways.arr) != 0 {
 		if lang == "ja" {
-			parts = append(parts, "決め方"+machineWord(lang, ways))
+			parts = append(parts, jatext.Join("決め方", machineWord(lang, ways)))
 		} else {
 			parts = append(parts, "ways "+machineWord(lang, ways))
 		}
@@ -1810,7 +1903,7 @@ func caseFacts(v *jsonValue, lang string) string {
 	route, _ := v.get("route")
 	if route != nil && route.kind == jsonString && route.str != "" {
 		if lang == "ja" {
-			parts = append(parts, "共有の経路`"+route.str+"`")
+			parts = append(parts, jatext.Join("共有の経路", "`"+route.str+"`"))
 		} else {
 			parts = append(parts, "route `"+route.str+"`")
 		}

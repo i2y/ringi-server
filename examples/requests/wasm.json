@@ -4,7 +4,7 @@
   "contract": 3,
   "lang": "en",
   "file": "kinds.wasm",
-  "sha256": "2b2fca5e2dc32ae5b06eae76704182e6c6fba635b70def827525fe1d77d3aaaa",
+  "sha256": "7d34997a0f6dafe8d647d5443643928784896ea5b7f1dfcda25f7b3cca555623",
   "exports": {
     "call": "call",
     "realloc": "cabi_realloc",
@@ -310,7 +310,7 @@
     }
   ],
   "built": {
-    "source": "baac6a33d7c65e2c45fd79ec26bbe2763ec262e8ee922df38b5cc2c452330a64",
+    "source": "3b90d7884057509094bd52fc5df12531be219ff1d31422193da50e5fddc942d7",
     "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
     "cargo": "cargo rustc --lib --release --target wasm32-unknown-unknown --crate-type cdylib --config 'profile.release.opt-level=\"s\"' --config 'profile.release.lto=true' --config 'profile.release.panic=\"abort\"' --config 'profile.release.strip=\"symbols\"'"
   }

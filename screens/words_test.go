@@ -82,3 +82,23 @@ func TestLimitedWords(t *testing.T) {
 		}
 	}
 }
+
+// TestUnavailableWords checks what a screen says of an event the request's type failed to answer
+// within the minute before (the API's 503): the seconds to wait, and to do it again.
+func TestUnavailableWords(t *testing.T) {
+	for _, c := range []struct {
+		lang string
+		wait int
+		want string
+	}{
+		{"en", 1, "The type of this request failed to answer this a moment ago. Wait a second, and do it again."},
+		{"en", 42, "The type of this request failed to answer this a moment ago. Wait 42 seconds, and do it again."},
+		{"ja", 42, "この申請の種類は、少し前にこの操作に答えられませんでした。42秒待ってから、もう一度やり直してください。"},
+		{"en", 0, "The type of this request failed to answer this a moment ago. Wait a little, and do it again."},
+		{"fr", 42, "The type of this request failed to answer this a moment ago. Wait 42 seconds, and do it again."},
+	} {
+		if got := UnavailableWords(c.lang, c.wait); got != c.want {
+			t.Errorf("%s, %d: %q, not %q", c.lang, c.wait, got, c.want)
+		}
+	}
+}

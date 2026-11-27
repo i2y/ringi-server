@@ -32,6 +32,8 @@ var phrasesEN = map[string]string{
 	"invalid":            "The call was not taken:",
 	"not_found":          "Not found:",
 	"failed":             "The server failed to do it. Make the same call again later, with the same idempotency_key.",
+	"busy":               "The server has too much work at once. Make the same call again in a second, with the same idempotency_key.",
+	"unavailable":        "The kind of this ticket failed to answer this event.",
 	"limited":            "The server does not take the call now.",
 	"no more":            "Waiting does not change it:",
 	"would be limited":   "Done now, the server would not take the call:",
@@ -48,6 +50,8 @@ var phrasesJA = map[string]string{
 	"invalid":            "呼び出しの形が正しくないため、受け付けられませんでした：",
 	"not_found":          "見つかりません：",
 	"failed":             "サーバーで失敗しました。しばらくしてから、同じ呼び出しを同じ idempotency_key でやり直してください。",
+	"busy":               "サーバーに一度に多くの仕事が来ています。1 秒ほどしてから、同じ呼び出しを同じ idempotency_key でやり直してください。",
+	"unavailable":        "このチケットの種類は、このイベントに答えられませんでした。",
 	"limited":            "サーバーは、いまはこの呼び出しを受け付けません。",
 	"no more":            "待っても変わりません：",
 	"would be limited":   "いま行うと、サーバーは受け付けません：",
@@ -245,6 +249,9 @@ func okSentence(lang string, d *toolDef, q url.Values, body []byte, title func(n
 				Version int    `json:"version"`
 				Title   string `json:"title"`
 			} `json:"requests"`
+			// Out names the kinds left out of the list, whose own code failed to answer: the
+			// answer says in its language that they cannot be shown now, in their place.
+			Out []string `json:"out"`
 		}
 		json.Unmarshal(body, &b)
 		for i, r := range b.Requests {
@@ -256,19 +263,27 @@ func okSentence(lang string, d *toolDef, q url.Values, body []byte, title func(n
 		for i, r := range b.Requests {
 			names[i] = r.Name + " (" + r.Title + ")"
 		}
+		leftOut := ""
+		if len(b.Out) > 0 {
+			if ja {
+				leftOut = jatext.Join("次の種類は、いまは出せません：", strings.Join(b.Out, "、"), "。")
+			} else {
+				leftOut = fmt.Sprintf(" %s cannot be shown now: %s.", count(len(b.Out), "This kind", "These kinds"), strings.Join(b.Out, ", "))
+			}
+		}
 		switch {
 		case len(names) == 0 && ja:
-			return "この人が今日出せる申請の種類はありません。"
+			return "この人が今日出せる申請の種類はありません。" + leftOut
 		case len(names) == 0:
-			return "The person may make no kind of request today."
+			return "The person may make no kind of request today." + leftOut
 		}
 		if ja {
 			for i, r := range b.Requests {
 				names[i] = jatext.Join(r.Name, "（", r.Title, "）")
 			}
-			return jatext.Join(fmt.Sprintf("この人が今日出せる申請の種類は%d種類です：", len(names)), strings.Join(names, "、"), "。")
+			return jatext.Join(fmt.Sprintf("この人が今日出せる申請の種類は%d種類です：", len(names)), strings.Join(names, "、"), "。") + leftOut
 		}
-		return fmt.Sprintf("The person may make %s today: %s.", count(len(names), "kind of request", "kinds of request"), strings.Join(names, ", "))
+		return fmt.Sprintf("The person may make %s today: %s.", count(len(names), "kind of request", "kinds of request"), strings.Join(names, ", ")) + leftOut
 	case "list_waiting", "list_mine":
 		var b struct {
 			Tickets []ticketOf `json:"tickets"`

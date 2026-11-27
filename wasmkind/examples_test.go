@@ -15,10 +15,9 @@ import (
 	server "github.com/i2y/ringi-server"
 )
 
-// The tests of instances kept between calls, on the module of the examples' kinds
-// (../examples/requests, its kinds.wasm written by ritsu from examples/project): a kept instance
-// answers each call as a new one does, and its memory does not grow from round to round. The
-// examples' own tests check the module answers as the Go package does.
+// The tests of calls of the examples' module (../examples/requests, its kinds.wasm written by ritsu
+// from examples/project): each is answered the same in every round, with nothing of the calls before
+// it. The examples' own tests check the module answers as the Go package does.
 
 // exampleCall is a call of an entry of a vector of the examples.
 type exampleCall struct {
@@ -79,75 +78,55 @@ func exampleCalls(t *testing.T, dir fs.FS) []exampleCall {
 	return out
 }
 
-// TestKeptAnswersAsNew runs every call of the examples' vectors in one instance kept between them,
-// three rounds (in order, backwards, and in order again), and checks each answer is the one an
-// instance of its own answers, to the byte, and that the instance's memory is no larger after the
-// third round than after the first.
-func TestKeptAnswersAsNew(t *testing.T) {
+// TestCallsAnswerTheSame runs every call of the examples' vectors three rounds (in order,
+// backwards, and in order again), and checks each answer is the one the first round gave, to the
+// byte. Every call runs in a new instance, so nothing of a round, or of the call before it, can
+// change the next.
+func TestCallsAnswerTheSame(t *testing.T) {
 	dir := os.DirFS("../examples/requests")
 	if _, err := fs.Stat(dir, "wasm.json"); err != nil {
 		t.Skip("no module of the examples: ", err)
 	}
-	ctx := context.Background()
-	kept, r, err := loadModule(ctx, dir, Options{Instances: 1})
+	pkg, err := LoadWith(context.Background(), dir, Options{Instances: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, err := LoadWith(ctx, dir, Options{Fresh: true})
-	if err != nil {
-		t.Fatal(err)
+	kinds := map[string]server.Kind{}
+	for _, k := range pkg.Kinds() {
+		kinds[k.Name] = k
 	}
-	kinds := func(p *server.Package) map[string]server.Kind {
-		out := map[string]server.Kind{}
-		for _, k := range p.Kinds() {
-			out[k.Name] = k
-		}
-		return out
-	}
-	kk, fk := kinds(kept), kinds(fresh)
 	calls := exampleCalls(t, dir)
 	type answer struct {
 		out string
 		err string
 	}
-	want := make([]answer, len(calls))
-	for i, c := range calls {
-		out, err := c.run(fk[c.kind])
-		want[i].out = string(out)
+	run := func(i int) answer {
+		out, err := calls[i].run(kinds[calls[i].kind])
+		a := answer{out: string(out)}
 		if err != nil {
-			want[i].err = err.Error()
+			a.err = err.Error()
 		}
+		return a
 	}
-	pages := func() uint32 {
-		in := <-r.idle
-		defer func() { r.idle <- in }()
-		return in.memory.Size() / 65536
+	want := make([]answer, len(calls))
+	for i := range calls {
+		want[i] = run(i)
 	}
 	order := make([]int, len(calls))
 	for i := range order {
 		order[i] = i
 	}
-	var after []uint32
-	for round := range 3 {
-		if round == 1 {
+	for round := 2; round <= 3; round++ {
+		if round == 2 {
 			slices.Reverse(order)
 		} else {
 			slices.Sort(order)
 		}
 		for _, i := range order {
-			out, err := calls[i].run(kk[calls[i].kind])
-			got := answer{out: string(out)}
-			if err != nil {
-				got.err = err.Error()
-			}
-			if got != want[i] {
-				t.Fatalf("round %d, call %d (%s %s): %.200s %.200s\nwant %.200s %.200s", round+1, i, calls[i].kind, calls[i].entry, got.out, got.err, want[i].out, want[i].err)
+			if got := run(i); got != want[i] {
+				t.Fatalf("round %d, call %d (%s %s): %.200s %.200s\nwant %.200s %.200s", round, i, calls[i].kind, calls[i].entry, got.out, got.err, want[i].out, want[i].err)
 			}
 		}
-		after = append(after, pages())
 	}
-	t.Logf("%d calls each round; the instance's pages after each: %v (kept up to %d)", len(calls), after, r.keep)
-	if after[2] > after[0] {
-		t.Errorf("the memory grew from %d pages to %d", after[0], after[2])
-	}
+	t.Logf("%d calls each round, each in a new instance", len(calls))
 }

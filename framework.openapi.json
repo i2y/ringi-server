@@ -2032,6 +2032,9 @@
         "required": [
           "digest",
           "api_changes",
+          "script_changes",
+          "tools_changes",
+          "screens_changes",
           "kinds"
         ],
         "properties": {
@@ -2043,6 +2046,18 @@
             "type": "boolean",
             "description": "whether a version the bundle adds changes the API: its approval says it knows (api_changes: true)"
           },
+          "script_changes": {
+            "type": "boolean",
+            "description": "whether the script the kinds' pages load (a2ui/functions.js) changes: its approval says it was read (script_changes: true)"
+          },
+          "tools_changes": {
+            "type": "boolean",
+            "description": "whether the descriptions of the kinds' tools (mcp/tools.json) change: the approval says they were read (tools_changes: true)"
+          },
+          "screens_changes": {
+            "type": "boolean",
+            "description": "whether the kinds' screens change: the approval says they were read (screens_changes: true)"
+          },
           "kinds": {
             "type": "array",
             "items": {
@@ -2053,6 +2068,9 @@
                 "against",
                 "new",
                 "api_changes",
+                "script_changes",
+                "tools_changes",
+                "screens_changes",
                 "starts",
                 "lines",
                 "said"
@@ -2077,6 +2095,18 @@
                 },
                 "api_changes": {
                   "type": "boolean"
+                },
+                "script_changes": {
+                  "type": "boolean",
+                  "description": "whether the script the kinds' pages load (a2ui/functions.js) changes: its approval says it was read (script_changes: true)"
+                },
+                "tools_changes": {
+                  "type": "boolean",
+                  "description": "whether the descriptions of the kinds' tools (mcp/tools.json) change: the approval says they were read (tools_changes: true)"
+                },
+                "screens_changes": {
+                  "type": "boolean",
+                  "description": "whether the kinds' screens change: the approval says they were read (screens_changes: true)"
                 },
                 "starts": {
                   "type": "object",
@@ -2233,6 +2263,18 @@
             "type": "boolean",
             "description": "whether a key the server takes signed it"
           },
+          "key": {
+            "type": "string",
+            "description": "the fingerprint of the key that signed the bundle (empty for none)"
+          },
+          "key_listed": {
+            "type": "boolean",
+            "description": "whether the process lists the key that signed it now"
+          },
+          "ritsu": {
+            "type": "string",
+            "description": "the version of ritsu the bundle's wasm.json names; empty for one it does not name"
+          },
           "checks": {
             "type": "object",
             "required": [
@@ -2245,6 +2287,30 @@
               },
               "worked": {
                 "type": "integer"
+              },
+              "kinds": {
+                "type": "array",
+                "description": "how many vectors of each kind the check ran, of a ticket's first event (starts) and of the events after it (nexts)",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "starts",
+                    "nexts"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "starts": {
+                      "type": "integer"
+                    },
+                    "nexts": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
               }
             },
             "additionalProperties": false,
@@ -2396,6 +2462,18 @@
           "api_changes": {
             "type": "boolean",
             "description": "true: the approver knows the bundle changes the API"
+          },
+          "script_changes": {
+            "type": "boolean",
+            "description": "whether the script the kinds' pages load (a2ui/functions.js) changes: its approval says it was read (script_changes: true)"
+          },
+          "tools_changes": {
+            "type": "boolean",
+            "description": "whether the descriptions of the kinds' tools (mcp/tools.json) change: the approval says they were read (tools_changes: true)"
+          },
+          "screens_changes": {
+            "type": "boolean",
+            "description": "whether the kinds' screens change: the approval says they were read (screens_changes: true)"
           },
           "reason": {
             "type": [

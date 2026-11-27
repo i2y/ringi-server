@@ -27,12 +27,13 @@ the kind is new. A directory without the kind, a description that does not read 
 object, and a description of another kind are refused. The description's `name` has to be the kind
 being compared; a change of that name is therefore not a diff but a refusal.
 
-Every top-level key of the description is compared. Four parts are read in detail:
+Except `version`, every top-level key of the description is compared. Four parts are read in detail:
 
-- `form`: fields added, removed and moved; labels; type; value range; length or row count; choices;
-  requiredness; computed fields; the fields a computation reads; whether only approvers fill in a
-  field; the calendar of open days; and the conditions that show or require a field. Fields inside
-  rows are compared recursively and named by dotted ASCII paths such as `items.price`.
+- `form`: fields added, removed and moved; labels; type; the bounds of the value; the length of a
+  text or the number of rows; choices; requiredness; computed fields; the fields a computation
+  reads; whether only approvers fill in a field; the calendar of open days; and the conditions
+  that show or require a field. Fields inside rows are compared recursively and named by dotted
+  ASCII paths such as `items.price`.
 - `stages`: stages added, removed and moved; labels; the name as written; `comment_required`, the
   operations for which the stage requires a reason; the stage's deadline lines; and the tables a
   late stage goes up by.
@@ -49,8 +50,7 @@ it is an approver rule or a deadline: a future key that happens to be called `ru
 unknown value until ritsu defines what the description carries. Simple values are shown as values.
 Keys with a clearer meaning have a sentence of their own: `endings`, `events`, `masters` and
 `flows`. A change deep inside a less structured key is reported as a change of that key rather than
-silently ignored. When the only change is the version number, the line says that it is the only
-change.
+silently ignored.
 
 A new kind is treated as a comparison against an empty description: its fields, stages, ways, dates
 and operations are all additions. This is verbose on purpose, since approving a new kind approves
@@ -60,6 +60,19 @@ Labels are shown in the language asked for. A description's `label` is in the la
 file was written in, and `labels` holds translations. If the requested language has no translation,
 the base label is used. The ASCII machine name follows in brackets when it differs from the label,
 because names are what the API and the files use.
+
+A generated field writes the same keys for every type, with null or an empty value where a key does
+not apply. The diff reads all of them: `written`, `label`, `labels`, `type`, `type_written`, `min`,
+`max`, `count_min`, `count_max`, `choices`, `optional`, `computed`, `reads`, `worked_on_screen`,
+`approvers_only`, `open_in`, `shown_when`, `required_when` and `fields`. The two ends of `min` and
+`max` are presented as one range, and the two ends of `count_min` and `count_max` as one length or
+row-count limit. The words depend on the type: a number, a date or an amount has a range of that
+kind; a text has a length limit; rows have a row-count limit. An absent end is an absent end, so a
+text bounded to 100 characters is never described as without bounds.
+
+A change of `version` itself makes no line. The page already names the two versions it compares,
+and repeating the numbers for every pair would hide the substantive diff. The versions still live in
+`Diff.OldVersion` and `Diff.NewVersion` for the caller.
 
 ## 3. How approvers are chosen and how deadlines are read
 
@@ -148,6 +161,13 @@ presented first, matching the order an administrator sees in the generated docum
 Each `Line` carries its section. API lines also have `API` true, so a caller can both group by
 section and require an explicit acknowledgement of API shape changes.
 
+Japanese lines place names by the framework's own rule in `internal/jatext`: an ASCII name, key or
+ID has one space between it and adjoining kana or kanji, and none next to a full-width mark.
+Numbers, dates and amounts are written into the Japanese text itself, so they stay next to their
+counters and units with no space. Sentences taken from the description (`when`, `who`, `how` and
+the late tables) are quoted as they are; this spacing is only between the server's framing and the
+pieces it quotes, never a rewrite inside those sentences.
+
 ## 6. Real output
 
 `ExampleCompare` in `example_test.go` compares the real generated `leave` version 1 and version 2
@@ -157,20 +177,18 @@ version 1 as a ritsu before that metadata wrote it, for the comparison of such a
 with a new one. Go's example test checks this exact output:
 
 ```text
-form api=false: The range of the field "Business days" (days) changes from 1 through 20 to 1 through 25.
+form api=false: The number range of the field "Business days" (days) changes from 1 through 20 to 1 through 25.
 usable api=false: This version now takes effect from 2027-04-01.
 usable api=false: The first day the kind can be used changes from 2026-04-01 to 2027-04-01.
 usable api=false: The data deciding the first day the kind can be used changes from "the first version of the organization `shared/company.ringi` (data `../org`)" to "`effective from`".
 api api=true: In the request body of `submit_leave`, `maximum` of `form.days` changes from `20` to `25`.
 api api=true: In the request body of `resubmit_leave`, `maximum` of `form.days` changes from `20` to `25`.
-other api=false: The version number changes from 1 to 2.
-form api=false: 項目「営業日の日数」（days）の範囲が1以上20以下から1以上25以下に変わります。
+form api=false: 項目「営業日の日数」（days）の数値の範囲が1以上20以下から1以上25以下に変わります。
 usable api=false: この版は2027-04-01から効きます。
 usable api=false: この申請の種類を出せる最初の日が2026-04-01から2027-04-01に変わります。
 usable api=false: 申請を出せる最初の日を決めるデータが「the first version of the organization `shared/company.ringi` (data `../org`)」から「`effective from`」に変わります。
-api api=true: `submit_leave`に送る本文では、`form.days`の`maximum`が`20`から`25`に変わります。
-api api=true: `resubmit_leave`に送る本文では、`form.days`の`maximum`が`20`から`25`に変わります。
-other api=false: 版の番号が1から2に変わります。
+api api=true: `submit_leave` に送る本文では、`form.days` の `maximum` が`20`から`25`に変わります。
+api api=true: `resubmit_leave` に送る本文では、`form.days` の `maximum` が`20`から`25`に変わります。
 ```
 
 The output has no approver or deadline lines because the two real versions write the same values for

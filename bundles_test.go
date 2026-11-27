@@ -119,6 +119,8 @@ func bundleFiles(t *testing.T, ks ...aKind) map[string][]byte {
 		kindAPI := strings.ReplaceAll(tripAPI, "trip", k.name)
 		if k.note {
 			kindAPI = strings.Replace(kindAPI, `"check":{"type":["boolean","null"]}`, `"check":{"type":["boolean","null"]},"note":{"type":["string","null"]}`, 1)
+			typ = strings.Replace(typ, `"name":"check","written":"check"`, `"name":"note","written":"note","label":"Note","labels":"Note","type":"text","type_written":"text","min":null,"max":null,"count_min":null,"count_max":null,"choices":null,"optional":true,"computed":false,"reads":null,"worked_on_screen":null,"approvers_only":false,"open_in":null,"shown_when":null,"required_when":null,"fields":null},{"name":"check","written":"check"`, 1)
+			files["types/"+k.name+".json"] = []byte(typ)
 		}
 		var one map[string]any
 		if err := json.Unmarshal([]byte(kindAPI), &one); err != nil {
@@ -198,17 +200,38 @@ func (g bundleGate) Allow(ctx context.Context, q server.Question) (bool, error) 
 // bundles is a server of the trip's three versions that takes bundles.
 type bundles struct {
 	*admins
+	pub  ed25519.PublicKey
+	priv ed25519.PrivateKey
 }
 
 func newBundles(t *testing.T, st namedStore, change ...func(*server.Config)) *bundles {
 	t.Helper()
-	return &bundles{newAdmins(t, st, append([]func(*server.Config){func(c *server.Config) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &bundles{pub: pub, priv: priv}
+	b.admins = newAdmins(t, st, append([]func(*server.Config){func(c *server.Config) {
 		c.Gate, c.LoadBundle = bundleGate{}, fakeLoad
-	}}, change...)...)}
+		c.BundleKeys = []ed25519.PublicKey{pub}
+	}}, change...)...)
+	return b
 }
 
-// upload sends a bundle as the person with roles, with its signature (none for nil).
+// sign signs an archive with the server's example key (made in the test, never used elsewhere).
+func (b *bundles) sign(archive []byte) []byte { return bundlesign.Sign(b.priv, archive) }
+
+// upload sends a bundle as the person with roles, signed with the server's key when sig is nil.
+// uploadRaw sends it with the signature given: nil sends none.
 func (b *bundles) upload(person, roles string, archive, sig []byte) (int, []byte) {
+	b.t.Helper()
+	if sig == nil {
+		sig = b.sign(archive)
+	}
+	return b.uploadRaw(person, roles, archive, sig)
+}
+
+func (b *bundles) uploadRaw(person, roles string, archive, sig []byte) (int, []byte) {
 	b.t.Helper()
 	r := httptest.NewRequest("POST", "/admin/bundles/uploads", bytes.NewReader(archive))
 	r.Header.Set("Content-Type", "application/zip")
@@ -233,6 +256,7 @@ type bundleView struct {
 	Hidden   bool
 	Source   string
 	Signed   bool
+	Key      string
 	Same     *bool
 	Checks   struct{ Vectors, Worked int }
 	Uploaded struct {
@@ -250,9 +274,12 @@ type bundleView struct {
 	}
 	May        struct{ Decide, Hide bool }
 	Difference *struct {
-		Digest     string
-		APIChanges bool `json:"api_changes"`
-		Kinds      []struct {
+		Digest         string
+		APIChanges     bool `json:"api_changes"`
+		ScriptChanges  bool `json:"script_changes"`
+		ToolsChanges   bool `json:"tools_changes"`
+		ScreensChanges bool `json:"screens_changes"`
+		Kinds          []struct {
 			Name       string
 			Version    int
 			Against    *int
@@ -470,13 +497,13 @@ func TestBundleGuards(t *testing.T) {
 	b := newBundles(t, st, func(c *server.Config) { c.BundleKeys = []ed25519.PublicKey{pub}; c.MaxBundle = 1 << 20 })
 	files := bundleFiles(t, tripAt(4, "office"))
 	archive := zipOf(t, files)
-	// the signature: none, or not of the bundle
-	code, body := b.upload("ann", "dept_admin", archive, nil)
+	// the signature: none, or not of the bundle. The server's own key signs the rest.
+	code, body := b.uploadRaw("ann", "dept_admin", archive, nil)
 	problemsAt(t, "no signature", code, body, "", "only signed bundles")
-	code, body = b.upload("ann", "dept_admin", archive, bundlesign.Sign(priv, []byte("another bundle")))
+	code, body = b.uploadRaw("ann", "dept_admin", archive, bundlesign.Sign(priv, []byte("another bundle")))
 	problemsAt(t, "another bundle's signature", code, body, "", "signature")
 	sign := func(a []byte) []byte { return bundlesign.Sign(priv, a) }
-	v := b.view(b.upload("ann", "dept_admin", archive, sign(archive)))
+	v := b.view(b.uploadRaw("ann", "dept_admin", archive, sign(archive)))
 	if !v.Signed {
 		t.Errorf("a signed bundle: %+v", v)
 	}
@@ -692,6 +719,43 @@ func TestBundleStart(t *testing.T) {
 		if _, err := bad.Unpackaged(ctx); err == nil || !strings.Contains(err.Error(), "trip-5.zip") || !strings.Contains(err.Error(), "signature") {
 			t.Errorf("%s: a bundle of the directory signed otherwise: %v", st.name, err)
 		}
+	}
+}
+
+// TestBundleStartSignature checks the rule of the directory a server reads at start (DESIGN 15.3):
+// when the server lists keys, a bundle of the directory is asked a signature by one of them, and a
+// missing one stops the start as a wrong one does; when it lists none, the directory's bundles need
+// none.
+func TestBundleStartSignature(t *testing.T) {
+	ctx := context.Background()
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	archive := zipOf(t, bundleFiles(t, tripAt(4, "office")))
+	// keys listed, the bundle of the directory carries no signature: the server does not start
+	b := newBundles(t, stores(t, "ringi_root_start_unsigned")[0], func(c *server.Config) {
+		c.Bundles = []server.BundleFile{{Name: "trip-4.zip", Archive: archive}}
+		c.BundleKeys = []ed25519.PublicKey{pub}
+		c.Gate, c.LoadBundle = bundleGate{}, fakeLoad
+	})
+	if _, err := b.srv.Unpackaged(ctx); err == nil || !strings.Contains(err.Error(), "trip-4.zip") || !strings.Contains(err.Error(), "signature") {
+		t.Errorf("an unsigned bundle of the directory with keys listed: %v", err)
+	}
+	// the same archive signed starts
+	signed := newBundles(t, stores(t, "ringi_root_start_signed")[0], func(c *server.Config) {
+		c.Bundles = []server.BundleFile{{Name: "trip-4.zip", Archive: archive, Signature: bundlesign.Sign(priv, archive)}}
+		c.BundleKeys = []ed25519.PublicKey{pub}
+		c.Gate, c.LoadBundle = bundleGate{}, fakeLoad
+	})
+	if _, err := signed.srv.Unpackaged(ctx); err != nil {
+		t.Errorf("the signed bundle of the directory: %v", err)
+	}
+	// no keys listed: the directory's bundle needs no signature
+	noKeys := newBundles(t, stores(t, "ringi_root_start_nokeys")[0], func(c *server.Config) {
+		c.Bundles = []server.BundleFile{{Name: "trip-4.zip", Archive: archive}}
+		c.BundleKeys = nil
+		c.Gate, c.LoadBundle = bundleGate{}, fakeLoad
+	})
+	if _, err := noKeys.srv.Unpackaged(ctx); err != nil {
+		t.Errorf("an unsigned bundle of the directory with no keys listed: %v", err)
 	}
 }
 

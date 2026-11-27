@@ -64,6 +64,11 @@ func (t *Tools) handler(d *toolDef, who whoFunc) sdkmcp.ToolHandler {
 		c.Person, c.Via, c.Languages = p, "mcp", []string{lang}
 		r, err := t.srv.Do(ctx, c)
 		if err != nil {
+			if server.Busy(err) {
+				// too much work at once is not a failure: the caller may try again in a breath
+				t.log.Error("a tool's call found no instance free", "tool", d.name, "person", p.ID, "ticket", c.Ticket, "err", err)
+				return busy(lang), nil
+			}
 			t.log.Error("a tool's call failed", "tool", d.name, "person", p.ID, "ticket", c.Ticket, "err", err)
 			return failed(lang), nil
 		}
@@ -229,11 +234,13 @@ func (t *Tools) title(name string, version int, lang string) string {
 
 // The outcomes an answer that is not OK tells.
 const (
-	outcomeRefused  = "refused"
-	outcomeInvalid  = "invalid"
-	outcomeNotFound = "not_found"
-	outcomeLimited  = "limited"
-	outcomeFailed   = "failed"
+	outcomeRefused     = "refused"
+	outcomeInvalid     = "invalid"
+	outcomeNotFound    = "not_found"
+	outcomeLimited     = "limited"
+	outcomeFailed      = "failed"
+	outcomeBusy        = "busy"
+	outcomeUnavailable = "unavailable"
 )
 
 // reply makes a tool's result of the framework's reply to a call, whose query was q. A check's
@@ -285,8 +292,33 @@ func (t *Tools) reply(lang string, d *toolDef, q url.Values, r server.Reply, che
 		return answerOf(lang, outcomeNotFound, r.Problem, check)
 	case server.Limited:
 		return limitedOf(lang, r, check)
+	case server.Unavailable:
+		return unavailableOf(lang, r, check)
 	}
 	return failed(lang)
+}
+
+// unavailableOf is the result of an event the ticket's kind failed to answer within the minute
+// (the API's 503): an error that says how long to wait, as limitedOf does for the server's 429.
+func unavailableOf(lang string, r server.Reply, check bool) *sdkmcp.CallToolResult {
+	x := map[string]any{"outcome": outcomeUnavailable, "problem": r.Problem}
+	if r.RetryAfter > 0 {
+		n, _ := strconv.Atoi(server.RetryAfter(r.RetryAfter))
+		x["retry_after"] = n
+	}
+	out, _ := json.Marshal(x)
+	wait := server.RetryAfter(r.RetryAfter)
+	var text string
+	switch {
+	case lang == "ja":
+		text = join(lang, say(lang, outcomeUnavailable), wait+"秒待ってから、同じ呼び出しを同じ idempotency_key でやり直してください：", r.Problem)
+	default:
+		text = join(lang, say(lang, outcomeUnavailable), "Make the same call again in "+wait+" seconds, with the same idempotency_key:", r.Problem)
+	}
+	if check {
+		text = join(lang, say(lang, "nothing"), say(lang, "would be limited"), r.Problem)
+	}
+	return result(!check, text, out)
 }
 
 // limitedOf is the result of a call the server does not take now (the API's 429): an error that
@@ -352,6 +384,12 @@ func unofferedOf(lang string, r server.Reply, check bool) *sdkmcp.CallToolResult
 // failed is the result of a call the server failed to do.
 func failed(lang string) *sdkmcp.CallToolResult {
 	return result(true, say(lang, outcomeFailed), []byte(`{"outcome":"failed"}`))
+}
+
+// busy is the result of a call that found no instance free (the API's 503 with Retry-After: 1):
+// too much work at once, not a failure, and the caller may make the same call again in a breath.
+func busy(lang string) *sdkmcp.CallToolResult {
+	return result(true, say(lang, outcomeBusy), []byte(`{"outcome":"busy","retry_after":1}`))
 }
 
 // result is a tool's result: the sentence, and the structured content, also as JSON text.

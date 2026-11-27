@@ -92,6 +92,11 @@ type zipRules struct {
 	what         string
 	file, dir    func(name string) bool
 	hold, holdJa string
+	// strict asks that the first entry's header start the file and nothing follow the central
+	// directory's end: a bundle is signed and served to every process as bytes no one reads, so its
+	// zip file reads in one way only (DESIGN 15.5). The organization's data, which a person reads
+	// back, keeps the zip format's own room (a comment).
+	strict bool
 }
 
 // checkZip checks an upload in the zip format before a file of it is read, and every byte of its
@@ -113,6 +118,13 @@ func checkZip(archive []byte, max int64, r zipRules) (*zip.Reader, error) {
 	}
 	if !found {
 		return nil, uploadProblem("", "The upload is not a zip file", "アップロードしたファイルが zip ではありません")
+	}
+	// Bytes before the first entry or after the central directory's end read in two ways: a reader
+	// that streams the file from its first byte and a reader of the directory see different files
+	// (DESIGN 15.5). The zip files the server and ritsu write have neither.
+	if r.strict && (dir.prefixed || dir.trailing) {
+		return nil, uploadProblem("", "The zip file has bytes before its first entry or after its end: write it as a zip file alone, with no comment",
+			"zip の最初の項目の前か、終わりのあとにバイト列があります。コメントのない、zip だけのファイルとして書き直してください")
 	}
 	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil && !errors.Is(err, zip.ErrInsecurePath) {
@@ -244,6 +256,13 @@ type zipDirectory struct {
 	// header of the directory in its order, as archive/zip reads them into zip.Reader.File: at most
 	// one more than the most asked for.
 	local []int64
+	// prefixed is whether bytes come before the zip's entries: the central directory does not reach
+	// the end of the file from where the end of the directory says it starts, so that a reader that
+	// streams the file from its first byte does not see what a reader of the directory sees.
+	prefixed bool
+	// trailing is whether bytes follow the central directory's end: a comment of the end record, or
+	// anything after it.
+	trailing bool
 }
 
 // zipDirectoryOf reads a zip file's central directory as archive/zip's zip.NewReader reads it, and
@@ -264,6 +283,7 @@ func zipDirectoryOf(b []byte, most int) (d zipDirectory, found bool) {
 		if bytes.HasPrefix(b[i:], zipDirectoryEnd) {
 			if comment := int64(u16(i + endLen - 2)); i+endLen+comment <= size {
 				at = i
+				d.trailing = comment != 0 || i+endLen+comment != size
 			}
 			break
 		}
@@ -292,6 +312,10 @@ func zipDirectoryOf(b []byte, most int) (d zipDirectory, found bool) {
 	if o := base + int64(dirOffset); o < 0 || o >= size {
 		return d, true
 	}
+	// a zip file written whole has its central directory end where the end of the directory begins,
+	// its offsets counted from the file's first byte (base 0). Another base is bytes before the
+	// entries, however the offsets are counted.
+	d.prefixed = base != 0
 	if _, _, ok := centralHeader(b, int64(dirOffset)); base > 0 && ok {
 		base = 0
 	}

@@ -23,6 +23,17 @@ type Person struct {
 // ErrNoPerson is what an Authenticator answers for a request that names no one it trusts.
 var ErrNoPerson = errors.New("no person")
 
+// Busy reports whether err is a call of a kind that found no instance free in time (wasmkind's
+// ErrBusy): too much work at once, not a failure of the module or another kind of stop. The API
+// and the pages answer it 503 with `Retry-After: 1`, where a stopped call of another kind is the
+// server's failure (500); mcp answers it as a busy outcome the caller may retry. It is read as
+// net.Error is, so the framework does not import the runner: wasmkind's StopError answers Busy
+// for ErrBusy alone.
+func Busy(err error) bool {
+	var b interface{ Busy() bool }
+	return errors.As(err, &b) && b.Busy()
+}
+
 // Authenticator finds who sends a request. The framework reads no sessions, tokens or cookies
 // itself.
 type Authenticator interface {

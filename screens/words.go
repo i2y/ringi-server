@@ -68,6 +68,23 @@ func LimitedWords(lang string, wait int) string {
 	return "You commented on this request a moment ago. Wait " + strconv.Itoa(wait) + " seconds, and send it again."
 }
 
+// UnavailableWords answers what a screen says to a person when the request's type failed to answer
+// what they did a moment ago (the API's 503 with the seconds of the minute left, the core's DESIGN
+// 8.1): wait seconds and do it again. In the screen's language, as LimitedWords.
+func UnavailableWords(lang string, wait int) string {
+	switch {
+	case lang == "ja" && wait > 0:
+		return "この申請の種類は、少し前にこの操作に答えられませんでした。" + strconv.Itoa(wait) + "秒待ってから、もう一度やり直してください。"
+	case lang == "ja":
+		return "この申請の種類は、少し前にこの操作に答えられませんでした。少し待ってから、もう一度やり直してください。"
+	case wait == 1:
+		return "The type of this request failed to answer this a moment ago. Wait a second, and do it again."
+	case wait > 1:
+		return "The type of this request failed to answer this a moment ago. Wait " + strconv.Itoa(wait) + " seconds, and do it again."
+	}
+	return "The type of this request failed to answer this a moment ago. Wait a little, and do it again."
+}
+
 // OfferedWords answers what a screen says to a person who opens the form of a new request of a kind
 // no version of which is in effect now, and who may make the request from a day (Server.Offered;
 // from is YYYY-MM-DD): the sentence the MCP tools say of it too, in the screen's language, as

@@ -1170,6 +1170,9 @@ func (b *builder) summary() *summary {
 			s.Words = w.Invalid()
 		}
 		s.Details = r.invalid
+	case r.limited != "" && r.unavailable:
+		s.Words = screens.UnavailableWords(b.lang, r.wait)
+		s.Details = r.limited
 	case r.limited != "":
 		s.Words = screens.LimitedWords(b.lang, r.wait)
 		s.Details = r.limited

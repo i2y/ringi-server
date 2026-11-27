@@ -448,6 +448,23 @@ func (a *api) compile(raw json.RawMessage, where string) (*schema, error) {
 	return s, nil
 }
 
+// compileNamed compiles the schema of the components the name is under, with every reference of
+// it followed, so that it can be read from many goroutines at once.
+func (a *api) compileNamed(name string) (*schema, error) {
+	raw, ok := a.schemas[name]
+	if !ok {
+		return nil, fmt.Errorf("openapi.json has no schema %s", name)
+	}
+	s, err := a.compile(raw, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.resolveAll(map[*schema]bool{}); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
 // resolve follows a schema's $ref, compiling the schema it names once.
 func (s *schema) resolve() error {
 	if s.ref == "" || s.target != nil {

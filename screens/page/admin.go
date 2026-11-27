@@ -188,37 +188,60 @@ type AdminBundleVersion struct {
 
 // AdminBundle is the page of a bundle: what it is, what each version it adds changes, and the forms
 // that decide and hide it.
+// AdminBundleVectors is how many vectors of a kind a bundle's check ran: of a ticket's first
+// event (Starts) and of the events after it (Nexts).
+type AdminBundleVectors struct {
+	Kind          string
+	Starts, Nexts int
+}
+
 type AdminBundle struct {
 	Digest, Short, State, Source string
 	Hidden, Signed               bool
-	Size                         int64
-	Vectors, Worked              int
-	UploadedBy, UploadedAt       string
-	DecidedBy, DecidedAt, Why    string // the decision; "" for none
-	HidBy, HidAt, HidWhy         string // the hiding; "" for none
-	Kinds                        []AdminBundleKind
-	Holds                        []AdminBundleVersion
+	// Key is the fingerprint of the key that signed the bundle; KeyListed says this process lists
+	// the key. A process that does not list it says so here (DESIGN 15.7).
+	Key       string
+	KeyListed bool
+	// Ritsu is the version of ritsu the bundle's wasm.json names, shown beside the key's
+	// fingerprint; "" for one it does not name.
+	Ritsu           string
+	Size            int64
+	Vectors, Worked int
+	// PerKind is how many vectors of each kind the check ran, of a ticket's first event (Starts)
+	// and of the events after it (Nexts).
+	PerKind                   []AdminBundleVectors
+	UploadedBy, UploadedAt    string
+	DecidedBy, DecidedAt, Why string // the decision; "" for none
+	HidBy, HidAt, HidWhy      string // the hiding; "" for none
+	Kinds                     []AdminBundleKind
+	Holds                     []AdminBundleVersion
 	// Forgotten says the server forgot the archive (a bundle hidden before it was approved): what
 	// it changed is not shown.
 	Forgotten bool
 	// APIChanges says a version it adds changes the API: the approval asks the person to tick that
-	// they checked it. Difference is the digest of the difference shown, which the approval sends.
-	APIChanges bool
-	Difference string
-	Action     string // the address the decisions and the hiding post to
-	MayDecide  bool
-	Uploader   bool // the person uploaded it: another decides it
-	MayHide    bool
+	// they checked it. ScriptChanges, ToolsChanges and ScreensChanges say the same of the script
+	// the kinds' pages load, of the tools' descriptions and of the screens. Difference is the
+	// digest of the difference shown, which the approval sends.
+	APIChanges     bool
+	ScriptChanges  bool
+	ToolsChanges   bool
+	ScreensChanges bool
+	Difference     string
+	Action         string // the address the decisions and the hiding post to
+	MayDecide      bool
+	Uploader       bool // the person uploaded it: another decides it
+	MayHide        bool
 }
 
 // AdminBundleKind is a version a bundle adds, with its difference from the version below it.
 type AdminBundleKind struct {
-	Name, Title, Owner string
-	Version, Against   int // Against: the version it is compared with; 0 for none
-	New, APIChanges    bool
-	StartsDay          string // the day its description starts it on; "" for as soon as it is approved
-	From, Through      string // the days it may be used on; "" for no bound
-	Lines              []AdminDiffLine
+	Name, Title, Owner                          string
+	Version, Against                            int // Against: the version it is compared with; 0 for none
+	New, APIChanges                             bool
+	ScriptChanges, ToolsChanges, ScreensChanges bool
+	StartsDay                                   string // the day its description starts it on; "" for as soon as it is approved
+	From, Through                               string // the days it may be used on; "" for no bound
+	Lines                                       []AdminDiffLine
 	// Said is what the bundle itself says the version changes (ritsu's `ringi diff`), against the
 	// version SaidFrom; "" for nothing.
 	Said     string
@@ -291,6 +314,9 @@ const (
 	AdminBundleBusy  = "bundle-busy"  // the server is checking another bundle
 	AdminNotYours    = "not-yours"    // the bundle holds a version the person may not upload
 	AdminAPIUnticked = "api-unticked" // the bundle changes the API, and its approval does not say it was checked
+	// AdminMarkUnticked is the key of the sentence of a bundle whose script, tools or screens
+	// change, and the approval does not say they were read (the change's name is the argument).
+	AdminMarkUnticked = "mark-unticked"
 )
 
 // AdminSays answers a problem of a post of the administration's pages (AdminBadDay and the rest)
@@ -339,6 +365,8 @@ func AdminSays(lang, problem string, args ...string) string {
 		return w.t("The bundle holds a version of a request type you may not upload.", "このバンドルには、あなたがアップロードできない申請の種類の版が入っています。")
 	case AdminAPIUnticked:
 		return w.t("This bundle changes the API: tick that you checked it, and approve it again.", "このバンドルは API の形を変えます。確かめたことに印を付けて、もう一度承認してください。")
+	case AdminMarkUnticked:
+		return w.t("This bundle changes them: tick that you read it, and approve it again.", "このバンドルはそれらを変えます。読んだことに印を付けて、もう一度承認してください。")
 	case AdminManyImports:
 		switch arg(0) {
 		case "":
@@ -649,6 +677,33 @@ func (w words) AdminSignedWords(signed bool) string {
 	}
 	return w.t("Not signed", "署名なし")
 }
+
+// AdminKeyWords says which key signed a bundle, by the key's fingerprint, and whether this process
+// lists the key (DESIGN 15.7): a process that does not list it says so on the bundle's page.
+func (w words) AdminKeyWords(key string, listed bool) string {
+	short := key
+	if len(short) > 12 {
+		short = short[:12]
+	}
+	if listed {
+		return w.t("Signed with the key "+short+"…, which this process lists", "鍵 "+short+"… で署名してあり、このプロセスはその鍵を並べています")
+	}
+	return w.t("Signed with the key "+short+"…, which this process does not list", "鍵 "+short+"… で署名してありますが、このプロセスはその鍵を並べていません")
+}
+
+// AdminRitsuWords says which version of ritsu made a bundle, beside the key's fingerprint on its
+// page (AdminBundle.Ritsu).
+func (w words) AdminRitsuWords(ritsu string) string {
+	return w.t("made by ritsu "+ritsu, "ritsu "+ritsu+" で生成")
+}
+
+// AdminKindVectorsWords is how many vectors of a kind the check ran, of a ticket's first event
+// and of the events after it (AdminBundle.PerKind).
+func (w words) AdminKindVectorsWords(kind string, starts, nexts int) string {
+	return w.t(kind+": "+strconv.Itoa(starts)+" of the first event, "+strconv.Itoa(nexts)+" of the events after",
+		kind+"：最初の出来事の "+strconv.Itoa(starts)+" 本、そのあとの出来事の "+strconv.Itoa(nexts)+" 本")
+}
+
 func (w words) AdminReceivedWords(source string) string {
 	if source == "start" {
 		return w.t("Read from the server's directory of bundles as it started", "起動のときに、サーバーのバンドルのディレクトリから読んだ")
@@ -694,8 +749,8 @@ func (w words) AdminStartsWords(day string) string {
 	return w.t("Once approved, new requests take it from "+day+" (an administrator may switch it after).", "承認すると、新しい申請が "+day+" から使います（あとから切り替えられます）。")
 }
 func (w words) AdminSaid(from int) string {
-	return w.t("The text the bundle held (written by `ritsu ringi diff` against version "+strconv.Itoa(from)+")",
-		"バンドルに入っていた文（`ritsu ringi diff` が版 "+strconv.Itoa(from)+" と比べて書いた物）")
+	return w.t("The bundle's own text (written by `ritsu ringi diff` against version "+strconv.Itoa(from)+"): the server checks only its own difference above, not this text",
+		"バンドル自身の文（`ritsu ringi diff` が版 "+strconv.Itoa(from)+" と比べて書いた物）。サーバーが確かめるのは上の自分の差だけで、この文ではありません")
 }
 func (w words) AdminHolds() string {
 	return w.t("It holds these besides, as the server has them:", "ほかに次の版を持っています（サーバーにある物と同じ）：")
@@ -708,6 +763,24 @@ func (w words) AdminAPIChanges() string {
 }
 func (w words) AdminAPIChangesYes() string {
 	return w.t("I checked that the API changes", "API が変わることを確かめた")
+}
+func (w words) AdminMarkChanges(what string) string {
+	switch what {
+	case "script_changes":
+		return w.t("This bundle changes the script the kinds' pages load: read it with care, as it runs in the browser of everyone who uses them.", "このバンドルは、種類のページが読み込むスクリプトを変えます。使う人のブラウザで動く物なので、注意して読んでください。")
+	case "tools_changes":
+		return w.t("This bundle changes what the tools say of the kinds: programs that read them may need changing.", "このバンドルは、ツールが種類について言う文を変えます。それを読むプログラムは、直す必要があるかもしれません。")
+	}
+	return w.t("This bundle changes the kinds' screens: read what changes in them.", "このバンドルは、種類の画面を変えます。何が変わるか読んでください。")
+}
+func (w words) AdminMarkYes(what string) string {
+	switch what {
+	case "script_changes":
+		return w.t("I read how the script changes", "スクリプトがどう変わるか読んだ")
+	case "tools_changes":
+		return w.t("I read how the tools' descriptions change", "ツールの説明がどう変わるか読んだ")
+	}
+	return w.t("I read how the screens change", "画面がどう変わるか読んだ")
 }
 func (w words) AdminDecide() string {
 	return w.t("Approve or decline", "承認するか却下するか")

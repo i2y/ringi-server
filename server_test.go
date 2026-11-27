@@ -49,6 +49,32 @@ func (w *world) call(method, path, person, key string, body any) (int, []byte) {
 	return rec.Code, rec.Body.Bytes()
 }
 
+// callFull sends a request to the server and answers its status, headers and body.
+func (w *world) callFull(method, path, person, key string, body any) (int, http.Header, []byte) {
+	var r *http.Request
+	switch b := body.(type) {
+	case nil:
+		r = httptest.NewRequest(method, path, nil)
+	case string:
+		r = httptest.NewRequest(method, path, strings.NewReader(b))
+	default:
+		j, _ := json.Marshal(b)
+		r = httptest.NewRequest(method, path, bytes.NewReader(j))
+	}
+	if person != "" {
+		r.Header.Set("X-Person", person)
+	}
+	if key != "" {
+		r.Header.Set("Idempotency-Key", key)
+	}
+	if method == "POST" {
+		r.Header.Set("Content-Type", "application/json")
+	}
+	rec := httptest.NewRecorder()
+	w.srv.ServeHTTP(rec, r)
+	return rec.Code, rec.Header(), rec.Body.Bytes()
+}
+
 // submit asks for a trip as ann and answers the ticket.
 func (w *world) submit(t *testing.T, form map[string]any) ticket {
 	t.Helper()

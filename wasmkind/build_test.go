@@ -23,6 +23,7 @@ const (
 	opLocalSet    = 0x21
 	opGlobalGet   = 0x23
 	opGlobalSet   = 0x24
+	opI32Load     = 0x28
 	opI32Store    = 0x36
 	opI32Store8   = 0x3a
 	opMemorySize  = 0x3f
@@ -232,6 +233,33 @@ func echo() wmod { return door(pair(0, 1)) }
 // answering answers a line it holds, whatever it is given.
 func answering(answer string) wmod {
 	body := cat(i32c(answerAt), []byte{opLocalSet, 2}, i32c(int32(len(answer))), []byte{opLocalSet, 3}, pair(2, 3))
+	return door(body, wdata{answerAt, []byte(answer)})
+}
+
+// countingMemory is counting with its count in memory, not in a global: a test of what memory
+// passes between calls.
+func countingMemory(past int32, after string) wmod {
+	const countAt = 2048
+	answer := `{"out":0}`
+	var long []byte
+	switch {
+	case after == "trap":
+		long = []byte{opUnreachable}
+	case after == "loop":
+		long = []byte{opLoop, blockEmpty, opBr, 0, opEnd}
+	case after == "grow":
+		long = growAll
+	case strings.HasPrefix(after, "grow "):
+		n, _ := strconv.Atoi(strings.TrimPrefix(after, "grow "))
+		long = cat(i32c(int32(n)), []byte{opMemoryGrow, 0, opDrop})
+	}
+	body := cat(
+		[]byte{opLocalGet, 1}, i32c(past), []byte{opI32GtU, opIf, blockEmpty}, long, []byte{opEnd},
+		i32c(countAt), []byte{opI32Load, 2, 0}, i32c(1), []byte{opI32Add, opLocalSet, 2},
+		i32c(countAt), []byte{opLocalGet, 2, opI32Store, 2, 0},
+		i32c(answerAt+7), []byte{opLocalGet, 2}, i32c('0'), []byte{opI32Add, opI32Store8, 0, 0},
+		i32c(answerAt), []byte{opLocalSet, 2}, i32c(int32(len(answer))), []byte{opLocalSet, 3}, pair(2, 3),
+	)
 	return door(body, wdata{answerAt, []byte(answer)})
 }
 

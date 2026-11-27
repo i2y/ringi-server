@@ -238,16 +238,27 @@ func (s *Store) SaveChange(ctx context.Context, c *server.Change) error {
 
 // bundleBody is what the table of the bundles keeps of a bundle as JSON.
 type bundleBody struct {
-	Adds     []server.BundleVersion `json:"adds"`
-	Holds    []server.KindVersion   `json:"holds"`
-	Source   string                 `json:"source"`
-	Size     int64                  `json:"size"`
-	Signed   bool                   `json:"signed"`
-	Vectors  int                    `json:"vectors"`
-	Worked   int                    `json:"worked"`
-	Uploaded server.BundleAct       `json:"uploaded"`
-	Decided  *server.BundleAct      `json:"decided"`
-	Hid      *server.BundleAct      `json:"hid"`
+	Adds      []server.BundleVersion `json:"adds"`
+	Holds     []server.KindVersion   `json:"holds"`
+	Source    string                 `json:"source"`
+	Size      int64                  `json:"size"`
+	Signed    bool                   `json:"signed"`
+	Key       string                 `json:"key"`
+	Signature string                 `json:"signature"`
+	Vectors   int                    `json:"vectors"`
+	Worked    int                    `json:"worked"`
+	PerKind   []bundleVectors        `json:"per_kind,omitempty"`
+	Ritsu     string                 `json:"ritsu,omitempty"`
+	Uploaded  server.BundleAct       `json:"uploaded"`
+	Decided   *server.BundleAct      `json:"decided"`
+	Hid       *server.BundleAct      `json:"hid"`
+}
+
+// bundleVectors is how many vectors of a kind a bundle's check ran, as the table keeps them.
+type bundleVectors struct {
+	Kind   string `json:"kind"`
+	Starts int    `json:"starts"`
+	Nexts  int    `json:"nexts"`
 }
 
 // cut cuts a time to the microsecond, in UTC, as the store keeps its times.
@@ -267,8 +278,12 @@ func cutAct(a *server.BundleAct) *server.BundleAct {
 // adds.
 func (s *Store) saveBundle(ctx context.Context, tx pgx.Tx, c *server.BundleChange) error {
 	b := c.Bundle
-	body, err := json.Marshal(bundleBody{Adds: b.Adds, Holds: b.Holds, Source: b.Source, Size: b.Size, Signed: b.Signed,
-		Vectors: b.Vectors, Worked: b.Worked, Uploaded: *cutAct(&b.Uploaded), Decided: cutAct(b.Decided), Hid: cutAct(b.Hid)})
+	var perKind []bundleVectors
+	for _, v := range b.PerKind {
+		perKind = append(perKind, bundleVectors{Kind: v.Kind, Starts: v.Starts, Nexts: v.Nexts})
+	}
+	body, err := json.Marshal(bundleBody{Adds: b.Adds, Holds: b.Holds, Source: b.Source, Size: b.Size, Signed: b.Signed, Key: b.Key, Signature: b.Signature,
+		Vectors: b.Vectors, Worked: b.Worked, PerKind: perKind, Ritsu: b.Ritsu, Uploaded: *cutAct(&b.Uploaded), Decided: cutAct(b.Decided), Hid: cutAct(b.Hid)})
 	if err != nil {
 		return err
 	}
@@ -327,7 +342,11 @@ func (s *Store) Bundles(ctx context.Context) ([]server.Bundle, error) {
 		if err := json.Unmarshal([]byte(body), &x); err != nil {
 			return b, err
 		}
-		b.Adds, b.Holds, b.Source, b.Size, b.Signed, b.Vectors, b.Worked = x.Adds, x.Holds, x.Source, x.Size, x.Signed, x.Vectors, x.Worked
+		b.Adds, b.Holds, b.Source, b.Size, b.Signed, b.Vectors, b.Worked, b.Key, b.Signature = x.Adds, x.Holds, x.Source, x.Size, x.Signed, x.Vectors, x.Worked, x.Key, x.Signature
+		for _, v := range x.PerKind {
+			b.PerKind = append(b.PerKind, server.BundleVectorCount{Kind: v.Kind, Starts: v.Starts, Nexts: v.Nexts})
+		}
+		b.Ritsu = x.Ritsu
 		b.Uploaded, b.Decided, b.Hid = *cutAct(&x.Uploaded), cutAct(x.Decided), cutAct(x.Hid)
 		return b, nil
 	})

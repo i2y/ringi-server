@@ -23,11 +23,20 @@ import (
 type bundleAnswer struct {
 	Digest, State, Source string
 	Hidden, Signed        bool
+	Key                   string `json:"key"`
+	KeyListed             bool   `json:"key_listed"`
+	Ritsu                 string `json:"ritsu"`
 	Size                  int64
-	Checks                struct{ Vectors, Worked int }
-	Uploaded              actAnswer
-	Decided, Hid          *actAnswer
-	Adds                  []struct {
+	Checks                struct {
+		Vectors, Worked int
+		Kinds           []struct {
+			Kind          string
+			Starts, Nexts int
+		}
+	}
+	Uploaded     actAnswer
+	Decided, Hid *actAnswer
+	Adds         []struct {
 		Name, Title string
 		Version     int
 		Owner       *string
@@ -40,15 +49,21 @@ type bundleAnswer struct {
 	May        struct{ Decide, Hide bool }
 	Same       *bool
 	Difference *struct {
-		Digest     string
-		APIChanges bool `json:"api_changes"`
-		Kinds      []struct {
-			Name       string
-			Version    int
-			Against    *int
-			New        bool
-			APIChanges bool `json:"api_changes"`
-			Starts     struct {
+		Digest         string
+		APIChanges     bool `json:"api_changes"`
+		ScriptChanges  bool `json:"script_changes"`
+		ToolsChanges   bool `json:"tools_changes"`
+		ScreensChanges bool `json:"screens_changes"`
+		Kinds          []struct {
+			Name           string
+			Version        int
+			Against        *int
+			New            bool
+			APIChanges     bool `json:"api_changes"`
+			ScriptChanges  bool `json:"script_changes"`
+			ToolsChanges   bool `json:"tools_changes"`
+			ScreensChanges bool `json:"screens_changes"`
+			Starts         struct {
 				Day    *string
 				Usable struct{ From, Through *string }
 			}
@@ -284,6 +299,7 @@ func (h *Handler) bundlePage(w http.ResponseWriter, r *http.Request, p server.Pe
 	}
 	in.What = page.AdminBundlePage
 	b := &page.AdminBundle{Digest: a.Digest, Short: short(a.Digest), State: a.State, Source: a.Source, Hidden: a.Hidden, Signed: a.Signed, Size: a.Size,
+		Key: a.Key, KeyListed: a.KeyListed, Ritsu: a.Ritsu,
 		Vectors: a.Checks.Vectors, Worked: a.Checks.Worked, UploadedBy: deref(a.Uploaded.Person), UploadedAt: h.adminTime(a.Uploaded.At),
 		Action: keepLang(r, adminPath+"bundles/"+a.Digest), MayDecide: a.May.Decide, MayHide: a.May.Hide, Forgotten: a.Difference == nil,
 		Uploader: a.State == "pending" && !a.Hidden && deref(a.Uploaded.Person) == p.ID}
@@ -301,10 +317,15 @@ func (h *Handler) bundlePage(w http.ResponseWriter, r *http.Request, p server.Pe
 	for _, v := range a.Adds {
 		titles[v.Name], owners[v.Name] = v.Title, deref(v.Owner)
 	}
+	for _, kv := range a.Checks.Kinds {
+		b.PerKind = append(b.PerKind, page.AdminBundleVectors{Kind: kv.Kind, Starts: kv.Starts, Nexts: kv.Nexts})
+	}
 	if d := a.Difference; d != nil {
 		b.APIChanges, b.Difference = d.APIChanges, d.Digest
+		b.ScriptChanges, b.ToolsChanges, b.ScreensChanges = d.ScriptChanges, d.ToolsChanges, d.ScreensChanges
 		for _, k := range d.Kinds {
 			bk := page.AdminBundleKind{Name: k.Name, Title: titles[k.Name], Owner: owners[k.Name], Version: k.Version, New: k.New, APIChanges: k.APIChanges,
+				ScriptChanges: k.ScriptChanges, ToolsChanges: k.ToolsChanges, ScreensChanges: k.ScreensChanges,
 				StartsDay: deref(k.Starts.Day), From: deref(k.Starts.Usable.From), Through: deref(k.Starts.Usable.Through)}
 			if k.Against != nil {
 				bk.Against = *k.Against
@@ -354,6 +375,11 @@ func (h *Handler) adminDecideBundle(w http.ResponseWriter, r *http.Request, p se
 		if f.Get("api_changes") == "yes" {
 			body["api_changes"] = true
 		}
+		for _, mark := range []string{"script_changes", "tools_changes", "screens_changes"} {
+			if f.Get(mark) == "yes" {
+				body[mark] = true
+			}
+		}
 	case "decline", "hide":
 	default:
 		h.notice(w, r, &p, http.StatusBadRequest, page.NoticeBadPost)
@@ -379,6 +405,11 @@ func (h *Handler) adminDecideBundle(w http.ResponseWriter, r *http.Request, p se
 		in := page.Admin{Refused: refusalText(rep.Body, lang)}
 		if x.Refused == "api_changes" {
 			in = page.Admin{Problem: page.AdminSays(lang, page.AdminAPIUnticked)}
+		}
+		for _, mark := range []string{"script_changes", "tools_changes", "screens_changes"} {
+			if x.Refused == mark {
+				in = page.Admin{Problem: page.AdminSays(lang, page.AdminMarkUnticked)}
+			}
 		}
 		h.bundlePage(w, r, p, lang, http.StatusConflict, in)
 	case server.Invalid:

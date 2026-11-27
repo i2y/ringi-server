@@ -258,6 +258,7 @@ func (s *Server) listRequests(ctx context.Context, p Person) (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
+	var outKinds []string
 	for _, name := range s.cat().order {
 		k := s.current(name, now)
 		if k == nil || snap == nil {
@@ -265,6 +266,14 @@ func (s *Server) listRequests(ctx context.Context, p Person) (Reply, error) {
 		}
 		may, err := s.maySubmit(ctx, k, p, now, snap)
 		if err != nil {
+			// a kind whose own code fails to answer is left out, and the rest are answered: one
+			// broken module does not take the whole list down with it. The log says so once a
+			// minute for each kind version, not once per ask.
+			if KindFailed(err) {
+				s.kindOut(k, err)
+				outKinds = append(outKinds, k.Name)
+				continue
+			}
 			return Reply{}, err
 		}
 		if may {
@@ -279,7 +288,32 @@ func (s *Server) listRequests(ctx context.Context, p Person) (Reply, error) {
 			out = append(out, rk)
 		}
 	}
-	return ok(map[string]any{"requests": out})
+	body := map[string]any{"requests": out}
+	if len(outKinds) > 0 {
+		// out names the kinds left out, whose own code failed to answer: a client of several
+		// kinds can say in its language that they cannot be shown now, in their place.
+		body["out"] = outKinds
+	}
+	return ok(body)
+}
+
+// kindOut logs that a kind's own code failed to answer a list of several kinds, once a minute for
+// each kind version, not once per page or ask: a kind whose every call never ends would otherwise
+// fill the log with one line for every list of every person.
+func (s *Server) kindOut(k *kind, err error) {
+	key := k.Name + " version " + strconv.Itoa(k.Version)
+	s.kindsOutMu.Lock()
+	if s.kindsOut == nil {
+		s.kindsOut = map[string]time.Time{}
+	}
+	last, said := s.kindsOut[key]
+	if said && time.Since(last) < time.Minute {
+		s.kindsOutMu.Unlock()
+		return
+	}
+	s.kindsOut[key] = time.Now()
+	s.kindsOutMu.Unlock()
+	s.log.Error("a kind's own code failed to answer; it is left out of the list", "kind", k.Name, "version", k.Version, "err", err)
 }
 
 // maySubmit reports whether a person may submit a kind for themselves at now.

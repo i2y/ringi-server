@@ -291,20 +291,27 @@ func PackageFrom(dir fs.FS) (*server.Package, error) {
 }
 ```
 
-Make the code again, and test it. The tests of the project run the vectors on the module.
+Tidy the module first: `wasmkind` needs a module that `go.mod` does not list yet, and `go generate` does not run
+until it does. Then make the code again, and test it. The tests of the project run the vectors on the module.
 
 ```sh
-go generate ./...
 go mod tidy
+go generate ./...
 go vet ./...
 go test ./...
 ```
 
-`wasmkind.Load` refuses a module that is not the one `wasm.json` was written with (by its SHA-256), and one that
-imports anything. Each call of the module runs within a time (2 seconds) and a memory (64 MiB). A call stopped by
-either is the server's failure: the operation is answered 500, and the log says which limit stopped it. To set
-limits of your own, use `wasmkind.LoadWith` with `wasmkind.Options`.
+`wasmkind.Load` refuses a module that is not the one `wasm.json` was written with (by its
+SHA-256), and one that imports anything. Each call runs in a new instance, so nothing of a call is
+left for the next. It runs within a time (2 seconds) and a memory it may grow to (64 MiB), and the
+module's memory may start with at most 4 MiB. At most a limited number of instances run at once; a
+call that finds none free in the same time is not run. A call stopped by a limit is the server's
+failure: the operation is answered 500, and the log says which limit stopped it. A call that finds
+no instance free is not one: too much work at once, answered 503 with `Retry-After: 1`, so the
+caller may send the same operation again in a breath. To set limits of
+your own, use `wasmkind.LoadWith` with `wasmkind.Options`.
 
-A call of the module takes about four times as long as one of the Go code: about 0.5 ms in place of 0.1 ms. An
-approver's page asks the code once for each button, at once, so it takes about 0.5 ms more. Loading the module
-when the server starts takes 0.8 seconds for the five request types of the example, each in two languages.
+A call of the module takes about five times as long as one of the Go code: about 0.56 ms in place
+of 0.11 ms. An approver's page asks the code once for each button, at once, so it takes about
+1.3 ms more. Loading the module when the server starts takes 0.75 seconds for the five request
+types of the example, each in two languages.

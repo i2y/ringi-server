@@ -19,27 +19,34 @@ ritsu gen . --root . --target requests --extra wasm --extra bundle \
 
 例にも一つあります。`examples/regen.sh` が、`examples/v3/project` の休暇の申請の版 3 から、`examples/bundles/leave-v3.zip` を書きます。版 3 は「休みのあいだの連絡先」の項目を足し、休みの初日を 2028 年の終わりまで受け付け、2028-04-01 から使われます。例のサーバーには、版 1 と版 2 が組み込んであります。
 
-署名したバンドルだけをサーバーに受け取らせるときは、[バンドルに署名する](signing.ja.md)を読んでください。
+サーバーが受け取るのは、並べた鍵で署名したバンドルだけです。[バンドルに署名する](signing.ja.md)のとおりに、レビューしたリポジトリから組む CI の仕事の鍵で署名します。この案内では、例を試すためだけに作った鍵で署名します。この鍵を、ほかの何にも使ってはいけません。
 
 ## 2. アップロードして、承認してもらう
 
-`examples/` で、例のサーバーを起動します。
+[バンドルに署名する](signing.ja.md)のとおりに、鍵の組を作ってバンドルに署名します（`examples/` で）。
 
 ```sh
-go run ./cmd/server -dev-login
+go run github.com/i2y/ringi-server/cmd/ringi-bundle keygen -out bundle
+go run github.com/i2y/ringi-server/cmd/ringi-bundle sign -key bundle.key bundles/leave-v3.zip
 ```
 
-<http://localhost:8080/> を開き、人事部の部長の `e6001` として、役割 `workflow_admin` でサインインします。休暇の申請を受け持つのは人事部です。ホームのいちばん下の「管理」を開き、「バンドルで版や申請の種類を足す」を開きます。`bundles/leave-v3.zip` を選んで「アップロードして確かめる」を押すと、サーバーが確かめて（5）、バンドルのページを出します。
+公開鍵を渡して、例のサーバーを起動します。
+
+```sh
+go run ./cmd/server -dev-login -bundle-keys bundle.pub
+```
+
+<http://localhost:8080/> を開き、人事部の部長の `e6001` として、役割 `workflow_admin` でサインインします。休暇の申請を受け持つのは人事部です。ホームのいちばん下の「管理」を開き、「バンドルで版や申請の種類を足す」を開きます。バンドルに `bundles/leave-v3.zip` を、署名に `bundles/leave-v3.zip.sig` を選んで「アップロードして確かめる」を押すと、サーバーは zip を開く前に署名を確かめ、それから確かめて（5）、バンドルのページを出します。
 
 アップロードした人は、そのバンドルを決められません。`e7001` として、役割 `system_admin` でサインインし直し、同じ一覧からバンドルを開きます。
 
 <img src="images/bundle.ja.webp" width="600" alt="バンドルのページ。休暇の申請の版 3、版 2 から変わる所（API を変える行に印）、折りたたんだバンドルに入っていた文、承認するか却下するかのフォーム">
 
-- **版 2 から変わる所**：サーバーが二つの版から書きます。フォームの項目、ステップ、承認者の決め方、使える日です。プログラムが送る物、読む物を変える行には「API が変わる」の印が付きます。
+- **版 2 から変わる所**：サーバーが二つの版の説明から書きます。フォームの項目、ステップ、承認者の決め方、使える日です。プログラムが送る物、読む物を変える行には「API が変わる」の印が付きます。行は説明からだけ書きます。種類のコードそのものは、バンドルが持つベクタでしか確かめていないので、説明と違うことをするコードはここでは分かりません。だれが組んだかを言うのは署名です。
 - **バンドルに入っていた文**：`ritsu ringi diff` が書いた物を、バンドルを作った人が渡したとおりに、表も含めて出します。その行を押すと開きます。
 - **いつから使われるか**：「承認すると、新しい申請が 2028-04-01 から使います」。ファイルに書いた日です。
 
-API が変わるバンドルは、承認の前に「API が変わることを確かめた」に印を付けます。API を呼ぶプログラムやエージェントは、直す必要があるかもしれません。理由を書いて「承認する」を押すと、新しい版が「申請の種類の版を切り替える」のページに並び、ファイルに書いたとおりに始まります。切り替えは、ほかの版と同じです（[管理する](use/admin.ja.md#申請の決まりの版を切り替える)）。
+API が変わるバンドルは、承認の前に「API が変わることを確かめた」に印を付けます。API を呼ぶプログラムやエージェントは、直す必要があるかもしれません。例のバンドルは、種類のページが読み込むスクリプトと、ツールが種類について言う文と、画面も変えるので、それぞれに印を付けます。印を付ける前に、差が並べる行を読んでください。理由を書いて「承認する」を押すと、新しい版が「申請の種類の版を切り替える」のページに並び、ファイルに書いたとおりに始まります。切り替えは、ほかの版と同じです（[管理する](use/admin.ja.md#申請の決まりの版を切り替える)）。
 
 ## 3. API からアップロードする
 
@@ -49,23 +56,24 @@ API が変わるバンドルは、承認の前に「API が変わることを確
 curl -s http://127.0.0.1:8080/admin/bundles/uploads \
   -H 'Content-Type: application/zip' -H 'Idempotency-Key: leave-v3' \
   -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' \
+  -H "Bundle-Signature: $(cat bundles/leave-v3.zip.sig)" \
   --data-binary @bundles/leave-v3.zip |
-  jq -c '{digest, state, adds: [.adds[] | {name, version}], checks, difference: {digest: .difference.digest, api_changes: .difference.api_changes}}'
+  jq -c '{digest, state, adds: [.adds[] | {name, version}], checks, difference: {digest: .difference.digest, api_changes: .difference.api_changes, script_changes: .difference.script_changes, tools_changes: .difference.tools_changes, screens_changes: .difference.screens_changes}}'
 ```
 
 ```
-{"digest":"414b2eda2415968237c7bddbecf55f5d81e62e1164a475cce06c11e3309de7cb","state":"pending","adds":[{"name":"leave","version":3},{"name":"leave_ja","version":3}],"checks":{"vectors":244,"worked":50},"difference":{"digest":"643ef0b7db3cfe193d208b73d47b9c46753a648b282f8acd1c767168a05b96ce","api_changes":true}}
+{"digest":"6cb2ab05a85f60619ac563fb8bf4e4336b68d7734202b4a06c33ebffa6bd0724","state":"pending","adds":[{"name":"leave","version":3},{"name":"leave_ja","version":3}],"checks":{"vectors":244,"worked":50},"difference":{"digest":"c0d89609974abd7853451fe5ab6033f7e228e112e738b0c58ade40d5fe6b19ab","api_changes":true,"script_changes":true,"tools_changes":true,"screens_changes":true}}
 ```
 
 サーバーは、バンドルのベクタのうち 244 のイベントと 50 のフォームをそのコードで動かし、どれもベクタのとおりに答えました。`difference.kinds` には、ページに出るのと同じ差の行が入っています。
 
-ほかの人として承認します。読んだ差のダイジェスト（`difference.digest`）を送り返し、差が API を変えるなら `api_changes` も付けます。
+ほかの人として承認します。読んだ差のダイジェスト（`difference.digest`）を送り返し、差が API を変えるなら `api_changes` を、スクリプトやツールや画面が変わるなら `script_changes`、`tools_changes`、`screens_changes` も付けます。
 
 ```sh
-curl -s http://127.0.0.1:8080/admin/bundles/414b2eda2415968237c7bddbecf55f5d81e62e1164a475cce06c11e3309de7cb/approve \
+curl -s http://127.0.0.1:8080/admin/bundles/6cb2ab05a85f60619ac563fb8bf4e4336b68d7734202b4a06c33ebffa6bd0724/approve \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: approve-leave-v3' \
   -H 'X-Person: e7001' -H 'X-Roles: system_admin' \
-  -d '{"digest": "643ef0b7db3cfe193d208b73d47b9c46753a648b282f8acd1c767168a05b96ce", "api_changes": true, "reason": "The contact while away, from April"}' |
+  -d '{"digest": "c0d89609974abd7853451fe5ab6033f7e228e112e738b0c58ade40d5fe6b19ab", "api_changes": true, "script_changes": true, "tools_changes": true, "screens_changes": true, "reason": "The contact while away, from April"}' |
   jq -c '{state, decided: {person: .decided.person, reason: .decided.reason}, starts: [.difference.kinds[] | {name, version, day: .starts.day}]}'
 ```
 
@@ -83,15 +91,15 @@ curl -s http://127.0.0.1:8080/admin/bundles/414b2eda2415968237c7bddbecf55f5d81e6
 
 ## 4. 起動のときにバンドルを読む
 
-`-bundles` には、バンドルを置いたディレクトリを渡します。バンドルは `<名前>.zip` で、署名した物だけを受け取るサーバーなら、その横に署名の `<名前>.zip.sig` を置きます。サーバーは起動のときに、アップロードと同じにどれも確かめてから受け持ちます。決めるのはディレクトリに書く人で、サーバーに何を組み込むかを決める人と同じです。
+`-bundles` には、バンドルを置いたディレクトリを渡します。バンドルは `<名前>.zip` で、その横に署名の `<名前>.zip.sig` を置きます。サーバーが鍵を並べるとき、起動のときに読むバンドルにも、アップロードと同じくそのどれかによる署名を求めます。署名が違うか無いときは起動を止めます。鍵を並べないときは、ディレクトリのバンドルに署名は要らず、アップロードは断ります。決めるのはディレクトリに書く人で、サーバーに何を組み込むかを決める人と同じです。
 
 ```sh
-go run ./cmd/server -dev-login -bundles bundles
+go run ./cmd/server -dev-login -bundle-keys bundle.pub -bundles bundles
 ```
 
 ```
 level=INFO msg="the server reads the bundles of -bundles as it starts" dir=bundles bundles=1
-level=INFO msg="a bundle of Config.Bundles is checked, and served" bundle=leave-v3.zip digest=414b2eda2415 adds="leave v3, leave_ja v3" vectors=244 worked=50
+level=INFO msg="a bundle of Config.Bundles is checked, and served" bundle=leave-v3.zip digest=6cb2ab05a85f adds="leave v3, leave_ja v3" vectors=244 worked=50
 level=INFO msg=listening addr=127.0.0.1:8080 pages=http://127.0.0.1:8080/
 ```
 
@@ -107,7 +115,7 @@ level=INFO msg=listening addr=127.0.0.1:8080 pages=http://127.0.0.1:8080/
 |---|---|
 | 大きさ | アップロードしたままで 64 MiB まで（`server.Config.MaxBundle`）、ファイルは 10,000 まで、展開した大きさも 64 MiB まで |
 | 形 | `wasm.json` があり、このサーバーが読める版の約束であること |
-| 署名 | `-bundle-keys` があれば、そのどれかの鍵の署名 |
+| 署名 | `-bundle-keys` のどれかの鍵の署名。zip を開く前に確かめます。鍵を一つも並べないサーバーはアップロードを受け取りません。そのとき起動のときに読むバンドルには署名を求めません |
 | 版 | サーバーにある版は、サーバーの物と同じであること。サーバーにない版を一つ以上足すこと。決めるのを待っているほかのバンドルが足す版を足さないこと |
 | コード | 読み込めて、その画面とエージェントのツールがサーバーの物と合うこと |
 | ベクタ | ベクタのイベントとフォームのどれも、そのコードで動かして、ベクタのとおりに答えること |

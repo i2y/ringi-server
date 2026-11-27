@@ -860,15 +860,15 @@ refuses:
   nothing to call, not even a clock: the time is an argument;
 - a module that does not export what `wasm.json` names, or exports it with other types (`call` takes
   two `i32` and answers one, `cabi_realloc` takes four and answers one, `cabi_post_call` takes one),
-  and one whose memory starts larger than the limit of a call (below);
+  and one whose memory starts larger than the limit it may start with (below);
 - a kind with no `start` or no `next`, an entry whose arguments are not the ones the framework gives
   (`start`: `submit`, `organization` and the time; `next`: `ticket`, `event`, `organization` and the
   time; `worked`: `input`), and a name of a module or a function that a line of JSON cannot hold as it
   is.
 
 Each is said with the file and what to do, as the framework's other refusals are, and the package's
-`TestLoadRefuses` holds each to its sentence. A Go package of the examples loads in 6 ms; their module
-(5.1 MB) is compiled in 0.8 s, once for each `Load`.
+`TestLoadRefuses` holds each to its sentence. A Go package of the examples loads in 6.3 ms; their module
+(5.1 MB) is compiled in 0.753 s, once for each `Load`.
 
 **A call.** An entry gives the module's door one line of JSON, the line the entries of the Rust
 package write (its `ticket_kinds.rs`): `{"module":…,"function":…,"in":{"<argument>":…,"now":…}}`,
@@ -892,93 +892,116 @@ other checks of the package `conformance` (`TestWasmVectors…`, `TestWasmWorked
 `TestWasmConformance`).
 
 **Limits.** Each call runs within a time, `Options.Time` (2 s when 0), and a number of pages of 64 KiB
-its instance's memory may grow to, `Options.Pages` (1,024, that is 64 MiB, when 0). A call past its
-time is stopped by wazero, which checks the call's context at the back of each loop. A call that
-grows the memory past its pages sees `memory.grow` answer -1, which the generated code takes as no
-memory left, and traps. Either stop, and any other trap of the module, is answered with a
-`*wasmkind.StopError`, which names the module, the function and the limit, and whose `Err` is
-`ErrTime`, `ErrMemory` or `ErrTrap` (`errors.Is`). It is no `KanameError`, so the framework answers it
-as the server's failure (500, logged), as it does any other error of a Go entry. The instance it ran
-in is closed and not used again. The defaults are far above what the examples use: a call of their
-vectors takes 0.46 ms on average, and an instance's memory, 18 pages when it starts, is 23 after
-every call of them.
+its instance's memory may grow to, `Options.Pages` (1,024, that is 64 MiB, when 0). The memory it
+starts with is held to a smaller number, `Options.StartPages` (64, that is 4 MiB, when 0, and never
+more than `Pages`): a module whose memory starts larger is refused. A call past its time is stopped
+by wazero, which checks the call's context at the back of each loop. A call that grows the memory
+past its pages sees `memory.grow` answer -1, which the generated code takes as no memory left, and
+traps. Either stop, any other trap of the module, an answer outside its memory, and an answer that is
+not UTF-8, are answered with a `*wasmkind.StopError`, which names the module, the function and the
+limit, and whose `Err` is `ErrTime`, `ErrMemory` or `ErrTrap` (`errors.Is`). It is no `KanameError`,
+so the framework answers it as the server's failure (500, logged), as it does any other error of a Go
+entry. The instance the call ran in is closed and not used again. An answer of none of the door's
+shapes is logged by its first 200 bytes and its length, not whole. The defaults are far above what
+the examples use: a call of their vectors takes 0.56 ms on average, and an instance's memory starts
+with 18 pages.
+
+At most `Options.Instances` calls run at once (twice `runtime.GOMAXPROCS` when 0). A call past them
+waits for one to be free, within the same `Time`. One that finds none is not run, and is answered
+with a `StopError` whose `Err` is `ErrBusy`, so the server can answer too much work apart from a
+failure of the module. The framework answers it 503 with `Retry-After: 1` everywhere a stopped call
+of another kind is the server's failure (500): the API, the pages and mcp (`server.Busy` reads the
+stop as it does net.Error, so the framework does not import the runner). The caller may make the
+same call again, with the same key, in a breath. The generated `Kind` functions have no context to pass (2.1), so the wait
+cannot end with the request's own context inside `wasmkind`; bounding it keeps one call from waiting
+behind any number of others.
 
 The limit of time costs the most. wazero compiles its check into the back of each loop, and the
-generated code loops over each byte of the JSON it reads and writes. Every call of the examples'
-vectors takes 0.49 ms on average with the checks, and 0.18 ms with the module compiled without them
-(the best of five rounds, in instances kept). Without them a server could not stop a call that does
-not end, so they are always on.
+generated code loops over each byte of the JSON it reads and writes. Without the checks a server
+could not stop a call that does not end, so they are always on.
 
-**Instances.** Making an instance copies the module's data into a new memory of 18 pages (1.1 MiB):
-a `worked` of the expense claim takes 35 µs in an instance a call left, and 144 µs in a new one. So
-the instances are kept between calls. A call takes one a call left, or makes one. At most
-`Options.Instances` run at once (twice `runtime.GOMAXPROCS` when 0), and a call past them waits for
-one to be free; its time starts when it has one. After the call the instance is kept for the next,
-unless the call was stopped or answered outside the module's memory, or its memory grew past what an
-instance is kept with: twice the pages it starts with, or 64 more if that is more, within
-`Options.Pages` (82 for the examples' module). The generated code frees what a call allocated
-(`cabi_post_call` frees the answer once it is read) and keeps nothing from one call to the next, so
-a kept instance answers as a new one. `TestKeptAnswersAsNew` runs every call of the examples' vectors
-(3,386) in one instance, in three rounds (in order, backwards, in order again): each answer is the
-one an instance of its own gives, to the byte, and the memory is 23 pages after each round. The
-package's own tests hold the rest with modules made for them: an instance that trapped, ran past its
-time or grew past its pages is not given the next call (`TestInstances`), and 200 calls at once,
-with 1, 3 and the default number of instances, are each answered their own answer (`TestAtOnce`).
-`Options.Fresh` makes a new instance for each call and keeps none, to compare with.
+**Instances.** Making an instance copies the module's data into a new memory of 18 pages (1.1 MiB).
+It costs: before this form was chosen, a `worked` of the expense claim took 34.1 µs in an instance a
+call left, and 145.5 µs in a new one; every call of the vectors took 442.0 µs on average where
+instances were kept, and 570.4 µs with a new one each. A card of 24 people took 1.132 ms and
+1.618 ms, and the start page 2.247 ms and 3.222 ms. Even so, every call now runs in an instance
+of its own, which is closed after it. The kinds ritsu generates keep nothing from one call to the
+next, but `wasmkind` cannot tell the modules it generated from one written by hand, and memory and
+mutable globals of such a module can hold what one call read for the next. No state is allowed to
+pass, so the safe form is the only form: `Options.Fresh` remains for source compatibility, and has
+no effect.
+
+`TestInstances` holds this with modules made for it, one whose mutable global counts its calls and
+one whose memory does: every call answers as the first of a new instance, including after one that
+trapped, ran past its time or grew its memory. `TestCallsAnswerTheSame` runs every call of the
+examples' vectors (3,386) in three rounds (in order, backwards, in order again), each answer the one
+the first round gave, to the byte. `TestAtOnce` gives 200 calls at once, with 1, 3 and the default
+number of instances, and each is answered its own answer.
+
+Because no instance is kept, there is no memory of instances left between calls: the number kept is
+zero, the time before one is thrown away is zero, and their total over the server is zero. The start
+limit above holds what each new instance first takes.
 
 **What it costs.** The examples' `TestWasmTimes` measures it, with `RINGI_WASM_TIMES` set (on a
 laptop: darwin/arm64, `GOMAXPROCS` 14). The pages are those of `web`, opened from a server in memory.
 
-| One call (the expense claim) | Go | Wasm, kept | Wasm, a new instance each |
-|---|---|---|---|
-| `start` | 118.4 µs | 557.5 µs | 671.6 µs |
-| `next` | 131.8 µs | 703.0 µs | 836.4 µs |
-| `worked` | 6.3 µs | 35.1 µs | 143.5 µs |
-| every call of the vectors (3,386), each | 110.5 µs | 458.8 µs | 591.4 µs |
-| 13 calls of `next` at once, all of them | 458.8 µs | 1,280.6 µs | 1,971.9 µs |
-| 56 calls of `next` at once, all of them | 1,598.8 µs | 4,454.9 µs | 6,577.6 µs |
+| One call (the expense claim) | Go | Wasm |
+|---|---|---|
+| `start` | 115.8 µs | 714.5 µs |
+| `next` | 134.3 µs | 871.0 µs |
+| `worked` | 6.4 µs | 160.7 µs |
+| every call of the vectors (3,386), each | 108.6 µs | 563.8 µs |
+| 13 calls of `next` at once, all of them | 583.3 µs | 2,332.4 µs |
+| 56 calls of `next` at once, all of them | 2,293.7 µs | 8,241.0 µs |
 
-| People | Page | Go | Wasm, kept | Wasm, a new instance each |
-|---|---|---|---|---|
-| 24 (the examples') | an approver's card | 0.750 ms | 1.203 ms | 1.655 ms |
-| 24 | the start page | 0.991 ms | 2.458 ms | 3.425 ms |
-| 1,200 | an approver's card | 0.728 ms | 1.139 ms | 1.744 ms |
-| 1,200 | the start page | 1.024 ms | 2.537 ms | 3.479 ms |
-| 5,000 | an approver's card | 0.768 ms | 1.258 ms | 1.863 ms |
-| 5,000 | the start page | 1.000 ms | 2.465 ms | 3.371 ms |
-| 20,000 | an approver's card | 0.797 ms | 1.258 ms | 1.945 ms |
-| 20,000 | the start page | 1.027 ms | 2.464 ms | 3.374 ms |
+| People | Page | Go | Wasm |
+|---|---|---|---|
+| 24 (the examples') | an approver's card | 0.816 ms | 2.162 ms |
+| 24 | the start page | 0.909 ms | 3.861 ms |
+| 1,200 | an approver's card | 0.749 ms | 2.120 ms |
+| 1,200 | the start page | 0.914 ms | 3.778 ms |
+| 5,000 | an approver's card | 0.731 ms | 2.180 ms |
+| 5,000 | the start page | 0.917 ms | 3.729 ms |
+| 20,000 | an approver's card | 0.772 ms | 2.096 ms |
+| 20,000 | the start page | 0.909 ms | 3.866 ms |
 
 The people more than the examples' 24 are in a team no kind reads (human resources). A call costs
-about four times what it costs in Go. A card asks `next` of each event the gate allows, at once
-(8.1), so it costs about 0.5 ms more, however many people the organization has. With fewer
-processors the calls wait for one another: with `GOMAXPROCS` 1, a card takes 4.0 ms (1.8 ms in Go),
-with 2, 2.5 ms (1.2 ms), with 4, 1.6 ms (0.9 ms). The start page asks `start` of every kind (10.1),
-and costs about 1.5 ms more.
+about five times what it costs in Go. A card asks `next` of each event the gate allows, at once
+(8.1), so it costs about 1.3 ms more, however many people the organization has. With fewer
+processors the calls wait for one another: with `GOMAXPROCS` 1, a card takes 6.0 ms (1.7 ms in Go),
+with 2, 3.4 ms (1.2 ms), with 4, 2.4 ms (0.9 ms). The start page asks `start` of every kind (10.1),
+and costs about 3.0 ms more.
 
 What does grow with the organization is a team a kind reads: its people are in the part of the
 organization each call of the kind is given (9.2), written into the line and read whole. With the
 people added to general affairs, whose members a purchase request reads, the cards above (of a leave
-request) stay the same, and the start page takes, in Go and as Wasm, 10.8 ms and 27.8 ms with 1,200
-people, 42.2 ms and 108.8 ms with 5,000, and 172.0 ms and 440.0 ms with 20,000. It is the cost of the
+request) stay the same, and the start page takes, in Go and as Wasm, 10.6 ms and 26.7 ms with 1,200
+people, 42.1 ms and 107.6 ms with 5,000, and 164.4 ms and 415.1 ms with 20,000. It is the cost of the
 part, in either.
 
 **Considered and not made.**
 
 - One entry that answers every event of a card in one call, which would write the ticket and the
-  part into one line in place of one for each event. A card costs 0.5 ms more as Wasm, which no one
-  sees, and the entry would be a new one in the contract of every language.
-- A new instance for each call, so that nothing could stay between calls. Each call would pay for an
-  instance (the tables), and the tests above show a kept instance answers as a new one. It stays as
-  `Options.Fresh`.
+  part into one line in place of one for each event. A card costs 1.3 ms more as Wasm, which is
+  small beside what the page does, and the entry would be a new one in the contract of every
+  language.
+- Instances kept between calls, as the earlier form kept them. They were faster (above), but nothing
+  in the shape of a module says whether it keeps state: the kinds ritsu generates do not, and one
+  written by hand can, so one call could leave something of its state for the next.
+- Reusing an instance after restoring its memory and its globals to what they were when it was made.
+  Memory can be copied back only while it has not grown: WebAssembly memory cannot shrink, and its
+  size is part of its state. Tables and element segments can change too. Finding every instruction
+  that can change them, or refusing every module whose form the scan does not know, is more machinery
+  than the time it would save is worth. A fresh instance is the simpler and stronger proof.
+- Instances made before they are needed. They would still hold memory between calls, and the same
+  work of making them would still be done for each call.
 - wazero's own limit of pages (`WithMemoryLimitPages`). A growth past it fails as well, but the call
   then ends in a trap like any other, and the error could not say that the memory stopped it. The
   package gives wazero a memory of its own instead (`experimental.WithMemoryAllocator`), which
   refuses the growth and notes that it did.
 - Limits written into the generated code. They would be the module's word about itself, and a module
   that does not end is what a limit is for.
-- A call with no limit of time, which is 2.7 times as fast (above): a server could not stop a call
-  that does not end.
+- A call with no limit of time: a server could not stop a call that does not end.
 - A runtime of WebAssembly that needs cgo: a server of the framework builds with none.
 
 ## 3. One event, in order
@@ -1007,8 +1030,12 @@ An operation of a person (`Do`):
 5. **`start` or `next`.** The kind's entry is called with the ticket, the event, the part of the
    organization the two need (9.2) and the time. A refusal is answered (409) and kept with the key:
    the ticket does not change.
-6. **Save.** The move is saved in one transaction (4.1): the ticket, if its number is still the one
-   read; the move, with the things to do `next` answered; the timers it sets and cancels, and the
+6. **Save.** Before anything is saved, the answer is checked: the ticket's form against the
+   version's form of the description — every key a declared field, every value the field's type
+   within its bounds, the same check the submit body gets (7.2) — and the ticket's size against the
+   body's limit (7.3). A form that fails, or a ticket past the limit, is the server's failure, as a
+   stopped call is: nothing is saved. The move is saved in one transaction (4.1): the ticket, if
+   its number is still the one read; the move, with the things to do `next` answered; the timers it sets and cancels, and the
    one that rang; the things to do after the save; who the ticket now waits for, and since when; the
    people it names; the key and the reply, in place of what `Begin` kept for the key; and, when the
    books share the database, the books' calls. If a book refuses, nothing is saved, and the event is
@@ -1395,6 +1422,8 @@ contract with its text of 20,000 characters: about 60 KB of UTF-8 when the text 
 about 120 KB when a client writes every character as `\uXXXX`. Attachments are file IDs, not files,
 so a form does not carry them. `web` holds the body of a screen's action to the same limit, and takes
 each file on its own route, up to a limit of its own (`web.Config.MaxFile`, 10 MiB when not given).
+An answered ticket has the same upper limit: one a kind's entry answers past `Config.MaxBody` is the
+server's failure, and nothing of it is kept.
 
 ### 7.4 How often a comment is taken
 
@@ -1535,8 +1564,23 @@ what no screen shows (`data`, `clock`, `unread`, `book`), and the answer to the 
 asked of the server's own limits too (7.4): one the server takes later may be made, and the answer
 says how long to wait; one it takes no more of may not.
 
+An event whose `next` fails to answer — a stopped call, a panic, an answer that does not read —
+is one the person cannot do now: `Can` leaves it out, and the card still shows the ticket. One is
+remembered for the ticket and the event for a minute, and is not asked of the entry again within
+it; doing the event in that minute is answered 503 with `Retry-After` of the seconds of the minute
+left, and nothing is kept. An entry's refusal of what it was given (kaname's input and rule
+errors, or a failure a hand-written entry returns) is not one: it is the server's failure each
+time. Nor is a call that found no instance free (2.9): it is answered 503 with `Retry-After: 1`,
+of `Can` too, and the next ask asks the entry again.
+
 `Can` is asked as the screen is made, and the ticket may move before the button is pressed: the
 operation is asked of the gate and of `next` again.
+
+A kind whose own code fails to answer does not take the pages of several kinds down with it: on
+the start page and in `list_requests` (the API and mcp), the kind is left out of what it cannot be
+asked of — the page says in its place, in the page's language, that this request type cannot be
+shown now, and the rest is shown. The log says so once a minute for each kind version, not once
+per page; a failure of the store or the gate is the server's own, and fails the page.
 
 A screen costs a `next` for each event the gate allows, each with the part of the organization its
 event needs (9.2). The server asks them at once, each on a goroutine of its own, so that an approver's
@@ -2243,9 +2287,11 @@ the day begins. `Server.Current` answers from the starts the process read last.
 
 A version's owner is the team its description names (`owner`; none when it names none). A kind's
 owner is the owner of its version in effect now. While none of its versions is in effect, the kind
-is held by the owners of the versions an administrator set to `never` or to start on a later day:
-those are the teams that may have left it with none, and which of them did is not known from the
-starts. The list of kinds names the kind's owner when it is one team, and none (null) otherwise.
+is held by the owners of the versions an administrator set to `never` or to start on a later day,
+and of those whose own day has not come: a kind no version of which has started yet is owned by the
+owner its versions name. The first are the teams that may have left it with none, and which of them
+did is not known from the starts. The list of kinds names the kind's owner when it is one team, and
+none (null) otherwise, and a switch is asked of the same owners.
 
 ### 13.3 Importing a version of the organization
 
@@ -2861,6 +2907,17 @@ refusal says so, and that making the bundle with the ritsu that made the server'
 
 ### 15.2 The kinds while the server runs
 
+Each version of each kind is bound to the package or bundle that added it: its code, its
+description, its tool description, its screens and its script come from there and nowhere else. A
+bundle's versions the server already has are never taken from that bundle, whoever approved it, and
+a process started without the Go package runs a version only from the bundle that added it; of one
+it has neither, the kind is not offered there, and the log says so. Pages that are not a request
+type's own (the start page, the lists, the administrators' pages) load only the script built into
+the server; a request type's page loads the script of the bundle or package that added the version
+it shows, never the newest bundle's.
+
+
+
 The kinds a server serves are one value, which a bundle approved replaces as a whole: the packages,
 each kind's versions in order, the operations of each version, the API's description (15.8) and what
 a page and the agents' tools read of each package. A request reads the value once, with no lock, and
@@ -2883,7 +2940,9 @@ A process serves no bundle the store does not keep approved.
 an upload is (15.5), kept approved, as read at start (`source` "start"), with a record of each
 version it adds, and served from what was checked, with no second load; one the store keeps approved
 already is read with the others, and one whose every version the server's packages have alike is left,
-and said in the log. Then every approved bundle the store keeps, and the process does not serve yet,
+and said in the log. When the server lists keys, a bundle of the directory is asked a signature by one
+of them as an upload is: a wrong or missing one stops the server. When it lists none, the directory's
+bundles need none, and uploads are refused (15.5). Then every approved bundle the store keeps, and the process does not serve yet,
 is read. Each bundle served is said in the log, with the versions it adds. A bundle that does not pass, and an approved one that does not load, stop the
 server, with what is wrong. There is no second person to decide such a bundle: whoever writes the
 directory decides it, as they decide the packages built into the server.
@@ -2921,19 +2980,35 @@ As it takes a bundle, in this order, before anything is kept:
   not a plain file (as the organization's zip is checked, 13.3). Past them, 413.
 - **Its form.** `wasm.json` of the form the server reads (1) and of a contract it reads (11), and
   each kind's description named and numbered as `wasm.json` says.
-- **Its signature.** With `Config.BundleKeys` (`-bundle-keys`), the signature must be one of those
-  keys' (`bundlesign`: ed25519 over `"ringi bundle v1\n" + digest + "\n"`), sent with the upload
-  (`Bundle-Signature`, a field of the page) or beside the bundle in the directory. Without keys, none
-  is asked.
+- **Its signature.** An upload is taken only with a signature of one of the keys of
+  `Config.BundleKeys` (`-bundle-keys`; `bundlesign`: ed25519 over `"ringi bundle v1\n" + digest +
+  "\n"`), sent with it (`Bundle-Signature`, a field of the page). The signature is checked right
+  after the body is read, before the zip is opened. A server that lists no keys refuses every upload,
+  saying how to list them (docs/signing.md): signing is meant for the job that builds the bundle
+  from the reviewed repository, not for the person who uploads. The directory read at
+  start follows the rule of 15.3. The store keeps the signature and which key made it (its
+  fingerprint).
 - **Its versions.** Each held version the same as the server's (15.1); at least one added; none that
   another bundle waiting to be decided adds.
 - **Its code.** `Config.LoadBundle` loads it; the parts check it (15.2).
 - **Its vectors.** Every event of `vectors/<kind>.jsonl` and every form of `vectors/worked/` run on
   its code, and each answer the same as the vector's: the ticket and the things to do, or the
   refusal and where. A bundle with one that does not agree is refused, naming the first 20.
+- **Its API against its descriptions.** The shape of each kind's submit body in the bundle's
+  `openapi.json` is compared with the kind's form in `types/<kind>.json` (15.6): each field the form
+  takes is a property of the schema, of a type that agrees, with the range and the length the schema
+  can say, and the schema has no property the form does not take (a field computed, or filled in by
+  approvers alone, is not in the body). A bundle in which they disagree is refused, naming the kind
+  and the field, whoever signed it: else a bundle of one version's descriptions with the openapi of
+  another would be checked only in the part the vectors happen to take. Each vector's input is
+  checked against the bundle's `openapi.json` besides, but for the ranges: ritsu writes edge vectors
+  of inputs past a bound, which the kind's own code is to refuse.
 
-A process checks one bundle at a time (another upload meanwhile is answered 429); a check loads the
-code and runs every vector, in parallel over the processors. The same digest again is not checked:
+A process checks one bundle at a time (another upload meanwhile is answered 429, with
+`Retry-After`); a check loads the code and runs every vector, in parallel over the processors. The
+whole check is bounded in time, `Config.MaxCheckTime` (20 seconds by default, shorter than serve's
+`WriteTimeout` of 30, so the answer is written before the server's own write ends): a check past
+it is refused, in both languages, and nothing is kept. The same digest again is not checked:
 it answers the bundle there is, and adds nothing. What does not pass is answered 400 with each problem
 and where (`framework.problems`, as the organization's data are), in English and in Japanese.
 
@@ -2944,13 +3019,33 @@ The server writes the difference of each version a bundle adds itself, from the 
 how the approvers are chosen, the days it may be used on and the API's shape, each a line in the
 reader's language ([kinddiff/DESIGN.md](kinddiff/DESIGN.md) says what it reads, and how it words
 each line). A line that changes what a program sends or reads is marked as changing the API, and so
-is a new kind. Beside it, the text the bundle holds from `ritsu ringi diff`, as "the text the
-bundle held", which the server does not read: the server's own lines are the ones to trust, as the
-bundle's text is what its maker wrote. The text is Markdown; the page shows its headings, paragraphs,
-lists and tables as HTML the page writes itself (`screens/page`, `SaidBlocks`), leaving out its
-comments, so that nothing in the bundle's text is read as HTML, and the API answers it as it is. The
-difference has a digest of its own, of the bundle and the
-lines, which an approval sends back (15.7).
+is a new kind. The difference says too, file by file, when the script the kinds' pages load
+(`a2ui/functions.js`), the tools' descriptions (`mcp/tools.json`) or a screen (`a2ui/<kind>/*.json`)
+changes: each version's come from the package or bundle that added it and nowhere else (15.2), and
+deciding such a bundle takes a mark that they were read, as the API's. What this does not cover:
+the script still runs in the browser of everyone who uses the pages, with what the server answers
+them; running it in another origin, or computing on the server instead, is left to the author.
+
+The bundle's page shows, of the check, how many vectors of each kind ran — of a ticket's first
+event and of the events after it, counted at the check and kept with the bundle — and, beside the
+key's fingerprint, the version of ritsu `wasm.json` names (its comment, "Code generated by ritsu
+0.56.0. DO NOT EDIT.").
+Beside it, after the server's own lines and under a heading that says so, the text the bundle holds
+from `ritsu ringi diff`, as the bundle's own text which the server does not check: the server's own
+lines are the ones to trust, as the bundle's text is what its maker wrote. The text is Markdown; the
+page shows its headings, paragraphs, lists and tables as HTML the page writes itself
+(`screens/page`, `SaidBlocks`), leaving out its comments, so that nothing in the bundle's text is
+read as HTML, and the API answers it as it is. The difference has a digest of its own, binding the
+lines the decider read in both languages, the bundle's digest and the versions compared, which an
+approval sends back (15.7). The lines are written from the descriptions alone; the kinds' code itself
+is checked only by the vectors the bundle carries, not by building the module again from the sources
+the bundle holds: building it again on the server, or comparing it with the module the bundle carries,
+is left to the author. Nor does the server run the vectors again at later times: it has no answer to
+compare with at a later time, as the organization's dated entries and the calendars can rightly
+change the approvers, and with signatures required, replacing `kinds.wasm` takes the signer. And a
+vector names its scenario, not the rows of the route it goes through, so the server cannot tell
+whether every row is covered by one: only ritsu knows the rows, and a coverage by row is left to the
+author, as a change in ritsu and the server together.
 
 The list of bundles is the newest first, with the versions each adds and its state; the hidden ones
 are listed apart. A bundle's page and answer say who uploaded it and when, its size, whether a key the
@@ -2962,10 +3057,14 @@ or hid it.
 A bundle is **pending** once checked, and an administrator other than the one who uploaded it
 approves or declines it, with a reason if they give one. An approval sends the difference's digest it
 read: when the server would show another (the server's versions changed since), it is refused as
-stale, and the page shows the difference again. When the bundle changes the API (15.6), the approval
-says that they checked it (`api_changes`), or it is refused. The approval checks the bundle again, as
-the server is then, but for the signature, which was checked as it was uploaded; when the server takes
-only signed bundles now, one uploaded with no signature is refused. Once approved, the bundle is kept
+stale, and the page shows the difference again. When the bundle changes the API, the script, the
+tools or the screens (15.6), the approval says that they were read (`api_changes`, `script_changes`,
+`tools_changes`, `screens_changes`), or it is refused. The approval checks the bundle again, as the
+server is then; the stored signature is verified again with the keys the process lists now, and with
+no listed key that verifies it the decision is refused, saying why. A version already approved keeps
+running in every process: its tickets in progress finish on it, and stopping a version is what
+switching does; a process that does not list the key that signed it says so once in its log and on
+the bundle's page. Once approved, the bundle is kept
 **approved**, the server serves its versions, and they are listed among the versions to switch (13.2),
 each starting as its description says. A declined bundle is kept **declined**.
 

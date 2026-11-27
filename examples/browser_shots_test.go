@@ -137,7 +137,7 @@ func shots(t *testing.T, lang, dir string) {
 		t.Fatal(err)
 	}
 	srv, h := newWeb(t, webSetup{Store: memstore.New(), At: monday, Files: &servertest.Files{}, Auth: personOf{}, Gate: &Gate{}, Packages: []*server.Package{p, p2},
-		Config: func(c *server.Config) { c.LoadBundle = wasmkind.Load }})
+		Config: func(c *server.Config) { c.LoadBundle = wasmkind.Load; withBundleKeys(t, c) }})
 	// The kinds written in the other language are switched off, so that the pages list those of one.
 	kind := func(name string) string {
 		if lang == "ja" {
@@ -218,7 +218,9 @@ func shots(t *testing.T, lang, dir string) {
 	// The page of a bundle (docs/bundles.md): the examples' bundle of version 3 of the leave requests,
 	// uploaded by the administrator of human resources, as the administrator of the whole reads it to
 	// decide it.
-	up := send(h, "POST", "/admin/bundles/uploads", "e6001", leaveV3(t), "Content-Type", "application/zip", "Idempotency-Key", "shot-bundle", "X-Roles", "workflow_admin")
+	archive := leaveV3(t)
+	up := send(h, "POST", "/admin/bundles/uploads", "e6001", archive, "Content-Type", "application/zip", "Idempotency-Key", "shot-bundle", "X-Roles", "workflow_admin",
+		server.BundleSignatureHeader, string(signBundle(t, archive)))
 	var bundle struct{ Digest string }
 	if json.Unmarshal(up.Body.Bytes(), &bundle); up.Code != 200 || bundle.Digest == "" {
 		t.Fatalf("the upload of the bundle: %d %s", up.Code, up.Body)

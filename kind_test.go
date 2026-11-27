@@ -38,6 +38,10 @@ const tripAPI = `{"openapi":"3.1.0","x-ritsu-contract":3,"paths":{
 const tripType = `{"contract":3,"name":"trip","written":"trip","version":1,"title":"Trip","file":"trip.ringi","owner":"office",
 "effective_from":null,"usable":{"from":"2026-01-01","through":null},
 "organization":{"name":"co","data":"org","positions":[{"name":"staff"},{"name":"boss"}],"team_kinds":[{"name":"department"}],"needs":{"people":[],"teams":[],"members_of":[]}},"events":["approve","comment"],"masters":[],
+"form":[{"name":"amount","written":"amount","label":"Amount","labels":"Amount","type":"number","type_written":"number","min":1,"max":null,"count_min":null,"count_max":null,"choices":null,"optional":false,"computed":false,"reads":null,"worked_on_screen":null,"approvers_only":false,"open_in":null,"shown_when":null,"required_when":null,"fields":null},
+{"name":"to","written":"to","label":"To","labels":"To","type":"text","type_written":"text","min":null,"max":null,"count_min":null,"count_max":40,"choices":null,"optional":false,"computed":false,"reads":null,"worked_on_screen":null,"approvers_only":false,"open_in":null,"shown_when":null,"required_when":null,"fields":null},
+{"name":"day","written":"day","label":"Day","labels":"Day","type":"date","type_written":"date","min":null,"max":null,"count_min":null,"count_max":null,"choices":null,"optional":false,"computed":false,"reads":null,"worked_on_screen":null,"approvers_only":false,"open_in":null,"shown_when":null,"required_when":null,"fields":null},
+{"name":"check","written":"check","label":"Check","labels":"Check","type":"bool","type_written":"bool","min":null,"max":null,"count_min":null,"count_max":null,"choices":null,"optional":true,"computed":false,"reads":null,"worked_on_screen":null,"approvers_only":false,"open_in":null,"shown_when":null,"required_when":null,"fields":null}],
 "utc_offset_minutes":540,"self_approval":false}`
 
 func tripFiles() fstest.MapFS {

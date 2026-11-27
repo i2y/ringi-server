@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"time"
 
 	server "github.com/i2y/ringi-server"
 	"github.com/i2y/ringi-server/screens"
@@ -103,8 +104,56 @@ func (h *Handler) newestPages() *page.Pages {
 	return ps.sets[0].pages
 }
 
-// pageAsset serves a file of the pages: page.css, page.js, and the newest package's functions.js.
+// builtinPages answers the pages of the newest package built into the server (one of
+// Config.Packages, not a bundle's): pages that are not a request type's own — the start page, the
+// lists' frames and the administrators' pages — load only the script built into the server, never
+// a bundle's (DESIGN 15.6). With no package built in, the pages of the newest set, whose script
+// the shared address does not serve (pageAsset).
+func (h *Handler) builtinPages() *page.Pages {
+	ps := h.packs()
+	var out *screenSet
+	for _, s := range ps.sets {
+		if s.pkg.Bundle() != "" {
+			continue
+		}
+		if out == nil || s.Set == ps.assets {
+			out = s
+		}
+	}
+	if out != nil {
+		return out.pages
+	}
+	return h.newestPages()
+}
+
+// emptyFunctions is the functions.js the shared address serves when no package is built into the
+// server: the pages' own script (page.js, of the framework) works, and no bundle's functions run
+// on pages that are not a request type's own.
+const emptyFunctions = "export const catalogId = \"\";\nexport const functions = {};\n"
+
+// pageAsset serves a file of the pages at the shared address: page.css and page.js, which are the
+// framework's own, and the functions of the packages built into the server — never a bundle's, so
+// that a page that is not a request type's own runs no code a bundle brought (DESIGN 15.6). A
+// kind's own page loads the files of the version's package from their own address (packageAsset).
 func (h *Handler) pageAsset(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "functions.js" {
+		built := false
+		for _, s := range h.packs().sets {
+			if s.pkg.Bundle() == "" {
+				built = true
+			}
+		}
+		if !built {
+			serveAsset(w, r, screens.Asset{Name: name, ContentType: "text/javascript; charset=utf-8", Body: []byte(emptyFunctions), ETag: `"empty"`})
+			return
+		}
+		a, err := h.builtinPages().Asset(name)
+		if err == nil {
+			serveAsset(w, r, a)
+			return
+		}
+	}
 	a, err := h.newestPages().Asset(r.PathValue("name"))
 	if notFound(err) {
 		writeError(w, http.StatusNotFound, "no such file")
@@ -236,10 +285,43 @@ func (h *Handler) notice(w http.ResponseWriter, r *http.Request, p *server.Perso
 	h.show(w, r, p, ps, lang, nil, status, pg)
 }
 
-// pageFail answers a failure of the server's on a page, and logs it.
+// pageFail answers a failure of the server's on a page, and logs it. A call of a kind that found
+// no instance free (server.Busy) is answered 503 with Retry-After, as fail answers it: too much
+// work at once, not a failure of the server's.
 func (h *Handler) pageFail(w http.ResponseWriter, r *http.Request, p *server.Person, what string, err error) {
 	h.log.Error(what, "err", err)
-	h.notice(w, r, p, http.StatusInternalServerError, page.NoticeFailed)
+	if server.Busy(err) {
+		w.Header().Set("Retry-After", "1")
+	}
+	h.notice(w, r, p, statusOfFailure(err), page.NoticeFailed)
+}
+
+// statusOfFailure answers 503 for a call that found no instance free, and 500 for any other
+// failure of the server's.
+func statusOfFailure(err error) int {
+	if server.Busy(err) {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusInternalServerError
+}
+
+// kindOut logs that a kind's own code failed to answer and its part is left out, once a minute
+// for each kind version, not once per page: a kind whose every call never ends would otherwise
+// fill the log with one line for every page of every person.
+func (h *Handler) kindOut(kind string, version int, err error) {
+	key := kind + " version " + strconv.Itoa(version)
+	h.kindsOutMu.Lock()
+	if h.kindsOut == nil {
+		h.kindsOut = map[string]time.Time{}
+	}
+	last, said := h.kindsOut[key]
+	if said && time.Since(last) < time.Minute {
+		h.kindsOutMu.Unlock()
+		return
+	}
+	h.kindsOut[key] = time.Now()
+	h.kindsOutMu.Unlock()
+	h.log.Error("a kind's own code failed to answer; its part of the page is left out", "kind", kind, "version", version, "err", err)
 }
 
 // homeListed is how many tickets of a kind the start page lists under its entry.
@@ -293,15 +375,24 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p server.Person) 
 			}
 			in.Waiting = append(in.Waiting, page.Entry{Name: kind, Title: title, Lang: tl, Count: n, URL: keepLang(r, PagesPath+"waiting/"+url.PathEscape(kind)), Tickets: listed})
 		}
+		// A kind whose own code fails to answer is left out of what it cannot be asked of, with the
+		// words that say so in its place; the rest of the page is shown (server.KindFailed: a
+		// stopped call, a panic, an answer that does not read — not a failure of the store or the
+		// gate, which is the server's own).
+		kindIsOut := false
 		sub, err := h.srv.Submitting(ctx, p, kind)
-		if err != nil && !notFound(err) {
+		if err != nil && !notFound(err) && server.KindFailed(err) {
+			h.kindOut(kind, 0, err)
+			in.New = append(in.New, page.Entry{Name: kind, Title: title, Lang: tl, Out: page.CannotShowNow(lang)})
+			kindIsOut = true
+		} else if err != nil && !notFound(err) {
 			h.pageFail(w, r, &p, "who may make a request of "+kind, err)
 			return
 		}
-		if err == nil && (sub.Self || len(sub.For) > 0) && h.setOf(kind, sub.Version) != nil {
+		if !kindIsOut && err == nil && (sub.Self || len(sub.For) > 0) && h.setOf(kind, sub.Version) != nil {
 			in.New = append(in.New, page.Entry{Name: kind, Title: title, Lang: tl, URL: keepLang(r, PagesPath+"requests/"+url.PathEscape(kind)+"/new")})
 		}
-		if notFound(err) {
+		if !kindIsOut && notFound(err) {
 			// no version in effect now: the day the person may make the request from, when the gate
 			// lets them and a version is to start (Server.Offered)
 			from, ok, err := h.srv.Offered(ctx, p, kind)
@@ -557,6 +648,16 @@ func (h *Handler) outcome(w http.ResponseWriter, r *http.Request, p server.Perso
 		}
 		rd.Limited(rep.Problem, wait)
 		return answered{status: http.StatusTooManyRequests}
+	case server.Unavailable:
+		// the kind failed to answer this event within the minute: try again when it is out,
+		// which Retry-After says
+		wait := 0
+		if rep.RetryAfter > 0 {
+			w.Header().Set("Retry-After", server.RetryAfter(rep.RetryAfter))
+			wait, _ = strconv.Atoi(server.RetryAfter(rep.RetryAfter))
+		}
+		rd.Unavailable(rep.Problem, wait)
+		return answered{status: http.StatusServiceUnavailable}
 	}
 	h.notice(w, r, &p, http.StatusNotFound, page.NoticeNotFound)
 	return answered{done: true}

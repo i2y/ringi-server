@@ -34,35 +34,49 @@ The examples make one: `examples/regen.sh` writes `examples/bundles/leave-v3.zip
 version 3 of the leave request. It adds the field "How to reach you while away", takes a first day up to the end
 of 2028, and takes effect on 2028-04-01. The examples' server has versions 1 and 2 built in.
 
-To have the server take only the bundles you signed, see [Sign bundles](signing.md).
+The server takes only bundles signed with a key it lists: sign it as [Sign bundles](signing.md) says, with the key of
+the job that builds it from the reviewed repository. The walkthrough below signs it with a key made for trying the
+examples, which must never be used for anything real.
 
 ## 2. Upload it, and have it approved
 
-Start the examples' server, in `examples/`:
+Make a key pair and sign the bundle, as [Sign bundles](signing.md) says (in `examples/`):
 
 ```sh
-go run ./cmd/server -dev-login
+go run github.com/i2y/ringi-server/cmd/ringi-bundle keygen -out bundle
+go run github.com/i2y/ringi-server/cmd/ringi-bundle sign -key bundle.key bundles/leave-v3.zip
+```
+
+Start the examples' server with the public key:
+
+```sh
+go run ./cmd/server -dev-login -bundle-keys bundle.pub
 ```
 
 Open <http://localhost:8080/>, and sign in as `e6001`, the head of human resources, with the role
 `workflow_admin`: human resources keeps the leave request. Open "Administration" at the bottom of the start
-page, then "Add a version or a request type with a bundle". Choose `bundles/leave-v3.zip`, and press "Upload
-and check". The server checks it (5) and shows its page.
+page, then "Add a version or a request type with a bundle". Choose `bundles/leave-v3.zip` as the bundle, and
+`bundles/leave-v3.zip.sig` as its signature, and press "Upload and check". The server checks the signature
+before it opens the zip, then checks it (5) and shows its page.
 
 The one who uploaded a bundle does not decide it. Sign in again as `e7001` with the role `system_admin`, and
 open the bundle from the same list.
 
 <img src="images/bundle.en.webp" width="600" alt="The page of a bundle: version 3 of the leave request, what changes from version 2 with the lines that change the API marked, the text the bundle held under a summary, and the form to approve or decline it">
 
-- **What changes from version 2**: the server writes it from the two versions: the fields of the form, the
-  stages, how the approvers are chosen, the days it may be used on. A line that changes what a program sends or
-  reads is marked "changes the API".
+- **What changes from version 2**: the server writes it from the two versions' descriptions: the fields of
+  the form, the stages, how the approvers are chosen, the days it may be used on. A line that changes what a
+  program sends or reads is marked "changes the API". The lines are written from the descriptions alone: the
+  kinds' code itself is checked only by the vectors the bundle carries, so a bundle whose code does not do what
+  its descriptions say is not caught here. The signature is what says who built it.
 - **The text the bundle held**: what `ritsu ringi diff` wrote, as those who made the bundle gave it, with its
   tables. Click its line to open it.
 - **When it starts**: "Once approved, new requests take it from 2028-04-01": the day its file says.
 
 When the bundle changes the API, tick "I checked that the API changes" before you approve it: programs that
-call the API, and agents, may need changing. Write the reason, and press "Approve". The new version is then on
+call the API, and agents, may need changing. The bundle of the examples also changes the script the kinds'
+pages load, what their tools say of them, and their screens, and each asks its own tick: read the lines the
+difference lists before you tick them. Write the reason, and press "Approve". The new version is then on
 the page "Switch the versions of the request types", and starts as its file says; switch it as any version
 ([Administering](use/admin.md#switching-the-version-of-a-requests-rules)).
 
@@ -76,25 +90,27 @@ takes [a key of `-api-keys`](api.md#call-it-from-a-program).
 curl -s http://127.0.0.1:8080/admin/bundles/uploads \
   -H 'Content-Type: application/zip' -H 'Idempotency-Key: leave-v3' \
   -H 'X-Person: e6001' -H 'X-Roles: workflow_admin' \
+  -H "Bundle-Signature: $(cat bundles/leave-v3.zip.sig)" \
   --data-binary @bundles/leave-v3.zip |
-  jq -c '{digest, state, adds: [.adds[] | {name, version}], checks, difference: {digest: .difference.digest, api_changes: .difference.api_changes}}'
+  jq -c '{digest, state, adds: [.adds[] | {name, version}], checks, difference: {digest: .difference.digest, api_changes: .difference.api_changes, script_changes: .difference.script_changes, tools_changes: .difference.tools_changes, screens_changes: .difference.screens_changes}}'
 ```
 
 ```
-{"digest":"414b2eda2415968237c7bddbecf55f5d81e62e1164a475cce06c11e3309de7cb","state":"pending","adds":[{"name":"leave","version":3},{"name":"leave_ja","version":3}],"checks":{"vectors":244,"worked":50},"difference":{"digest":"643ef0b7db3cfe193d208b73d47b9c46753a648b282f8acd1c767168a05b96ce","api_changes":true}}
+{"digest":"6cb2ab05a85f60619ac563fb8bf4e4336b68d7734202b4a06c33ebffa6bd0724","state":"pending","adds":[{"name":"leave","version":3},{"name":"leave_ja","version":3}],"checks":{"vectors":244,"worked":50},"difference":{"digest":"c0d89609974abd7853451fe5ab6033f7e228e112e738b0c58ade40d5fe6b19ab","api_changes":true,"script_changes":true,"tools_changes":true,"screens_changes":true}}
 ```
 
 The server ran 244 events and 50 forms of the bundle's vectors on its code, and each answered as the vector
 says. `difference.kinds` holds the lines of the difference, as the page shows them.
 
 Approve it as another person, sending back the digest of the difference you read (`difference.digest`), and
-`api_changes` when the difference says it changes the API:
+`api_changes` when the difference says it changes the API, as well as `script_changes`, `tools_changes` and
+`screens_changes` when it says the script, the tools or the screens change:
 
 ```sh
-curl -s http://127.0.0.1:8080/admin/bundles/414b2eda2415968237c7bddbecf55f5d81e62e1164a475cce06c11e3309de7cb/approve \
+curl -s http://127.0.0.1:8080/admin/bundles/6cb2ab05a85f60619ac563fb8bf4e4336b68d7734202b4a06c33ebffa6bd0724/approve \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: approve-leave-v3' \
   -H 'X-Person: e7001' -H 'X-Roles: system_admin' \
-  -d '{"digest": "643ef0b7db3cfe193d208b73d47b9c46753a648b282f8acd1c767168a05b96ce", "api_changes": true, "reason": "The contact while away, from April"}' |
+  -d '{"digest": "c0d89609974abd7853451fe5ab6033f7e228e112e738b0c58ade40d5fe6b19ab", "api_changes": true, "script_changes": true, "tools_changes": true, "screens_changes": true, "reason": "The contact while away, from April"}' |
   jq -c '{state, decided: {person: .decided.person, reason: .decided.reason}, starts: [.difference.kinds[] | {name, version, day: .starts.day}]}'
 ```
 
@@ -113,17 +129,18 @@ The operations are in [Call the API from a program](api.md) and in `framework.op
 
 ## 4. Read bundles as the server starts
 
-`-bundles` names a directory of bundles, each `<name>.zip`, with its signature `<name>.zip.sig` beside it when
-the server takes only signed ones. The server checks each as it starts, as an upload is checked, and serves it:
-whoever writes the directory decides it, as they decide what is built into the server.
+`-bundles` names a directory of bundles, each `<name>.zip`, with its signature `<name>.zip.sig` beside it. When
+the server lists keys, a bundle read as it starts is asked a signature by one of them as an upload is, and a
+wrong or missing one stops the start; when it lists no keys, the directory's bundles need none, and uploads are
+refused. Whoever writes the directory decides such a bundle, as they decide what is built into the server.
 
 ```sh
-go run ./cmd/server -dev-login -bundles bundles
+go run ./cmd/server -dev-login -bundle-keys bundle.pub -bundles bundles
 ```
 
 ```
 level=INFO msg="the server reads the bundles of -bundles as it starts" dir=bundles bundles=1
-level=INFO msg="a bundle of Config.Bundles is checked, and served" bundle=leave-v3.zip digest=414b2eda2415 adds="leave v3, leave_ja v3" vectors=244 worked=50
+level=INFO msg="a bundle of Config.Bundles is checked, and served" bundle=leave-v3.zip digest=6cb2ab05a85f adds="leave v3, leave_ja v3" vectors=244 worked=50
 level=INFO msg=listening addr=127.0.0.1:8080 pages=http://127.0.0.1:8080/
 ```
 
@@ -141,7 +158,7 @@ Before it keeps anything:
 |---|---|
 | The size | 64 MiB as uploaded (`server.Config.MaxBundle`), 10,000 files, and as much uncompressed |
 | The form | A `wasm.json` and a contract of a version this server reads |
-| The signature | With `-bundle-keys`, a signature by one of its keys |
+| The signature | A signature by one of the keys of `-bundle-keys`, checked before the zip is opened; a server that lists no keys takes no upload, and a bundle read as it starts is then asked none |
 | The versions | A version the server has, the same as the server's; at least one version the server does not have; none that another bundle waiting to be decided adds |
 | The code | It loads, and its screens and its agents' tools go with the server's |
 | The vectors | Every event and every form of its vectors, run on its code, answers as the vector says |

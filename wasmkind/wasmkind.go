@@ -9,10 +9,11 @@
 // character. The module is compiled once, by wazero (no cgo), and runs in instances of its own
 // memory, which import nothing: a module that imports anything is refused.
 //
-// Each call runs within limits: a time (Options.Time), past which it is stopped, and a number of
-// pages its instance's memory may grow to (Options.Pages). A call stopped by either, or by a trap of
-// the module, is answered with a *StopError that says which (ErrTime, ErrMemory, ErrTrap), and the
-// instance it ran in is not used again.
+// Each call runs in a new instance, within limits: a time (Options.Time), past which it is stopped,
+// and a number of pages its instance's memory may grow to (Options.Pages). A call stopped by either,
+// or by a trap of the module, is answered with a *StopError that says which (ErrTime, ErrMemory,
+// ErrTrap). Nothing of it is left for the next call. A call that finds no instance free within the
+// same time is not run, and is answered with ErrBusy.
 package wasmkind
 
 import (
@@ -42,24 +43,30 @@ const (
 	DefaultTime = 2 * time.Second
 	// DefaultPages is how many pages of 64 KiB an instance's memory may grow to: 64 MiB.
 	DefaultPages = 1024
+	// DefaultStartPages is how many pages of 64 KiB a module's memory may start with: 4 MiB. It
+	// holds the heap every call pays for, whether the call uses it or not.
+	DefaultStartPages = 64
 )
 
 // Options are the limits the calls of a module run within, and how many of its instances run them.
 type Options struct {
-	// Time is how long one call of an entry may run (DefaultTime when 0). A call past it is
-	// stopped, and answered with ErrTime.
+	// Time is how long one call of an entry may run (DefaultTime when 0). Waiting for a free
+	// instance is within the same time: a call past it is stopped, or not run, and answered with
+	// ErrTime or ErrBusy.
 	Time time.Duration
 	// Pages is how many pages of 64 KiB the memory of an instance may grow to (DefaultPages when
-	// 0). A call that grows it past them is stopped, and answered with ErrMemory. A module whose
-	// memory starts larger is refused.
+	// 0). A call that grows it past them is stopped, and answered with ErrMemory.
 	Pages uint32
+	// StartPages is how many pages of 64 KiB a module's memory may start with (DefaultStartPages
+	// when 0, and never more than Pages). A module whose memory starts larger is refused.
+	StartPages uint32
 	// Instances is how many instances of the module run calls at once (two for each of the Go
 	// scheduler's processors, runtime.GOMAXPROCS, when 0): a call past them waits for one to be
-	// free. They are kept between calls, and a call is run in one that a call before it left.
+	// free, within Time. None is kept after its call.
 	Instances int
-	// Fresh makes an instance for each call, and keeps none: each call starts from the module as it
-	// was built. It is the slower way (the framework's DESIGN, "Kinds in Wasm"); Instances still
-	// limits how many run at once.
+	// Fresh is kept for source compatibility.
+	//
+	// Deprecated: every call runs in an instance of its own whether Fresh is set or not.
 	Fresh bool
 }
 
@@ -70,6 +77,12 @@ func (o Options) limits() Options {
 	}
 	if o.Pages == 0 {
 		o.Pages = DefaultPages
+	}
+	if o.StartPages == 0 {
+		o.StartPages = DefaultStartPages
+	}
+	if o.StartPages > o.Pages {
+		o.StartPages = o.Pages
 	}
 	if o.Instances <= 0 {
 		o.Instances = 2 * runtime.GOMAXPROCS(0)

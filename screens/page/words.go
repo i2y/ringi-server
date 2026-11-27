@@ -739,6 +739,12 @@ func (w words) AllRequests() string  { return w.t("All requests", "すべての�
 func (w words) MayBeMadeFrom(from string) string {
 	return w.t("(may be made from "+from+")", "（"+from+"から出せます）")
 }
+
+// CannotShowNow is what a page of several kinds says in the place of a kind whose own code fails
+// to answer now (Entry.Out), in the page's language: the rest of the page is shown.
+func CannotShowNow(lang string) string {
+	return words{lang}.t("(this request type cannot be shown now)", "（この種類の申請は、いまは出せません）")
+}
 func (w words) NoneYet() string {
 	return w.t("You have made no requests yet.", "まだ申請していません。")
 }

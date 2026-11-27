@@ -77,6 +77,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reply, err := s.Do(r.Context(), Call{Operation: op.id, Person: p, Ticket: ticket, Body: body, Key: r.Header.Get("Idempotency-Key"), Query: r.URL.Query(),
 		Languages: AcceptLanguages(r.Header.Get("Accept-Language"))})
 	if err != nil {
+		if Busy(err) {
+			// too much work at once is not the server's failure: the caller may try again in a
+			// breath, which Retry-After says
+			s.log.Error("an operation found no instance free", "operation", op.id, "ticket", ticket, "person", p.ID, "err", err)
+			w.Header().Set("Retry-After", "1")
+			writeError(w, http.StatusServiceUnavailable, "the server is busy")
+			return
+		}
 		s.log.Error("an operation failed", "operation", op.id, "ticket", ticket, "person", p.ID, "err", err)
 		writeError(w, http.StatusInternalServerError, "the server failed")
 		return
@@ -98,6 +106,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Retry-After", RetryAfter(reply.RetryAfter))
 		}
 		writeError(w, http.StatusTooManyRequests, reply.Problem)
+	case Unavailable:
+		if reply.RetryAfter > 0 {
+			w.Header().Set("Retry-After", RetryAfter(reply.RetryAfter))
+		}
+		writeError(w, http.StatusServiceUnavailable, reply.Problem)
 	default:
 		writeError(w, http.StatusBadRequest, reply.Problem)
 	}

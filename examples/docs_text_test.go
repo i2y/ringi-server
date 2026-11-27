@@ -42,7 +42,8 @@ func allDocuments(t *testing.T) (docs []string) {
 			t.Fatal(err)
 		}
 		for _, p := range found {
-			if !strings.Contains(p, "/testdata/") && !strings.HasPrefix(p, "../examples/") {
+			// nothing in a hidden directory is a document of the repository (.cache is scratch)
+			if !strings.Contains(p, "/testdata/") && !strings.HasPrefix(p, "../examples/") && !strings.Contains(p, "/.") {
 				docs = append(docs, p)
 			}
 		}
@@ -359,7 +360,7 @@ func TestDocumentsNumbers(t *testing.T) {
 		{"maintenance", "| Data of the organization that was checked and not imported | a day |", "| 確かめただけで取り込んでいない、組織のデータ | 1 日 |", server.DefaultDraftsKept == day},
 		{"sign-in", "12 hours after signing in, or after 2 hours unused", "ログインから 12 時間か、使わないまま 2 時間", oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
 		{"troubleshooting", "12 hours after signing in, or after 2 hours unused", "ログインから 12 時間か、使わないまま 2 時間", oidc.DefaultSessionLimit == 12*time.Hour && oidc.DefaultIdleLimit == 2*time.Hour},
-		{"embedding", "runs within a time (2 seconds) and a memory (64 MiB)", "時間（2 秒）とメモリー（64 MiB）の中で動きます", wasmkind.DefaultTime == 2*time.Second && wasmkind.DefaultPages*65536 == 64<<20},
+		{"embedding", "runs within a time (2 seconds) and a memory it may grow to (64 MiB), and the module's memory may start with at most 4 MiB", "時間（2 秒）と伸びてよいメモリー（64 MiB）の中で動き、モジュールのメモリーは始め 4 MiB までです", wasmkind.DefaultTime == 2*time.Second && wasmkind.DefaultPages*65536 == 64<<20 && wasmkind.DefaultStartPages*65536 == 4<<20},
 	} {
 		if !c.is {
 			t.Errorf("the code's number is another than %q says", c.en)

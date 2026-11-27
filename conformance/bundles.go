@@ -17,7 +17,8 @@ import (
 //	(a) An empty store keeps no bundle, and has no archive of any digest (ErrNotFound).
 //	(b) A new bundle is kept with its archive, the records of the versions it adds (What "bundle",
 //	    read by those versions and by their kind, and by no other version) and the operation's key,
-//	    its times to the microsecond in UTC. The same digest again is ErrConflict, and writes
+//	    its times to the microsecond in UTC, and all it was uploaded with: the key that signed it,
+//	    its signature, how many vectors of each kind its check ran, and the ritsu that made it. The same digest again is ErrConflict, and writes
 //	    nothing: no record, no key.
 //	(c) A new state is kept only from the state and the hiding read: from another, ErrConflict, and
 //	    nothing is written. An archive given again replaces the one kept, and none keeps it.
@@ -40,7 +41,8 @@ func Bundles(t *testing.T, s Setup) {
 	digestA, digestB, digestC := "aa"+hexTail, "bb"+hexTail, "0c"+hexTail
 	archiveA, archiveB := []byte("PK the archive of A"), []byte("PK the archive of B")
 	a := server.Bundle{Digest: digestA, Adds: []server.BundleVersion{two, walk}, Holds: []server.KindVersion{{Kind: "trip", Version: 2}, {Kind: "walk", Version: 1}, {Kind: "leave", Version: 1}},
-		State: "pending", Source: "upload", Size: int64(len(archiveA)), Signed: true, Vectors: 12, Worked: 3,
+		State: "pending", Source: "upload", Size: int64(len(archiveA)), Signed: true, Key: "SHA256:" + hexTail, Signature: "untrusted comment: a signature\nRWQ=\n",
+		Vectors: 12, Worked: 3, PerKind: []server.BundleVectorCount{{Kind: "trip", Starts: 8, Nexts: 2}, {Kind: "walk", Starts: 1, Nexts: 1}}, Ritsu: "0.56.0",
 		Uploaded: server.BundleAct{Person: "ann", At: at}}
 
 	// (a)

@@ -63,6 +63,7 @@ type Reading struct {
 	invalid                    string          // a body the API did not read (400): its message
 	limited                    string          // a comment the API does not take now (429): its message
 	wait                       int             // and the seconds to wait; 0 when waiting does not help
+	unavailable                bool            // limited is an event the kind failed to answer (503), not a comment
 	stale                      bool
 	read                       int  // the problems the reading found: those after them are an answer's
 	answer                     bool // an answer of the API is kept
@@ -139,20 +140,28 @@ func (r *Reading) Limited(problem string, wait int) {
 	r.limited, r.wait = problem, wait
 }
 
+// Unavailable keeps an answer of the API to an event the ticket's kind failed to answer within the
+// minute before (503, the core's DESIGN 8.1: the reply's Problem, and the seconds of its
+// Retry-After) for the page shown again. The page says so at its head, with what was typed kept.
+func (r *Reading) Unavailable(problem string, wait int) {
+	r.answered()
+	r.limited, r.wait, r.unavailable = problem, wait, true
+}
+
 // answered forgets the operation and what an earlier answer said.
 func (r *Reading) answered() {
 	if !r.answer {
 		r.read, r.answer = len(r.Problems), true
 	}
 	r.Operation, r.Sent = nil, nil
-	r.refused, r.refusal, r.invalid, r.limited, r.wait, r.stale = "", screens.Refusal{}, "", "", 0, false
+	r.refused, r.refusal, r.invalid, r.limited, r.wait, r.unavailable, r.stale = "", screens.Refusal{}, "", "", 0, false, false
 	r.Problems = r.Problems[:r.read:r.read]
 }
 
 // commentOnly is the reading with nothing but its comment and its answer: a ticket that changed is
 // shown as it is now.
 func (r *Reading) commentOnly() *Reading {
-	out := &Reading{kind: r.kind, screen: r.screen, lang: r.lang, action: r.action, d: r.d, values: url.Values{}, refused: r.refused, refusal: r.refusal, invalid: r.invalid, limited: r.limited, wait: r.wait}
+	out := &Reading{kind: r.kind, screen: r.screen, lang: r.lang, action: r.action, d: r.d, values: url.Values{}, refused: r.refused, refusal: r.refusal, invalid: r.invalid, limited: r.limited, wait: r.wait, unavailable: r.unavailable}
 	if c, ok := r.values["comment"]; ok {
 		out.values["comment"] = c
 	}

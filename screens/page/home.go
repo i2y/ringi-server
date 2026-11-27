@@ -100,6 +100,9 @@ func (p *Pages) Home(in Home) (Page, error) {
 			if e.From != "" {
 				ev.URL, ev.From = "", w.MayBeMadeFrom(e.From)
 			}
+			if e.Out != "" {
+				ev.URL, ev.From = "", e.Out
+			}
 			for _, et := range e.Tickets {
 				tv := entryTicketView{ID: et.ID, URL: et.URL, Status: et.Status, State: w.badge(et.Status, et.SentBack),
 					Stage: text{Text: et.Stage, Lang: et.StageLang}, Who: et.Who, Info: et.Info, Due: et.Due}

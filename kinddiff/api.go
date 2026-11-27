@@ -537,12 +537,12 @@ func describeParameterShape(op *openapiOperation, d shapeDifference, changes *[]
 				sprintf("操作 `%s`のパラメーター%sがなくなります。", op.id, jaParam),
 				true)
 		default:
-			apiGenericValue(op, d, "the parameter "+enParam, "パラメーター"+jaParam, changes)
+			apiGenericValue(op, d, "the parameter "+enParam, sprintf("パラメーター%s", jaParam), changes)
 		}
 		return
 	}
 	whereEn := "the parameter " + enParam + " of `" + op.id + "`"
-	whereJa := "操作 `" + op.id + "`のパラメーター" + jaParam
+	whereJa := sprintf("操作 `%s`のパラメーター%s", op.id, jaParam)
 	describeSchemaDifference(d, whereEn, whereJa, changes)
 }
 
@@ -581,12 +581,12 @@ func describeRequestBodyShape(op *openapiOperation, d shapeDifference, changes *
 				sprintf("`%s` に送る本文のメディアタイプ `%s` がなくなります。", op.id, media),
 				true)
 		} else {
-			apiGenericValue(op, d, "the request body's media type `"+media+"`", "本文のメディアタイプ`"+media+"`", changes)
+			apiGenericValue(op, d, "the request body's media type `"+media+"`", sprintf("本文のメディアタイプ `%s`", media), changes)
 		}
 		return
 	}
 	whereEn := "the request body of `" + op.id + "`"
-	whereJa := "`" + op.id + "`に送る本文"
+	whereJa := sprintf("`%s`に送る本文", op.id)
 	describeSchemaDifference(d, whereEn, whereJa, changes)
 }
 
@@ -608,7 +608,7 @@ func describeResponseShape(op *openapiOperation, d shapeDifference, changes *[]c
 				sprintf("操作 `%s`の応答`%s`がなくなります。", op.id, status),
 				true)
 		} else {
-			apiGenericValue(op, d, "the response `"+status+"`", "応答`"+status+"`", changes)
+			apiGenericValue(op, d, "the response `"+status+"`", sprintf("応答 `%s`", status), changes)
 		}
 		return
 	}
@@ -625,7 +625,7 @@ func describeResponseShape(op *openapiOperation, d shapeDifference, changes *[]c
 				sprintf("`%s`の応答`%s`のメディアタイプ`%s`がなくなります。", op.id, status, media),
 				true)
 		} else {
-			apiGenericValue(op, d, "the response's media type `"+media+"`", "応答のメディアタイプ`"+media+"`", changes)
+			apiGenericValue(op, d, "the response's media type `"+media+"`", sprintf("応答のメディアタイプ `%s`", media), changes)
 		}
 		return
 	}
@@ -650,7 +650,7 @@ func describeResponseShape(op *openapiOperation, d shapeDifference, changes *[]c
 		}
 	}
 	whereEn := "the `" + status + "` response of `" + op.id + "`"
-	whereJa := "`" + op.id + "`の応答 `" + status + "`"
+	whereJa := sprintf("`%s`の応答 `%s`", op.id, status)
 	describeSchemaDifference(d, whereEn, whereJa, changes)
 }
 

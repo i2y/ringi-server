@@ -324,6 +324,9 @@ type Entry struct {
 	// make a request of it from (YYYY-MM-DD, as Server.Offered answers it): the line says the day,
 	// and has no link (URL is not shown), since the kind has no form to show yet.
 	From string
+	// Out is, for a kind whose own code fails to answer now, what says so in the page's language:
+	// the line says it in the kind's place, and has no link. The rest of the page is shown.
+	Out string
 }
 
 // EntryTicket is a ticket an Entry lists: its ID, the address of its page, and what tells it and its

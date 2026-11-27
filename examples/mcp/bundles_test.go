@@ -3,18 +3,22 @@ package mcp_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	server "github.com/i2y/ringi-server"
+	"github.com/i2y/ringi-server/bundlesign"
 	"github.com/i2y/ringi-server/examples"
 	"github.com/i2y/ringi-server/wasmkind"
 )
@@ -45,8 +49,9 @@ func TestToolsFollowABundle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			pub, _ := bundleKeys()
 			e := newEnv(t, envOptions{at: x.at, more: []*server.Package{v2}, chooseEvery: x.every,
-				config: func(c *server.Config) { c.LoadBundle = wasmkind.Load }})
+				config: func(c *server.Config) { c.LoadBundle = wasmkind.Load; c.BundleKeys = append(c.BundleKeys, pub) }})
 			told := make(chan struct{}, 10)
 			cs := listening(t, e, "e1203", told)
 			if takesContact(t, cs) {
@@ -129,7 +134,9 @@ func takesContact(t *testing.T, cs *sdkmcp.ClientSession) bool {
 // administrator of the whole, saying they saw that it changes the API.
 func addBundle(t *testing.T, e *env, archive []byte) {
 	t.Helper()
-	code, body := api(e, "POST", "/admin/bundles/uploads", "e6001", "workflow_admin", "application/zip", archive)
+	_, priv := bundleKeys()
+	code, body := api(e, "POST", "/admin/bundles/uploads", "e6001", "workflow_admin", "application/zip", archive,
+		server.BundleSignatureHeader, string(bundlesign.Sign(priv, archive)))
 	if code != http.StatusOK {
 		t.Fatalf("upload: %d %s", code, body)
 	}
@@ -140,20 +147,43 @@ func addBundle(t *testing.T, e *env, archive []byte) {
 	if err := json.Unmarshal(body, &up); err != nil {
 		t.Fatal(err)
 	}
-	approve, _ := json.Marshal(map[string]any{"digest": up.Difference.Digest, "api_changes": true})
+	approve, _ := json.Marshal(map[string]any{"digest": up.Difference.Digest, "api_changes": true,
+		"script_changes": true, "tools_changes": true, "screens_changes": true})
 	if code, body := api(e, "POST", "/admin/bundles/"+up.Digest+"/approve", "e7001", "system_admin", "application/json", approve); code != http.StatusOK {
 		t.Fatalf("approve: %d %s", code, body)
 	}
 }
 
 // api sends a request to the server's API as a person with a role.
-func api(e *env, method, path, person, roles, contentType string, body []byte) (int, []byte) {
+func api(e *env, method, path, person, roles, contentType string, body []byte, header ...string) (int, []byte) {
 	r := httptest.NewRequest(method, path, bytes.NewReader(body))
 	r.Header.Set("Content-Type", contentType)
 	r.Header.Set("X-Person", person)
 	r.Header.Set("X-Roles", roles)
 	r.Header.Set("Idempotency-Key", method+path)
+	for i := 0; i+1 < len(header); i += 2 {
+		r.Header.Set(header[i], header[i+1])
+	}
 	w := httptest.NewRecorder()
 	e.srv.ServeHTTP(w, r)
 	return w.Code, w.Body.Bytes()
+}
+
+// bundleKeys answers the tests' pair of keys of the bundles: made in the test run, never written
+// to a file (docs/signing.md).
+var (
+	bundleKeyOnce sync.Once
+	bundleKeyPub  ed25519.PublicKey
+	bundleKeyPriv ed25519.PrivateKey
+)
+
+func bundleKeys() (ed25519.PublicKey, ed25519.PrivateKey) {
+	bundleKeyOnce.Do(func() {
+		var err error
+		bundleKeyPub, bundleKeyPriv, err = ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			panic(err)
+		}
+	})
+	return bundleKeyPub, bundleKeyPriv
 }

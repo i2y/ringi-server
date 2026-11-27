@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,6 +43,14 @@ const (
 	bundleLook = 30 * time.Second
 	// shownFailures is how many vectors that do not agree a refusal names.
 	shownFailures = 20
+)
+
+// The sentences of a bundle with no signature the server takes, and of a server that lists no keys.
+const (
+	unsignedText   = "The server takes only signed bundles: send the bundle's signature with it (the file `ringi-bundle sign` writes)"
+	unsignedTextJa = "このサーバーは、署名したバンドルだけを受け取ります。バンドルの署名（`ringi-bundle sign` が書くファイル）を一緒に送ってください"
+	noKeysText     = "The server takes no unsigned bundles, and lists no keys to verify a signature with: list the public keys with -bundle-keys (docs/signing.md says how the keys are made and kept)"
+	noKeysTextJa   = "このサーバーは署名のないバンドルを受け取らず、署名を確かめる鍵も並んでいません。-bundle-keys で公開鍵を並べてください（鍵の作り方と置き方は docs/signing.md にあります）"
 )
 
 // ErrBundleTooLarge is the error of a bundle past its limits: more than MaxBundleFiles files, or more
@@ -212,6 +221,9 @@ func (s *Server) startBundle(ctx context.Context, f BundleFile, kept []Bundle) e
 	if err != nil {
 		return bundleError(err)
 	}
+	// A bundle of the directory is placed by whoever runs the server. When the server lists keys,
+	// it is asked a signature by one of them as an upload is, and a wrong or missing one stops the
+	// start; with no keys listed, the directory's bundles need none (DESIGN 15.3).
 	ck, err := s.checkBundle(ctx, ob, f.Signature, s.cat())
 	if err != nil {
 		return err
@@ -226,8 +238,12 @@ func (s *Server) startBundle(ctx context.Context, f BundleFile, kept []Bundle) e
 		return bundleError(ck.problems)
 	}
 	now := s.now()
+	var perKind []BundleVectorCount
+	for _, kv := range ck.vectors.Kinds {
+		perKind = append(perKind, BundleVectorCount{Kind: kv.Kind, Starts: kv.Starts, Nexts: kv.Nexts})
+	}
 	b := Bundle{Digest: digest, Adds: ck.adds, Holds: ck.holds, State: "approved", Source: "start", Size: int64(len(f.Archive)),
-		Signed: ck.signed, Vectors: ck.vectors.Vectors(), Worked: ck.vectors.Worked(), Uploaded: BundleAct{At: now}, Decided: &BundleAct{At: now}}
+		Signed: ck.signed, Key: ck.key, Signature: string(f.Signature), Vectors: ck.vectors.Vectors(), Worked: ck.vectors.Worked(), PerKind: perKind, Ritsu: ritsuVersion.FindString(ob.form.Comment), Uploaded: BundleAct{At: now}, Decided: &BundleAct{At: now}}
 	bc := &BundleChange{Bundle: b, Archive: f.Archive}
 	if have != nil {
 		// uploaded before, and not approved: putting it in the directory approves it (its archive is
@@ -248,7 +264,7 @@ func (s *Server) startBundle(ctx context.Context, f BundleFile, kept []Bundle) e
 	if err != nil {
 		return err
 	}
-	if err := s.add(ck.pkg); err != nil {
+	if err := s.add(onlyAdds(ck.pkg, b.Adds)); err != nil {
 		return err
 	}
 	s.log.Info("a bundle of Config.Bundles is checked, and served", "bundle", f.Name, "digest", short(digest), "adds", versionWords(ck.adds),
@@ -292,7 +308,10 @@ func (s *Server) readStoreBundles(ctx context.Context, start bool) error {
 	return nil
 }
 
-// serveBundle reads a bundle's archive from the store and serves it.
+// serveBundle reads a bundle's archive from the store and serves it: only the versions the bundle
+// added (DESIGN 15.2): a version the server has is never taken from a bundle, so a process that
+// has no package of one the bundle only holds does not serve it from the bundle either (the kind
+// is not offered here, and the log says so).
 func (s *Server) serveBundle(ctx context.Context, digest string) error {
 	archive, err := s.cfg.Store.BundleArchive(ctx, digest)
 	if err != nil {
@@ -310,7 +329,48 @@ func (s *Server) serveBundle(ctx context.Context, digest string) error {
 		return err
 	}
 	p.bundle = digest
+	var b *Bundle
+	if bs, err := s.cfg.Store.Bundles(ctx); err == nil {
+		for i := range bs {
+			if bs[i].Digest == digest {
+				b = &bs[i]
+			}
+		}
+	}
+	if b != nil {
+		p = onlyAdds(p, b.Adds)
+		for _, v := range b.Holds {
+			if !slices.ContainsFunc(b.Adds, func(a BundleVersion) bool { return a.Kind == v.Kind && a.Version == v.Version }) &&
+				s.cat().version(v.Kind, v.Version) == nil {
+				s.log.Info("the bundle holds a version this process has no package of, which it does not serve", "digest", short(digest), "kind", v.Kind, "version", v.Version)
+			}
+		}
+		if b.Key != "" && !slices.ContainsFunc(s.cfg.BundleKeys, func(k ed25519.PublicKey) bool { return bundlesign.KeyFingerprint(k) == b.Key }) {
+			if _, told := s.bundles.failed.LoadOrStore("key:"+digest, true); !told {
+				s.log.Info("the key that signed a bundle the server serves is not among the keys it lists now", "digest", short(digest), "key", b.Key)
+			}
+		}
+	}
 	return s.add(p)
+}
+
+// onlyAdds answers the package with only the versions the bundle added: the versions it holds that
+// the server has otherwise are never taken from it (DESIGN 15.2).
+func onlyAdds(p *Package, adds []BundleVersion) *Package {
+	if len(adds) == 0 {
+		return p
+	}
+	q := *p
+	q.kinds = nil
+	for _, k := range p.kinds {
+		if slices.ContainsFunc(adds, func(a BundleVersion) bool { return a.Kind == k.Name && a.Version == k.Version }) {
+			q.kinds = append(q.kinds, k)
+		}
+	}
+	if len(q.kinds) == len(p.kinds) {
+		return p
+	}
+	return &q
 }
 
 // loadBundles reads the store's bundles again when the process read them 30 seconds ago or more
@@ -379,6 +439,7 @@ type openedBundle struct {
 		Wasm     *int   `json:"wasm"`
 		Contract *int   `json:"contract"`
 		Lang     string `json:"lang"`
+		Comment  string `json:"//"`
 		Kinds    []struct {
 			Name    string `json:"name"`
 			Version int    `json:"version"`
@@ -415,19 +476,141 @@ const (
 	bundleHoldsJa = "バンドルが持つのは、`ritsu gen --extra bundle` が zip に書く物です。根に wasm.json、kinds.wasm、openapi.json、bundle.json、ディレクトリは types、mcp、organization、vectors、a2ui、source、diff です"
 )
 
-// bundleFile reports whether a bundle may hold a file: one at its root that ritsu writes, or one in
-// a directory of it, no part of whose path starts with a dot.
+// bundleFile reports whether a bundle may hold a file: one at its root that ritsu writes, or one of
+// the names each directory of it holds (DESIGN 15.5), no part of whose path starts with a dot. A
+// file of any other name is refused, as nothing reads it and its bytes would be kept and served
+// with the bundle unseen.
 func bundleFile(name string) bool {
 	if slices.Contains(bundleRootFiles, name) {
 		return true
 	}
 	top, rest, ok := strings.Cut(name, "/")
-	return ok && slices.Contains(bundleRootDirs, top) && !hidden(rest)
+	if !ok || hidden(rest) {
+		return false
+	}
+	switch top {
+	case "types":
+		return onePart(rest, ".json")
+	case "mcp":
+		return rest == "tools.json"
+	case "organization":
+		return rest == "columns.md" || rest == "find.jsonl" || rest == "schema.json"
+	case "vectors":
+		if worked, ok := strings.CutPrefix(rest, "worked/"); ok {
+			return onePart(worked, ".jsonl")
+		}
+		return onePart(rest, ".jsonl")
+	case "a2ui":
+		if rest == "catalog.json" || rest == "functions.js" {
+			return true
+		}
+		// a2ui/<kind>/<screen>.<language>.json
+		kind, file, ok := strings.Cut(rest, "/")
+		return ok && simplePart(kind) && langFile(file, ".json")
+	case "diff":
+		// diff/<kind>.<language>.md
+		return langFile(rest, ".md")
+	case "source":
+		// the files the kinds are made from, in the project's own layout: simple directories, and a
+		// file whose parts between dots are simple (leave.ja.ringi) and of a name ritsu reads
+		parts := strings.Split(rest, "/")
+		for _, d := range parts[:len(parts)-1] {
+			if !simplePart(d) {
+				return false
+			}
+		}
+		return dottedFile(parts[len(parts)-1]) && sourceFile(rest)
+	}
+	return false
 }
 
+// dottedFile reports whether the last part of a path is made of simple parts between dots, as
+// leave.ja.ringi is (source files carry a language in their names).
+func dottedFile(p string) bool {
+	if strings.HasPrefix(p, ".") || strings.HasSuffix(p, ".") {
+		return false
+	}
+	for _, part := range strings.Split(p, ".") {
+		if !simplePart(part) {
+			return false
+		}
+	}
+	return true
+}
+
+// bundleDir reports whether a directory of a bundle may hold entries: types, mcp, organization and
+// diff hold files only, vectors holds worked, a2ui a directory of each kind, and source the project's
+// own directories.
 func bundleDir(name string) bool {
-	top, rest, _ := strings.Cut(name, "/")
-	return slices.Contains(bundleRootDirs, top) && !hidden(rest)
+	top, rest, ok := strings.Cut(name, "/")
+	if !ok {
+		// a directory at the root itself
+		return slices.Contains(bundleRootDirs, top)
+	}
+	if hidden(rest) {
+		return false
+	}
+	switch top {
+	case "vectors":
+		return rest == "worked"
+	case "a2ui", "source":
+		return simpleParts(rest)
+	}
+	return false
+}
+
+// simplePart reports whether p is one part of a path made of letters, digits and the marks the names
+// of the kinds and the files of a project use.
+func simplePart(p string) bool {
+	if p == "" {
+		return false
+	}
+	for _, r := range p {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r >= 'A' && r <= 'Z' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// simpleParts reports whether every part of a path is simple.
+func simpleParts(p string) bool {
+	for part := range strings.SplitSeq(p, "/") {
+		if !simplePart(part) {
+			return false
+		}
+	}
+	return true
+}
+
+// onePart reports whether p is one part of a path with the suffix, as types/<kind>.json.
+func onePart(p, suffix string) bool {
+	return !strings.Contains(p, "/") && len(p) > len(suffix) && strings.HasSuffix(p, suffix)
+}
+
+// langFile reports whether p is one part of a path of the shape <name>.<language><suffix>, as
+// diff/leave.en.md: the language is the part between the last two dots.
+func langFile(p, suffix string) bool {
+	if !onePart(p, suffix) {
+		return false
+	}
+	stem := strings.TrimSuffix(p, suffix)
+	dot := strings.LastIndex(stem, ".")
+	if dot < 1 || dot == len(stem)-1 {
+		return false
+	}
+	return simplePart(stem[:dot]) && simplePart(stem[dot+1:])
+}
+
+// sourceFile reports whether a file of the project's source is one ritsu reads.
+func sourceFile(p string) bool {
+	for _, suffix := range []string{".ringi", ".gate", ".book", ".cal", ".rule", ".req", ".flow", ".md", ".csv"} {
+		if strings.HasSuffix(p, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // hidden reports whether a part of a path starts with a dot (a file a file manager keeps).
@@ -450,7 +633,7 @@ func openBundle(archive []byte, maxSize int64) (*openedBundle, error) {
 	}
 	zr, err := checkZip(archive, maxSize, zipRules{
 		maxFiles: MaxBundleFiles, tooLarge: ErrBundleTooLarge, what: "a bundle",
-		file: bundleFile, dir: bundleDir, hold: bundleHolds, holdJa: bundleHoldsJa,
+		file: bundleFile, dir: bundleDir, hold: bundleHolds, holdJa: bundleHoldsJa, strict: true,
 	})
 	if err != nil {
 		return nil, err
@@ -546,9 +729,11 @@ func (c *catalog) version(name string, version int) *kind {
 // bundleCheck is what the checks of a bundle found: the versions it adds and holds, whether a key
 // the server takes signed it, the vectors it ran, its package, and what is wrong (nil for nothing).
 type bundleCheck struct {
-	adds     []BundleVersion
-	holds    []KindVersion
-	signed   bool
+	adds   []BundleVersion
+	holds  []KindVersion
+	signed bool
+	// key is the fingerprint of the key that signed the bundle (bundlesign.KeyFingerprint).
+	key      string
 	vectors  VectorCheck
 	pkg      *Package
 	problems *OrgProblems
@@ -576,14 +761,15 @@ func (s *Server) checkBundleAs(ctx context.Context, ob *openedBundle, sig []byte
 	}
 	if keys := s.cfg.BundleKeys; len(keys) > 0 && verify {
 		if len(sig) == 0 {
-			return refuse("", "The server takes only signed bundles: send the bundle's signature with it (the file `ringi-bundle sign` writes)",
-				"このサーバーは、署名したバンドルだけを受け取ります。バンドルの署名（`ringi-bundle sign` が書くファイル）を一緒に送ってください")
+			return refuse("", unsignedText, unsignedTextJa)
 		}
-		if err := bundlesign.Verify(keys, ob.archive(), sig); err != nil {
+		key, err := bundlesign.VerifyKey(keys, ob.archive(), sig)
+		if err != nil {
 			return refuse("", "The signature is not of this bundle by a key the server takes: "+err.Error(),
 				jatext.Join("署名が、サーバーが受け取る鍵でこのバンドルにした物ではありません（", err.Error(), "）"))
 		}
 		ck.signed = true
+		ck.key = bundlesign.KeyFingerprint(key)
 	}
 	ck.adds = ob.adds(c)
 	var problems []OrgProblem
@@ -624,6 +810,10 @@ func (s *Server) checkBundleAs(ctx context.Context, ob *openedBundle, sig []byte
 	if err != nil {
 		return refuse("", "The bundle does not go with the server's kinds: "+err.Error(), jatext.Join("バンドルが、サーバーの種類と合いません（", err.Error(), "）"))
 	}
+	if shape := formAPIShapeProblems(ob.files, p); len(shape) > 0 {
+		ck.problems = &OrgProblems{Problems: shape}
+		return ck, nil
+	}
 	ck.vectors = CheckVectors(ctx, p)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -632,6 +822,28 @@ func (s *Server) checkBundleAs(ctx context.Context, ob *openedBundle, sig []byte
 		ck.problems = &OrgProblems{Problems: fails}
 	}
 	return ck, nil
+}
+
+// formAPIShapeProblems is the bundle's openapi.json compared with the descriptions of its kinds,
+// and the inputs of its vectors compared with the openapi (DESIGN 15.5).
+func formAPIShapeProblems(files fs.FS, p *Package) []OrgProblem {
+	var kinds []string
+	for _, k := range p.kinds {
+		kinds = append(kinds, k.Name)
+	}
+	out := formAPIProblems(files, kinds)
+	a, err := readAPI(files)
+	if err != nil {
+		return out
+	}
+	for _, kind := range kinds {
+		given, err := a.compileNamed(kind + ".given")
+		if err != nil {
+			continue
+		}
+		out = append(out, vectorInputProblems(files, kind, given)...)
+	}
+	return out
 }
 
 // archive answers the archive the bundle's files are read from.
@@ -743,12 +955,16 @@ type VectorCount struct {
 	Failures        []string
 	// Missing says the package has no vectors of the kind's events.
 	Missing bool
+	// Starts and Nexts are how many of the vectors are of a ticket's first event (a submit) and of
+	// the events after it. A kind is checked only when it has both: the one who uploads a bundle
+	// could otherwise have it checked against nothing (DESIGN 15.5).
+	Starts, Nexts int
 }
 
 // Agree reports whether every vector ran agreed, and each kind had its vectors.
 func (v VectorCheck) Agree() bool {
 	for _, k := range v.Kinds {
-		if k.Missing || k.Agree != k.Vectors+k.Worked {
+		if k.Missing || k.Vectors == 0 || k.Agree != k.Vectors+k.Worked {
 			return false
 		}
 	}
@@ -776,7 +992,7 @@ func (v VectorCheck) Worked() int {
 func (v VectorCheck) failures() []OrgProblem {
 	var out []OrgProblem
 	for _, k := range v.Kinds {
-		if k.Missing {
+		if k.Missing || k.Vectors == 0 {
 			out = append(out, OrgProblem{At: "vectors/" + k.Kind + ".jsonl", Text: "The bundle has no vectors of the kind " + k.Kind + ": the server checks each kind's code with them",
 				TextJa: jatext.Join("バンドルに種類 ", k.Kind, " のベクタがありません。サーバーは、種類のコードをベクタで確かめます")})
 			continue
@@ -845,6 +1061,18 @@ func CheckVectors(ctx context.Context, p *Package) VectorCheck {
 			worked bool
 		}{{events, false}, {worked, true}} {
 			for _, l := range set.lines {
+				if !set.worked {
+					var head struct {
+						Ticket json.RawMessage `json:"ticket"`
+					}
+					if json.Unmarshal(l, &head) == nil {
+						if len(head.Ticket) == 0 || string(head.Ticket) == "null" {
+							c.Starts++
+						} else {
+							c.Nexts++
+						}
+					}
+				}
 				select {
 				case jobs <- job{l, set.worked}:
 				case <-ctx.Done():
