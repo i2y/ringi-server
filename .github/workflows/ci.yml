@@ -210,19 +210,23 @@ jobs:
         working-directory: temporal
         run: ../ci/test.sh -race -run '^TestExamples$' .
 
-      # TestInit builds the projects with no network, from the module cache: the modules that the
-      # project with every option needs are those of the others too.
+      # TestInit and TestGuides build the projects with no network, from the module cache, which a
+      # project of each set of options fills first: the sets take other versions of a module (a plain
+      # project takes golang.org/x/sys at the version wazero asks for, one with mcp or temporal a
+      # newer one), and a project's go mod tidy finds only the versions it takes.
       - name: The modules of a project
         if: steps.ritsu.outputs.released == 'true'
         run: |
           set -eu
-          cd "$(mktemp -d)"
-          ritsu ringi init approvals --module example.test/approvals --mcp --temporal
-          cd approvals
-          go mod edit -replace "github.com/i2y/ringi-server=$GITHUB_WORKSPACE" \
-            -replace "github.com/i2y/ringi-server/mcp=$GITHUB_WORKSPACE/mcp" \
-            -replace "github.com/i2y/ringi-server/temporal=$GITHUB_WORKSPACE/temporal"
-          go mod tidy
+          for opts in "" "--mcp" "--temporal" "--mcp --temporal"; do
+            cd "$(mktemp -d)"
+            ritsu ringi init approvals --module example.test/approvals $opts
+            cd approvals
+            go mod edit -replace "github.com/i2y/ringi-server=$GITHUB_WORKSPACE" \
+              -replace "github.com/i2y/ringi-server/mcp=$GITHUB_WORKSPACE/mcp" \
+              -replace "github.com/i2y/ringi-server/temporal=$GITHUB_WORKSPACE/temporal"
+            go mod tidy
+          done
 
       - name: Test the projects ritsu starts
         if: steps.ritsu.outputs.released == 'true'
