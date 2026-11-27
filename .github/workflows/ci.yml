@@ -24,7 +24,8 @@ jobs:
   # documents.
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # The examples take 39 to 44 minutes, and over 60 on a slow runner (below)
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -95,7 +96,9 @@ jobs:
       # TestWasmTimes is a measurement, run by hand with RINGI_WASM_TIMES set (DESIGN, "Kinds in Wasm").
       - name: Test the examples
         working-directory: examples
-        run: ../ci/test.sh -race -timeout 60m ./... -skip '^TestGuides$|^TestWasmTimes$'
+        # 2,322 s with Go 1.26 and 2,619 s with 1.27 on the runners of 2026-11-27, and one with 1.27
+        # stopped at 60 minutes, its earlier steps also slower than the other's
+        run: ../ci/test.sh -race -timeout 90m ./... -skip '^TestGuides$|^TestWasmTimes$'
 
   # The pages in the browser of the runner, with the fonts of the pages' Japanese.
   browser:
