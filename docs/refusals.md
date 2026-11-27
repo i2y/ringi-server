@@ -37,6 +37,10 @@ short"). The page shows it under its own sentence.
 | `locks_out` | With this data, you could not import any more. To import it all the same, add `locks_out: true` |
 | `uploader` | An approval or a decline of a bundle you uploaded: another administrator decides it |
 | `api_changes` | An approval of a bundle that changes the API, without `api_changes: true` |
+| `script_changes` | An approval of a bundle that changes the script its request types' pages load, without `script_changes: true`. Read what it changes, then add it |
+| `tools_changes` | An approval of a bundle that changes what the agents' tools say of its request types, without `tools_changes: true`. Read what it changes, then add it |
+| `screens_changes` | An approval of a bundle that changes the screens of its request types, without `screens_changes: true`. Read what it changes, then add it |
+| `signature` | An approval of a bundle uploaded with no signature: upload it again with its signature. An approval while the server lists no keys, or while none of the keys it lists verifies the bundle's signature: list the key that signed it with `-bundle-keys`, or upload the bundle again signed by a listed key ([Sign bundles](signing.md)) |
 | `taken` | A hiding of an approved bundle whose versions new requests may still take: set them to never first |
 
 ## Answers without a reason of these kinds
@@ -46,7 +50,10 @@ short"). The page shows it under its own sentence.
 | 401 | Not signed in | No one is signed in. The session ended |
 | 403 | The form could not be read | It was sent from a page of another site |
 | 404 | Not found | There is no request of that ID, or the person may not see it |
+| 405 | That the URL does not take the method | A URL was sent a method it does not take: a GET to a URL that takes only a POST, say |
 | 400 | What is wrong, and where | The organization's data or a bundle does not pass its checks (`problems`) |
-| 413 | Too large to send | An attachment, a bundle or the body is above the limit |
+| 413 | Too large to send | An attachment, the organization's data, a bundle or the body is above the limit |
+| 415 | The form could not be read | A post to a page that is not a form. A body of the API that is not JSON (the organization's data may be sent as `application/zip` too). A bundle not sent as `application/zip`. A file to attach not sent as `multipart/form-data`, of a type the server does not take, or not of the type it is sent as |
 | 429 | How many seconds to wait, or that there can be no more comments | A comment soon after another. The limit of comments was reached. The server checks another bundle |
 | 500 | The server failed | The server failed. The log says why ([Watch it](troubleshooting.md#look-at-the-log)) |
+| 503 | How many seconds to wait before doing it again, or, with too much work at once, that the server failed | The server has too much work at once, or the request type failed to answer this operation on the request less than a minute ago. Send it again after the seconds `Retry-After` says |

@@ -200,12 +200,15 @@ curl -s localhost:8080/openapi.json -H 'X-Person: s1201' | jq -r '.paths | keys[
 | Status | Body | When |
 |---|---|---|
 | 200 | `{"ticket": …}` for an operation on a request | It was carried out |
-| 400 | `{"error": …}` | The body cannot be read. A POST has no `Idempotency-Key`. The same number was used for another operation |
+| 201 | `{"id": …, "name": …, "content_type": …, "size": …, "url": …}` | `POST /files` kept the file. `Location` has its URL too |
+| 400 | `{"error": …}`, and `problems` when data does not pass its checks | The body cannot be read. A POST has no `Idempotency-Key`. The same number was used for another operation. The organization's data or a bundle does not pass its checks: `problems` says what is wrong, and where |
 | 401 | `{"error": …}` | No one is signed in |
 | 403 | `{"error": …}` | It was sent by a browser with a page of another site open |
-| 404 | `{"error": …}` | There is no such request, the person may not see it, the request type has no version in use now, or there is no such URL |
+| 404 | `{"error": …}`, and `from` | There is no such request, the person may not see it, the request type has no version in use now, or there is no such URL. When a version of the request type starts later, and the person may make a request of it then, `from` is the day it starts (`YYYY-MM-DD`) |
+| 405 | `{"error": …}` | The URL does not take the method: a GET to a URL that takes only a POST, say |
 | 409 | `{"refused": …, "text": …, "text_ja": …, "at": …}` | The rules do not allow it. `at` is the field of the form it comes from (`items[1].price` in a row), or null |
-| 413, 415 | `{"error": …}` | The body is too large, or is not JSON |
+| 413 | `{"error": …}` | The body, an attachment, the organization's data or a bundle is larger than the server takes |
+| 415 | `{"error": …}` | The body is not JSON (the organization's data may be sent as `application/zip` too). A bundle is not sent as `application/zip`. A file to attach is not sent as `multipart/form-data`, is of a type the server does not take ([Other limits](reference.md#other-limits)), or is not of the type it is sent as |
 | 429 | `{"error": …}` | Too many. When it is enough to wait, `Retry-After` says how long |
 | 500 | `{"error": …}` | The server failed. Its log says why. You may send it again with the same number |
 | 503 | `{"error": …}` | The server has too much work at once, or the ticket's kind failed to answer this event less than a minute ago. Send it again after the seconds `Retry-After` says |

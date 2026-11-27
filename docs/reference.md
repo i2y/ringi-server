@@ -46,6 +46,7 @@ values below can be changed too. Left `0` or empty, they are as in the table.
 | `OperationsKept` | How long the number of an operation and its answer are kept | 30 days |
 | `MaxOrganization` | The largest upload of the organization's data | 64 MiB |
 | `MaxBundle` | The largest bundle, as uploaded, and its files once uncompressed | 64 MiB |
+| `MaxCheckTime` | How long the checks of an uploaded bundle may take. A bundle whose checks take longer is refused, and nothing of it is kept | 20 seconds |
 | `DraftsKept` | How long the organization's data that was only checked is kept | a day |
 | `ImportsPerDay` | How often new data of the organization is imported in 24 hours | 20 |
 | `SweepEvery` | How often what is past its time is deleted | an hour |
@@ -74,6 +75,7 @@ A look that does not take these stops the server, which says why.
 | The types of attachment | PDF, pictures (PNG, JPEG, GIF, WebP), text and CSV, the files of Office and OpenDocument | `FileTypes` of `web.Config` |
 | A session | 12 hours from signing in, 2 hours unused | `SessionLimit` and `IdleLimit` of `oidc.Config` |
 | The length of a comment | 2,000 characters | It cannot be changed |
+| The headers of a request | Read within 5 seconds, and 64 KiB at most | It cannot be changed |
 | Reading a request, answering it, an idle connection | 30 seconds, 30 seconds, 2 minutes | It cannot be changed |
 
 `web.Config` and `oidc.Config` can be changed on [a server you put together yourself](embedding.md). On a server of

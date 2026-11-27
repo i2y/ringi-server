@@ -349,6 +349,7 @@ func TestDocumentsNumbers(t *testing.T) {
 		{"reference", "| `UploadsKept` | How long an attachment no request holds is kept | 7 days |", "| `UploadsKept` | どの申請も持たない添付ファイルを残す期間 | 7 日 |", server.DefaultUploadsKept == 7*day},
 		{"reference", "| `OperationsKept` | How long the number of an operation and its answer are kept | 30 days |", "| `OperationsKept` | 操作の番号と応答を残す期間 | 30 日 |", server.DefaultOperationsKept == 30*day},
 		{"reference", "| `MaxOrganization` | The largest upload of the organization's data | 64 MiB |", "| `MaxOrganization` | 組織のデータのアップロードの上限 | 64 MiB |", server.DefaultMaxOrganization == 64<<20},
+		{"reference", "| `MaxCheckTime` | How long the checks of an uploaded bundle may take. A bundle whose checks take longer is refused, and nothing of it is kept | 20 seconds |", "| `MaxCheckTime` | アップロードしたバンドルを確かめる時間の上限。確かめがそれより長くかかるバンドルは受け付けず、何も残さない | 20 秒 |", server.DefaultMaxCheckTime == 20*time.Second},
 		{"reference", "| `DraftsKept` | How long the organization's data that was only checked is kept | a day |", "| `DraftsKept` | 確かめただけの組織のデータを残す期間 | 1 日 |", server.DefaultDraftsKept == day},
 		{"reference", "| `ImportsPerDay` | How often new data of the organization is imported in 24 hours | 20 |", "| `ImportsPerDay` | 24 時間に取り込める、組織の新しいデータの回数 | 20 |", server.DefaultImportsPerDay == 20},
 		{"reference", "| `SweepEvery` | How often what is past its time is deleted | an hour |", "| `SweepEvery` | 期間の過ぎたものを消す間隔 | 1 時間 |", server.DefaultSweepEvery == time.Hour},

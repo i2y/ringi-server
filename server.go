@@ -66,7 +66,9 @@ type Config struct {
 	Bundles []BundleFile
 	// BundleKeys are the ed25519 public keys bundles are signed with (serve's -bundle-keys): with
 	// any, a bundle is taken, uploaded or read at start, only with a signature one of them makes
-	// (package bundlesign). None takes a bundle with no signature, approved by two people.
+	// (package bundlesign). With none, every upload is refused, and so is every approval of a
+	// bundle the store keeps (signature): only the bundles of Bundles, read at start, need no
+	// signature then (DESIGN 15.3).
 	BundleKeys []ed25519.PublicKey
 	// MaxBundle is the largest bundle, in bytes, and the most its files may come to once
 	// uncompressed (default 64 MiB): a larger one is answered 413.

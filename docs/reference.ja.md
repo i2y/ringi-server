@@ -43,6 +43,7 @@ PostgreSQL のパスワードは、環境変数 `PGPASSWORD` か `.pgpass` フ�
 | `OperationsKept` | 操作の番号と応答を残す期間 | 30 日 |
 | `MaxOrganization` | 組織のデータのアップロードの上限 | 64 MiB |
 | `MaxBundle` | バンドルの上限。アップロードしたままの大きさと、展開したファイルの大きさ | 64 MiB |
+| `MaxCheckTime` | アップロードしたバンドルを確かめる時間の上限。確かめがそれより長くかかるバンドルは受け付けず、何も残さない | 20 秒 |
 | `DraftsKept` | 確かめただけの組織のデータを残す期間 | 1 日 |
 | `ImportsPerDay` | 24 時間に取り込める、組織の新しいデータの回数 | 20 |
 | `SweepEvery` | 期間の過ぎたものを消す間隔 | 1 時間 |
@@ -70,6 +71,7 @@ PostgreSQL のパスワードは、環境変数 `PGPASSWORD` か `.pgpass` フ�
 | 添付ファイルの種類 | PDF、画像（PNG、JPEG、GIF、WebP）、テキストと CSV、Office と OpenDocument のファイル | `web.Config` の `FileTypes` |
 | セッション | ログインから 12 時間、使わないまま 2 時間 | `oidc.Config` の `SessionLimit`、`IdleLimit` |
 | コメントの長さ | 2,000 字 | 変えられない |
+| リクエストのヘッダー | 5 秒以内に読み終える。大きさは 64 KiB まで | 変えられない |
 | リクエストを読む時間、応答する時間、使っていない接続 | 30 秒、30 秒、2 分 | 変えられない |
 
 `web.Config` と `oidc.Config` は、[自分で組み立てるサーバー](embedding.ja.md)で変えられます。パッケージ `serve` のサーバーでは、表の値です。
